@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from fractions import Fraction
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -22,31 +23,125 @@ TRAINABLE_PARAMS = {
     'V1-03': 524288, 'V1-04': 524288, 'V1-05': 917504,
     'V1-06': 917504, 'V1-07': 901120, 'V1-08': 1261568,
 }
+CONFIG_ARMS = {
+    'V1-01': 'F_out', 'V1-02': 'F_pre', 'V1-03': 'C_gate', 'V1-04': 'C_up',
+    'V1-05': 'C_dual', 'V1-06': 'linear', 'V1-07': 'lora', 'V1-08': 'lora28',
+}
 TASKS = ('piqa', 'boolq')
 BOOTSTRAP_SEED = 20261029
 BOOTSTRAP_REPEATS = 10000
 NEAR_TIE = .01
+LOCKED_SPLIT_SHA256 = '47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7f20ded98571b'
+TRAIN_ORDER_SHA256 = 'fcfed383efd9a1672f6e210b8eb52fc2a6039db5c6d868926fb2ddec0e49d376'
+FULL_STEPS = 13077
+FULL_INPUT_TOKENS = 2000040
+FULL_EXAMPLES = 26154
+SOURCE_HASHES = {
+    'piqa': 'f805f9c96518d7b59f2f870d90f712457cda949979469d9fa3fd706ce22e0a1a',
+    'piqa_labels': 'df8ae080c41f02f88e81f6932d425f4b7ee72f433ad552e6a30d45e358e8f8bb',
+    'boolq': '4f028e992c0bd4df30b9f056f4946b64f5c23028034ff0ed5ea467d8538cc623',
+}
+SOURCE_METADATA = {
+    'piqa': {'repo': 'ybisk/ybisk.github.io', 'revision': '21edab439af693b961be2f069e8690a88d3b4e37'},
+    'boolq': {'repo': 'google/boolq', 'revision': '35b264d03638db9f4ce671b711558bf7ff0f80d5'},
+}
 
 
 class AnalysisError(ValueError):
     """Input runs cannot support a paired comparison."""
 
 
-def _read_run(path: Path, run_id: str) -> tuple[list[dict], dict]:
+def _read_json(path: Path, run_id: str, label: str):
     try:
-        manifest = json.loads((path / 'manifest.json').read_text())
-        rows = json.loads((path / 'predictions.json').read_text())
+        return json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        raise AnalysisError(f'{run_id}: cannot read manifest/predictions in {path}: {exc}') from exc
+        raise AnalysisError(f'{run_id}: cannot read {label} at {path}: {exc}') from exc
+
+
+def _validate_formal_artifacts(path: Path, run_id: str, expected_arm: str):
+    config = _read_json(path / 'config.json', run_id, 'config.json')
+    metadata = _read_json(path / 'data-metadata.json', run_id, 'data-metadata.json')
+    split_ids = _read_json(path / 'split-map.json', run_id, 'split-map.json')
+    if not isinstance(config, dict) or not isinstance(metadata, dict) or not isinstance(split_ids, dict):
+        raise AnalysisError(f'{run_id}: config, metadata and split-map must be JSON objects')
+    if config.get('arm') != expected_arm:
+        raise AnalysisError(f'{run_id}: config arm {config.get("arm")!r} != expected {expected_arm!r}')
+    if config.get('e3') is not True:
+        raise AnalysisError(f'{run_id}: config must have e3=true')
+    if config.get('smoke_steps') is not None or config.get('eval_limit') is not None:
+        raise AnalysisError(f'{run_id}: smoke_steps and eval_limit must be unset')
+    if config.get('batch') != 2 or config.get('tokens') != 2000000:
+        raise AnalysisError(f'{run_id}: config batch/tokens do not match E-0003 full run')
+    if run_id != 'Base' and config.get('lr') != .0003:
+        raise AnalysisError(f'{run_id}: config learning rate must be 0.0003')
+
+    try:
+        canonical_split = json.dumps(split_ids, ensure_ascii=False, sort_keys=True,
+                                     separators=(',', ':')).encode('utf-8')
+    except (TypeError, ValueError) as exc:
+        raise AnalysisError(f'{run_id}: split-map is not canonical JSON data') from exc
+    split_hash = hashlib.sha256(canonical_split).hexdigest()
+    if split_hash != LOCKED_SPLIT_SHA256:
+        raise AnalysisError(f'{run_id}: split-map hash is not the locked E-0003 mapping')
+    if metadata.get('split_mapping_sha256') != LOCKED_SPLIT_SHA256:
+        raise AnalysisError(f'{run_id}: metadata split_mapping_sha256 is not locked')
+    if metadata.get('split_ids') != split_ids:
+        raise AnalysisError(f'{run_id}: metadata split_ids differ from split-map.json')
+    if metadata.get('source_files', {}) == {}:
+        raise AnalysisError(f'{run_id}: metadata source_files is missing')
+    actual_source_hashes = {name: metadata.get('source_files', {}).get(name, {}).get('sha256')
+                            for name in SOURCE_HASHES}
+    if actual_source_hashes != SOURCE_HASHES:
+        raise AnalysisError(f'{run_id}: source file hashes differ from v1_run.prepare')
+    if metadata.get('source_metadata') != SOURCE_METADATA:
+        raise AnalysisError(f'{run_id}: source repository revisions differ from v1_run.prepare')
+    if metadata.get('dev_size') != 1000:
+        raise AnalysisError(f'{run_id}: metadata dev_size must be 1000')
+    for task in TASKS:
+        if len(split_ids.get(task, {}).get('dev', [])) != 1000:
+            raise AnalysisError(f'{run_id}: split map must contain 1000 {task} dev IDs')
+    return config, metadata, split_ids
+
+
+def _read_run(path: Path, run_id: str, expected_arm: str) -> tuple[list[dict], dict]:
+    config, metadata, split_ids = _validate_formal_artifacts(path, run_id, expected_arm)
+    manifest = _read_json(path / 'manifest.json', run_id, 'manifest.json')
+    rows = _read_json(path / 'predictions.json', run_id, 'predictions.json')
+    if not isinstance(manifest, dict):
+        raise AnalysisError(f'{run_id}: manifest.json must contain an object')
     if manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True:
         raise AnalysisError(f'{run_id}: run is not complete and validator-passed')
-    if manifest.get('metrics', {}).get('reload.identical') is not True:
+    metrics = manifest.get('metrics', {})
+    if not isinstance(metrics, dict):
+        raise AnalysisError(f'{run_id}: manifest metrics must be an object')
+    if metrics.get('reload.identical') is not True:
         raise AnalysisError(f'{run_id}: reload.identical must be true')
-    if manifest.get('metrics', {}).get('train.diverged') is True or manifest.get('metrics', {}).get('run.failed_lr') is True:
+    if metrics.get('train.diverged') is True or metrics.get('run.failed_lr') is True:
         raise AnalysisError(f'{run_id}: training diverged or failed its learning rate')
-    for key, value in manifest.get('metrics', {}).items():
+    for key, value in metrics.items():
         if isinstance(value, (int, float)) and not math.isfinite(value):
             raise AnalysisError(f'{run_id}: manifest metric {key} is nonfinite')
+    for key, expected in (('plan.steps', FULL_STEPS), ('plan.input_tokens', FULL_INPUT_TOKENS),
+                          ('plan.order_sha256', TRAIN_ORDER_SHA256)):
+        if metrics.get(key) != expected:
+            raise AnalysisError(f'{run_id}: {key} does not match the locked full schedule')
+    if run_id == 'Base':
+        for key in ('train.steps', 'train.input_tokens', 'train.examples'):
+            if metrics.get(key, 0) not in (0, None):
+                raise AnalysisError(f'Base: unexpected training consumption {key}={metrics[key]}')
+        if metrics.get('params.trainable') != 0:
+            raise AnalysisError('Base: params.trainable must be zero')
+        for key in ('params.adapter_stored', 'params.with_grad'):
+            if metrics.get(key, 0) not in (0, None):
+                raise AnalysisError(f'Base: {key} must be zero when present')
+    else:
+        for key, expected in (('train.steps', FULL_STEPS), ('train.input_tokens', FULL_INPUT_TOKENS),
+                              ('train.examples', FULL_EXAMPLES),
+                              ('params.adapter_stored', TRAINABLE_PARAMS[run_id]),
+                              ('params.trainable', TRAINABLE_PARAMS[run_id]),
+                              ('params.with_grad', TRAINABLE_PARAMS[run_id])):
+            if metrics.get(key) != expected:
+                raise AnalysisError(f'{run_id}: {key}={metrics.get(key)!r}, expected {expected}')
     if not isinstance(rows, list):
         raise AnalysisError(f'{run_id}: predictions.json must contain a list')
     dev = [row for row in rows if row.get('split') == 'dev']
@@ -72,6 +167,10 @@ def _read_run(path: Path, run_id: str) -> tuple[list[dict], dict]:
         raise AnalysisError(f'{run_id}: duplicate (task, id) in dev predictions')
     if set(row['task'] for row in dev) != set(TASKS):
         raise AnalysisError(f'{run_id}: dev rows must contain both tasks')
+    for task in TASKS:
+        actual_ids = [row['id'] for row in dev if row['task'] == task]
+        if actual_ids != split_ids[task]['dev']:
+            raise AnalysisError(f'{run_id}: {task} dev IDs/membership/order differ from locked split map')
     return dev, manifest
 
 
@@ -157,7 +256,7 @@ def _paired_bootstrap(arrays: list[dict], repeats: int, seed: int, chunk_size: i
 def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
             repeats: int = BOOTSTRAP_REPEATS, seed: int = BOOTSTRAP_SEED,
             chunk_size: int = 128) -> dict:
-    """Analyze eight V1 run directories and the E-0002 Base reference directory."""
+    """Validate formal E-0003 artifacts, then analyze the eight arms and Base."""
     missing = set(ARM_IDS) - set(run_paths)
     extra = set(run_paths) - set(ARM_IDS)
     if missing or extra:
@@ -165,7 +264,25 @@ def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
     ordered_ids = (*ARM_IDS, 'Base')
     paths = {arm: Path(run_paths[arm]) for arm in ARM_IDS}
     paths['Base'] = Path(base_path)
-    loaded = {arm: _read_run(paths[arm], arm) for arm in ordered_ids}
+    try:
+        resolved = {arm: paths[arm].resolve(strict=True) for arm in ordered_ids}
+    except OSError as exc:
+        raise AnalysisError(f'run path does not exist or cannot be resolved: {exc}') from exc
+    if len(set(resolved.values())) != len(ordered_ids):
+        raise AnalysisError('each V1 arm and Base must use a unique resolved run directory')
+    if any(not path.is_dir() for path in resolved.values()):
+        raise AnalysisError('all run paths must resolve to directories')
+    loaded = {arm: _read_run(resolved[arm], arm,
+                             'base' if arm == 'Base' else CONFIG_ARMS[arm])
+              for arm in ordered_ids}
+    return _analyze_loaded(loaded, resolved, repeats=repeats, seed=seed, chunk_size=chunk_size)
+
+
+def _analyze_loaded(loaded: Mapping[str, tuple[list[dict], dict]], paths: Mapping[str, Path], *,
+                    repeats: int = BOOTSTRAP_REPEATS, seed: int = BOOTSTRAP_SEED,
+                    chunk_size: int = 128) -> dict:
+    """Numerical analysis for already-loaded rows; internal fixture helper, no I/O validation."""
+    ordered_ids = (*ARM_IDS, 'Base')
     reference_rows = loaded[ARM_IDS[0]][0]
     reference_identity = [(row['task'], row['id'], row['gold']) for row in reference_rows]
     for arm in ordered_ids[1:]:
