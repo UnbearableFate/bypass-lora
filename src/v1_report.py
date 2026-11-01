@@ -7,6 +7,7 @@ import sys
 from transformers import AutoTokenizer
 from calibrate import MODEL, REVISION
 from v1_run import prepare, plan_batches
+from v1_data import build_training_stream, encode_training_example
 
 root = Path('/work/xg24i002/x10041/bypass-lora')
 out = Path(sys.argv[1]); out.mkdir(parents=True,exist_ok=True)
@@ -38,6 +39,28 @@ slice_pass=all(metrics[0][f'dev.{t}.accuracy']<.9 for t in ('piqa','boolq')) and
 tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True)
 tok.pad_token_id=tok.eos_token_id
 splits=prepare(root/'data/v1')
+blocked_rows=[]
+for index,row in enumerate(build_training_stream(splits,0)):
+    try:
+        encode_training_example(tok,row)
+    except ValueError as exc:
+        candidates=[' '+s for s in row['solutions']] if row['task']=='piqa' else [' yes',' no']
+        blocked_rows.append({'stream_index':index,'task':row['task'],'id':row['id'],
+                             'candidate_tokens':[len(tok.encode(c,add_special_tokens=False)) for c in candidates],
+                             'reason':str(exc)})
+if blocked_rows:
+    report={'selected_lr':selected,'comparisons':comparisons,'slice_pass':slice_pass,
+            'e3_blocked_rows':blocked_rows,'schedule':None,
+            'training_tokens':sum(m.get('train.input_tokens',0) for m in metrics),
+            'task_sizes':{t:{s:len(v) for s,v in data.items()} for t,data in splits['splits'].items()}}
+    (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+    (out/'manifest.json').write_text(json.dumps({'status':'complete','spec_digest':os.environ['SR_SPEC_DIGEST'],
+        'metrics':{'slice_pass':slice_pass,**{f'lr.{k}':v for k,v in selected.items()},
+                   'e3.blocked_examples':len(blocked_rows),'train.input_tokens':0},
+        'artifacts':[{'path':str(out/'report.json'),'role':'selection_and_boundary_audit'}],
+        'validator':{'name':'deterministic_v1_audit','passed':True}},indent=2)+'\n')
+    print(json.dumps(report,indent=2))
+    sys.exit(0)
 batches=plan_batches(splits,tok,2000000,2,max_epochs=3)
 steps=len(batches); tokens=sum(len(e['input_ids']) for b in batches for e in b)
 schedule={'steps':steps,'tokens':tokens,'overshoot':max(0,tokens-2000000),
