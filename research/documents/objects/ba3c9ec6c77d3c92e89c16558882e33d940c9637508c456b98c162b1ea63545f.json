@@ -1,0 +1,151 @@
+{
+  "passed": true,
+  "D1_resume_provenance": {
+    "checkpoint": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0154-1/arm/adapter",
+    "checkpoint_files": {
+      "adapter.pt": {
+        "sha256": "6209268349661db898d560097ec3ff0690f0d570e29e26710e98eb217106703b",
+        "bytes": 2230997
+      },
+      "config.json": {
+        "sha256": "fa2b3c9bb1ddae1fb548add4c32502fc99f3b458dbe58bd8de1bd57e60941436",
+        "bytes": 454
+      }
+    },
+    "source_manifest": {
+      "sha256": "2f33d75615c55903e6e085d41d38f9fb7bdb67ff181fb0a5af8e5452d1da8e03",
+      "bytes": 15678
+    },
+    "source_metrics": {
+      "sha256": "40b1e64cde9461d9f78dcbd37e3c99b9d5c4249bd1a672be4bd8d4ccec3c1d28",
+      "bytes": 118505
+    },
+    "adapter_only": true,
+    "optimizer_state_loaded": false,
+    "optimizer": "fresh AdamW, weight_decay=0",
+    "warmup": "fresh 300 steps for formal runs"
+  },
+  "arms": {
+    "D1": {
+      "checkpoint_files": {
+        "adapter.pt": {
+          "sha256": "6209268349661db898d560097ec3ff0690f0d570e29e26710e98eb217106703b",
+          "bytes": 2230997
+        },
+        "config.json": {
+          "sha256": "fa2b3c9bb1ddae1fb548add4c32502fc99f3b458dbe58bd8de1bd57e60941436",
+          "bytes": 454
+        }
+      },
+      "full_record_reload_identical": true,
+      "prediction_files": [
+        "e1/dev.normal.predictions.jsonl",
+        "e1/dev.shuffled.predictions.jsonl",
+        "e1/dev.zero.predictions.jsonl",
+        "standard/dev.normal.predictions.jsonl",
+        "standard/dev.oracle_key.predictions.jsonl",
+        "standard/dev.oracle_value.predictions.jsonl",
+        "standard/dev.permuted.predictions.jsonl",
+        "standard/dev.shuffled.predictions.jsonl",
+        "standard/dev.zero.predictions.jsonl",
+        "teacher/dev.tf_normal.predictions.jsonl",
+        "teacher/dev.tf_shuffled.predictions.jsonl",
+        "teacher/dev.tf_wrong.predictions.jsonl",
+        "teacher/dev.zero.predictions.jsonl"
+      ],
+      "rows_per_file": 1000
+    },
+    "D2a": {
+      "checkpoint_files": {
+        "adapter.pt": {
+          "sha256": "19e7aa6a4cf803b5ab00069194957c0eaff1badff6d4684431e8a0f19a0f504d",
+          "bytes": 2230997
+        },
+        "config.json": {
+          "sha256": "fa2b3c9bb1ddae1fb548add4c32502fc99f3b458dbe58bd8de1bd57e60941436",
+          "bytes": 454
+        }
+      },
+      "full_record_reload_identical": true,
+      "prediction_files": [
+        "e1/dev.normal.predictions.jsonl",
+        "e1/dev.shuffled.predictions.jsonl",
+        "e1/dev.zero.predictions.jsonl",
+        "standard/dev.normal.predictions.jsonl",
+        "standard/dev.oracle_key.predictions.jsonl",
+        "standard/dev.oracle_value.predictions.jsonl",
+        "standard/dev.permuted.predictions.jsonl",
+        "standard/dev.shuffled.predictions.jsonl",
+        "standard/dev.zero.predictions.jsonl"
+      ],
+      "rows_per_file": 1000
+    },
+    "D2b": {
+      "checkpoint_files": {
+        "adapter.pt": {
+          "sha256": "d33f5d44a3d3c13d2fcc40496a851526f7dad5a6ff30c1944467bcda4794d120",
+          "bytes": 2230997
+        },
+        "config.json": {
+          "sha256": "fa2b3c9bb1ddae1fb548add4c32502fc99f3b458dbe58bd8de1bd57e60941436",
+          "bytes": 454
+        }
+      },
+      "full_record_reload_identical": true,
+      "prediction_files": [
+        "e1/dev.normal.predictions.jsonl",
+        "e1/dev.shuffled.predictions.jsonl",
+        "e1/dev.zero.predictions.jsonl",
+        "standard/dev.normal.predictions.jsonl",
+        "standard/dev.oracle_key.predictions.jsonl",
+        "standard/dev.oracle_value.predictions.jsonl",
+        "standard/dev.permuted.predictions.jsonl",
+        "standard/dev.shuffled.predictions.jsonl",
+        "standard/dev.zero.predictions.jsonl"
+      ],
+      "rows_per_file": 1000
+    },
+    "D3": {
+      "checkpoint_files": {
+        "adapter.pt": {
+          "sha256": "df4fdf1f4254de0789b5a40dbb76470aba181159d9f13b7d61e26d581c69a540",
+          "bytes": 2230997
+        },
+        "config.json": {
+          "sha256": "fa2b3c9bb1ddae1fb548add4c32502fc99f3b458dbe58bd8de1bd57e60941436",
+          "bytes": 454
+        }
+      },
+      "full_record_reload_identical": true,
+      "prediction_files": [
+        "hard/dev.normal.predictions.jsonl",
+        "hard/dev.oracle_key.predictions.jsonl",
+        "hard/dev.oracle_value.predictions.jsonl",
+        "hard/dev.permuted.predictions.jsonl",
+        "hard/dev.shuffled.predictions.jsonl",
+        "hard/dev.zero.predictions.jsonl",
+        "marginal/dev.normal.predictions.jsonl",
+        "marginal/dev.permuted.predictions.jsonl",
+        "marginal/dev.shuffled.predictions.jsonl",
+        "marginal/dev.zero.predictions.jsonl",
+        "soft/dev.normal.predictions.jsonl",
+        "soft/dev.oracle_key.predictions.jsonl",
+        "soft/dev.oracle_value.predictions.jsonl",
+        "soft/dev.permuted.predictions.jsonl",
+        "soft/dev.shuffled.predictions.jsonl",
+        "soft/dev.zero.predictions.jsonl"
+      ],
+      "rows_per_file": 1000
+    }
+  },
+  "D2a_frozen_decoder_identical": {
+    "projection.A_v": true,
+    "reader.Ro": true,
+    "fusion.P": true
+  },
+  "D2a_address_parameters_changed": {
+    "projection.A_q": true,
+    "projection.A_k": true,
+    "reader.Rq": true
+  }
+}

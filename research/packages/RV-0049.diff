@@ -1,0 +1,430 @@
+diff --git a/src/test_e0017_seeds.py b/src/test_e0017_seeds.py
+new file mode 100644
+index 0000000..ae55584
+--- /dev/null
++++ b/src/test_e0017_seeds.py
+@@ -0,0 +1,105 @@
++"""E-0017 seed options: seed 0 keeps the recorded orders and initialization, seeds 1 and 2
++give new ones, and the D5 start run must carry the expected seed. The released-data
++checks read train splits only; the initialization check needs a GPU allocation."""
++import json
++import random
++import shutil
++
++import pytest
++
++from v1_data import derive_seed
++from v2_schedule import load_data, make_step_schedule, train_order
++from v2r16_train import make_arm_schedule
++
++RUNS = '/work/xg24i002/x10041/bypass-lora/runs'
++V2 = f'{RUNS}/ATT-0039-1/data'
++E1 = f'{RUNS}/ATT-0112-1/e1'
++
++
++def rows(count=32):
++    return [{'episode_id': f'episode-{i}', 'support_input_ids': [1]*(i % 11+1),
++             'question_input_ids': [2, 3]} for i in range(count)]
++
++
++def test_seed_zero_is_the_recorded_order_and_other_seeds_append_the_seed():
++    data = rows()
++    assert make_step_schedule(data, 10, seed=0) == make_step_schedule(data, 10)
++    assert 'order_seed' not in make_step_schedule(data, 10)
++    orders = {s: tuple(make_step_schedule(data, 12, seed=s)['order']) for s in (0, 1, 2)}
++    assert len(set(orders.values())) == 3
++    expected = []
++    for epoch in range(3):
++        indices = list(range(32))
++        random.Random(derive_seed(20261029, 'concat_loop_v2', 'V2', f'train-order-{epoch}', 2)).shuffle(indices)
++        expected.extend(indices)
++    assert list(orders[2]) == expected
++    assert make_step_schedule(data, 12, seed=2)['order_seed'] == 2
++    for bad in (-1, 1.0, True):
++        with pytest.raises(ValueError):
++            train_order(data, 'V2', bad)
++
++
++def test_continuation_seed_only_for_resumed_arms():
++    data = rows()
++    assert make_arm_schedule(data, 'D5', 12, 0) == make_arm_schedule(data, 'D5', 12)
++    plan = make_arm_schedule(data, 'D5', 12, 1)
++    assert plan['order_seed'] == derive_seed(20261029, 'concat_loop_v2', 'V2R16', 'D5', 1)
++    assert plan['continuation_seed'] == 1
++    assert 'arm, 1);' in plan['order_seed_rule'] and 'continuation_seed' not in make_arm_schedule(data, 'D5', 12)
++    assert len({tuple(make_arm_schedule(data, 'D5', 12, s)['order']) for s in (0, 1, 2)}) == 3
++    for arm in ('D1', 'D3', 'D4'):
++        with pytest.raises(ValueError):
++            make_arm_schedule(data, arm, 12, 1)
++
++
++def test_released_data_seed_zero_reproduces_the_recorded_r1_and_d5_orders():
++    from v2r_data import load_variant
++    e1 = load_variant(E1, 1, 'train')[1]
++    r1 = json.loads(open(f'{RUNS}/ATT-0122-1/schedule.json').read())
++    plan = make_step_schedule(e1, 6000)
++    assert plan['order_sha256'] == r1['order_sha256'] and plan['tokens'] == r1['tokens']
++    assert make_step_schedule(e1, 6000, seed=1)['order_sha256'] != r1['order_sha256']
++    v2 = load_data(f'{V2}/train.jsonl', 'train')
++    d5 = json.loads(open(f'{RUNS}/ATT-0159-1/run/schedule.json').read())
++    assert make_arm_schedule(v2, 'D5', 6000)['order_sha256'] == d5['order_sha256']
++    seeded = {s: make_arm_schedule(v2, 'D5', 6000, s) for s in (1, 2)}
++    assert len({d5['order_sha256'], *(p['order_sha256'] for p in seeded.values())}) == 3
++    assert all(p['warmup_steps'] == 300 and p['steps'] == 6000 for p in seeded.values())
++
++
++def test_start_run_provenance_checks_the_recorded_seed(tmp_path):
++    import v2r16_isolated as runner
++    from v2_memory import config
++    cfg = config('direct_hidden', 'soft_slot', 'F_out')
++    copy = tmp_path/'r1'
++    (copy/runner.ARM_DIR).mkdir(parents=True)
++    shutil.copytree(runner.R1_RUN/runner.ARM_DIR/'adapter', copy/runner.ARM_DIR/'adapter')
++    shutil.copy(runner.R1_RUN/'metrics.json', copy/'metrics.json')
++    manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
++    (copy/'manifest.json').write_text(json.dumps(dict(manifest, seed=1)))
++    assert runner.r1_provenance(copy, cfg, 1)['start_seed'] == 1
++    with pytest.raises(ValueError, match='at seed 0'):
++        runner.r1_provenance(copy, cfg)
++    with pytest.raises(ValueError, match='at seed 2'):
++        runner.r1_provenance(copy, cfg, 2)
++    assert runner.r1_provenance(runner.R1_RUN, cfg, 0)['start_seed'] == 0
++
++
++def test_adapter_initialization_follows_the_seed():
++    import torch
++    from calibrate import load_base
++    from v2_memory import config
++    from v2_train import adapted
++    base = load_base()
++    cfg = config('direct_hidden', 'soft_slot', 'F_out')
++
++    def initial(**kwargs):
++        with adapted(base, cfg=cfg, **kwargs) as model:
++            return {n: p.detach().clone() for n, p in model.adapters()[14].side.named_parameters()}
++    default, zero, one, two = initial(), initial(seed=0), initial(seed=1), initial(seed=2)
++    assert all(torch.equal(default[n], zero[n]) for n in default)
++    random_names = [n for n in default if torch.count_nonzero(default[n])]
++    assert random_names
++    assert all(not torch.equal(default[n], one[n]) and not torch.equal(one[n], two[n]) for n in random_names)
++    # Zero-initialized parameters (the exit) stay zero at every seed.
++    assert all(torch.count_nonzero(one[n]) == 0 for n in default if n not in random_names)
+diff --git a/src/v2_schedule.py b/src/v2_schedule.py
+index ddcdef1..7f687e8 100644
+--- a/src/v2_schedule.py
++++ b/src/v2_schedule.py
+@@ -36,15 +36,22 @@ def _cost(row):
+     return len(row['support_input_ids']) + len(row['question_input_ids'])
+ 
+ 
+-def train_order(rows, phase='V2'):
++SEED_ORDER_RULE = ('seed 0: derive_seed(20261029, "concat_loop_v2", phase, "train-order-<epoch>"); '
++                   'seed s >= 1: the same parts followed by s (E-0017)')
++
++
++def train_order(rows, phase='V2', seed=0):
+     if phase not in ('V2', 'V3'):
+         raise ValueError('unsupported data phase')
+     if not rows or len(rows) % 8:
+         raise ValueError('complete batches of eight required')
++    if type(seed) is not int or seed < 0:
++        raise ValueError('seed must be a non-negative integer')
+     order = []
+     for epoch in range(3):
+         indices = list(range(len(rows)))
+-        random.Random(derive_seed(20261029, 'concat_loop_v2', phase, f'train-order-{epoch}')).shuffle(indices)
++        parts = (20261029, 'concat_loop_v2', phase, f'train-order-{epoch}') + ((seed,) if seed else ())
++        random.Random(derive_seed(*parts)).shuffle(indices)
+         order.extend(indices)
+     digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order).encode('utf-8')).hexdigest()
+     return order, digest
+@@ -68,21 +75,25 @@ def make_schedule(rows, budget, *, phase='V2'):
+             'budget': budget, 'order_hash_encoding': ORDER_HASH_ENCODING}
+ 
+ 
+-def make_step_schedule(rows, steps, *, phase='V2'):
++def make_step_schedule(rows, steps, *, phase='V2', seed=0):
+     """The first ``steps`` batches of the same three-epoch order (E-0014 step budget).
+ 
+     On rows where the token budget stops at step N, steps=N gives the same batches.
++    ``seed`` > 0 selects another order (SEED_ORDER_RULE); seed 0 is the recorded order.
+     """
+     if type(steps) is not int or steps <= 0:
+         raise ValueError('positive integer step budget required')
+-    order, digest = train_order(rows, phase)
++    order, digest = train_order(rows, phase, seed)
+     if steps * 8 > len(order):
+         raise ValueError('step budget exceeds three epochs')
+     batches = [order[offset:offset+8] for offset in range(0, steps*8, 8)]
+-    return {'order': order, 'batches': batches, 'steps': steps,
++    plan = {'order': order, 'batches': batches, 'steps': steps,
+             'tokens': sum(_cost(rows[i]) for batch in batches for i in batch),
+             'warmup_steps': math.ceil(.05*steps), 'order_sha256': digest,
+             'step_budget': steps, 'order_hash_encoding': ORDER_HASH_ENCODING}
++    if seed:
++        plan.update(order_seed=seed, order_seed_rule=SEED_ORDER_RULE)
++    return plan
+ 
+ 
+ def make_curriculum_schedule(segments):
+diff --git a/src/v2_train.py b/src/v2_train.py
+index 5365763..4f657aa 100644
+--- a/src/v2_train.py
++++ b/src/v2_train.py
+@@ -37,11 +37,11 @@ def write_json(path, value):
+ 
+ 
+ @contextmanager
+-def adapted(base, cfg=None, checkpoint=None):
++def adapted(base, cfg=None, checkpoint=None, seed=0):
+     # load_base seeds its own loader; seed after loading to pin the adapter.
+-    random.seed(0)
+-    torch.manual_seed(0)
+-    torch.cuda.manual_seed_all(0)
++    random.seed(seed)
++    torch.manual_seed(seed)
++    torch.cuda.manual_seed_all(seed)
+     model = (BranchModel.load_adapter(base, checkpoint) if checkpoint is not None
+              else BranchModel(base, cfg))
+     try:
+@@ -366,7 +366,7 @@ def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output,
+                          position_ids=(mask.long().cumsum(-1)-1).clamp_min(0), use_cache=False).logits
+         last = mask.long().sum(-1)-1
+         reference = reference[torch.arange(len(last), device=last.device), last].float()
+-    with adapted(base, cfg=cfg) as model:
++    with adapted(base, cfg=cfg, seed=args.seed) as model:
+         model.eval()
+         with torch.no_grad():
+             _, initial_logits, _, _ = train_forward(model, initial_batch)
+@@ -474,6 +474,8 @@ def main():
+     parser.add_argument('--prior-steps', type=int, default=0)
+     parser.add_argument('--prior-lr', type=float, default=0.)
+     parser.add_argument('--address-loss-weight', type=float, default=0.)
++    parser.add_argument('--seed', type=int, default=0,
++                        help='adapter initialization and step-budget data order seed (E-0017); 0 is the recorded seed')
+     args = parser.parse_args()
+     variant_dirs = {}
+     for item in args.variant_data:
+@@ -504,6 +506,8 @@ def main():
+         parser.error('the address loss needs a finite positive weight and --backend soft_slot')
+     if not math.isfinite(args.lr) or args.lr <= 0 or args.token_budget <= 0:
+         parser.error('finite positive lr and token budget required')
++    if args.seed < 0 or (args.seed and (not args.step_budget or segments or args.prior_rank)):
++        parser.error('--seed >= 1 needs a plain --step-budget run (no curriculum or prior path)')
+     if args.microbatch_size < 1 or args.microbatch_size > TRAIN_BATCH_SIZE:
+         parser.error('microbatch size must be 1..8')
+     if not 0 <= args.smoke_steps <= 64:
+@@ -534,7 +538,7 @@ def main():
+         elif args.step_budget:
+             if args.train_facts != 16:
+                 train_rows = variants[args.train_facts]['train'][1]
+-            schedule = make_step_schedule(train_rows, args.step_budget)
++            schedule = make_step_schedule(train_rows, args.step_budget, seed=args.seed)
+         else:
+             schedule = make_schedule(train_rows, args.token_budget)
+         if args.prior_rank:
+@@ -587,7 +591,7 @@ def main():
+         artifacts = [{'path': str(p.resolve()), 'role': p.name} for p in args.output.rglob('*') if p.is_file() and p.name != 'manifest.json']
+         write_json(args.output/'manifest.json', {
+             'status': 'complete' if passed else 'failed', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
+-            'model': MODEL, 'revision': REVISION, 'seed': 0, 'batch_size': TRAIN_BATCH_SIZE,
++            'model': MODEL, 'revision': REVISION, 'seed': args.seed, 'batch_size': TRAIN_BATCH_SIZE,
+             'data_dir': str(args.data_dir.resolve()),
+             'data_sha256': {split: DATA_HASHES[split] for split in ('train', 'dev', 'calibration')
+                             if split != 'calibration' or args.eval_splits == 'both'},
+diff --git a/src/v2r16_isolated.py b/src/v2r16_isolated.py
+index 9cb9b0e..753a2d3 100644
+--- a/src/v2r16_isolated.py
++++ b/src/v2r16_isolated.py
+@@ -7,6 +7,11 @@ only (no target index). D4 trains from scratch; D5 continues R1's final adapter
+ (ATT-0122-1): adapter parameters only, fresh AdamW, fresh 300-step warmup and cosine,
+ data order derive_seed(20261029, "concat_loop_v2", "V2R16", "D5", 0).
+ 
++E-0017 (--experiment E-0017) replicates D5 with continuation order seed s (--seed) from a
++start run of the R1 recipe (--r1-run, recorded seed --r1-seed): either the stage-A R1
++retrained at seed s or ATT-0122-1. It also reports the isolated normal/zero/shuffled on
++E=16 calibration, descriptively.
++
+ Schedules, the E-0016 evaluator and the training loop are shared with T-0017
+ (v2r16_train, v2r16_memory, v2_train.train). Every control of the gate is evaluated
+ under the isolated write (new protocol, reported apart from E-0010); the contextual
+@@ -32,18 +37,21 @@ ARMS = ('D4', 'D5')
+ R1_RUN = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0122-1')
+ ARM_DIR = 'direct_hidden.soft_slot.F_out'
+ CONTEXT_CONTROLS = ('normal', 'oracle_value')  # descriptive comparison with E-0015 only
++CALIBRATION_CONTROLS = ('normal', 'zero', 'shuffled')  # E-0017 descriptive only
++EXPERIMENTS = {'E-0016': 'E-0016@1', 'E-0017': 'E-0017@1'}
+ 
+ 
+-def r1_provenance(run, cfg):
+-    """R1 (ATT-0122-1, an E-0014 v2_train run): completed, formal, E=1 training of the
+-    fixed configuration, 6000 steps, reload-identical; adapter files are hashed here."""
++def r1_provenance(run, cfg, seed=0):
++    """A run of the R1 recipe (an E-0014/E-0017 v2_train run, e.g. ATT-0122-1 at seed 0):
++    completed, formal, E=1 training of the fixed configuration at the expected seed,
++    6000 steps, reload-identical; adapter files are hashed here."""
+     manifest_path, metrics_path = run/'manifest.json', run/'metrics.json'
+     manifest = json.loads(manifest_path.read_text())
+     if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
+-            or manifest.get('seed') != 0 or manifest.get('smoke_steps') or manifest.get('smoke_eval_limit')
++            or manifest.get('seed') != seed or manifest.get('smoke_steps') or manifest.get('smoke_eval_limit')
+             or manifest.get('options', {}).get('train_facts') != 1
+             or manifest.get('options', {}).get('step_budget') != 6000):
+-        raise ValueError('R1 must be the completed formal E=1 6000-step run')
++        raise ValueError(f'R1 must be the completed formal E=1 6000-step run at seed {seed}')
+     metrics = json.loads(metrics_path.read_text())[ARM_DIR]
+     if metrics.get('train', {}).get('steps') != 6000:
+         raise ValueError('R1 did not complete 6000 steps')
+@@ -54,7 +62,7 @@ def r1_provenance(run, cfg):
+     files = checkpoint_records(run/ARM_DIR/'adapter')
+     if set(files) != {'adapter.pt', 'config.json'}:
+         raise ValueError('only adapter parameters/config may be resumed')
+-    return {'checkpoint': str((run/ARM_DIR/'adapter').resolve()), 'checkpoint_files': files,
++    return {'checkpoint': str((run/ARM_DIR/'adapter').resolve()), 'checkpoint_files': files, 'start_seed': seed,
+             'source_manifest': file_record(manifest_path), 'source_metrics': file_record(metrics_path),
+             'adapter_only': True, 'optimizer_state_loaded': False,
+             'optimizer': 'fresh AdamW, weight_decay=0', 'warmup': 'fresh 300 steps for formal runs'}
+@@ -87,32 +95,38 @@ def run(args):
+     result, passed, failure, provenance = {}, False, None, None
+     try:
+         train_rows = load_data(args.data_dir/'train.jsonl', 'train')
+-        load_data(args.data_dir/'calibration.jsonl', 'calibration')  # verify released bytes; unused
++        calibration = load_data(args.data_dir/'calibration.jsonl', 'calibration')  # E-0017 descriptive only
++        if args.experiment != 'E-0017':
++            calibration = None
+         dev = load_data(args.data_dir/'dev.jsonl', 'dev')
+-        schedule = make_arm_schedule(train_rows, args.arm, args.step_budget)
++        schedule = make_arm_schedule(train_rows, args.arm, args.step_budget, args.seed)
+         if args.smoke_steps:
+             schedule = trim_smoke_schedule(schedule, train_rows, args.smoke_steps)
+         if args.smoke_eval_limit:
+             dev = dev[:args.smoke_eval_limit]
++            calibration = calibration and calibration[:args.smoke_eval_limit]
+         public_schedule = {k: v for k, v in schedule.items() if k not in ('order', 'batches')}
+         write_json(output/'schedule.json', public_schedule)
+         cfg = config('direct_hidden', 'soft_slot', 'F_out')
+         checkpoint = None
+         if args.arm == 'D5':
+-            provenance = r1_provenance(args.r1_run, cfg)
++            provenance = r1_provenance(args.r1_run, cfg, args.r1_seed)
+             checkpoint = args.r1_run/ARM_DIR/'adapter'
+         tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+         pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+         tick = time.monotonic()
+         differing = {'train': annotate_isolated(tokenizer, train_rows), 'dev': annotate_isolated(tokenizer, dev)}
+-        for row in dev:
++        if calibration:
++            differing['calibration'] = annotate_isolated(tokenizer, calibration)
++        for row in dev + (calibration or []):
+             ids = tokenizer.encode(' '+row['query']['head'], add_special_tokens=False)
+             if len(ids) != 1:
+                 raise ValueError('query subject is not a single token')
+             row['_subject_token_id'] = ids[0]
+         prior = Counter(r['query']['answer_token_id'] for r in train_rows).most_common(1)[0][0]
+         base = load_base()
+-        result = {'arm': args.arm, 'config': asdict(cfg), 'lr': .003, 'seed': 0, 'batch_size': 8,
++        result = {'experiment': EXPERIMENTS[args.experiment], 'arm': args.arm, 'config': asdict(cfg), 'lr': .003,
++                  'seed': args.seed, 'batch_size': 8,
+                   'microbatch_size': 8, 'schedule': public_schedule, 'write_protocol': 'isolated',
+                   'smoke_only': bool(args.smoke_steps), 'eligible_as_evidence': not bool(args.smoke_steps),
+                   'resume_provenance': provenance,
+@@ -126,6 +140,10 @@ def run(args):
+                                                                   STANDARD, prior)
+             summaries['contextual'], records['contextual'] = evaluate(model, dev, pad_id, destination/'contextual',
+                                                                       'dev', CONTEXT_CONTROLS, prior)
++            if calibration:
++                summaries['calibration_isolated'], records['calibration_isolated'] = isolated(
++                    model, calibration, pad_id, destination/'calibration-isolated', 'calibration',
++                    CALIBRATION_CONTROLS, prior)
+             return summaries, records
+ 
+         def curve_evaluator(model, rows, pad, destination, split, controls, prior_token):
+@@ -209,12 +227,14 @@ def run(args):
+                      for p in sorted(output.rglob('*')) if p.is_file() and p.name != 'manifest.json']
+         gate_result = result.get('gate')
+         write_json(output/'manifest.json', {
+-            'status': 'complete' if passed else 'failed', 'experiment': 'E-0016', 'contract': 'E-0016@1',
++            'status': 'complete' if passed else 'failed', 'experiment': args.experiment,
++            'contract': EXPERIMENTS[args.experiment],
+             'arm': args.arm, 'write_protocol': 'isolated', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
+             'model': MODEL, 'revision': REVISION, 'smoke_steps': args.smoke_steps,
+             'smoke_eval_limit': args.smoke_eval_limit,
+             'eligible_as_evidence': passed and not bool(args.smoke_steps),
+-            'seed': 0, 'lr': .003, 'batch_size': 8, 'microbatch_size': 8,
++            'seed': args.seed, 'start_seed': args.r1_seed if args.arm == 'D5' else None,
++            'lr': .003, 'batch_size': 8, 'microbatch_size': 8,
+             'data_dir': str(args.data_dir.resolve()), 'data_sha256': DATA_HASHES,
+             'resume_provenance': provenance, 'schedule': result.get('schedule'),
+             'requires_grad_parameter_names': result.get('requires_grad_parameter_names'),
+@@ -234,7 +254,10 @@ def main():
+     parser.add_argument('--arm', choices=ARMS, required=True)
+     parser.add_argument('--data-dir', type=Path, required=True)
+     parser.add_argument('--output', type=Path, required=True)
+-    parser.add_argument('--r1-run', type=Path, default=R1_RUN)
++    parser.add_argument('--experiment', choices=tuple(EXPERIMENTS), default='E-0016')
++    parser.add_argument('--r1-run', type=Path, default=R1_RUN, help='D5 start: a run of the R1 recipe')
++    parser.add_argument('--r1-seed', type=int, default=0, help='the seed the start run must have recorded')
++    parser.add_argument('--seed', type=int, default=0, help='D5 continuation order seed')
+     parser.add_argument('--step-budget', type=int, default=6000)
+     parser.add_argument('--smoke-steps', type=int, default=0)
+     parser.add_argument('--smoke-eval-limit', type=int, default=0)
+@@ -245,6 +268,10 @@ def main():
+         parser.error('smoke steps must be 0..6000')
+     if args.smoke_eval_limit and (not args.smoke_steps or args.smoke_eval_limit < 2):
+         parser.error('smoke eval limit >=2 requires --smoke-steps')
++    if args.experiment == 'E-0016' and (args.seed or args.r1_seed or args.r1_run != R1_RUN):
++        parser.error('E-0016 is D4/D5 at seed 0 from ATT-0122-1')
++    if args.experiment == 'E-0017' and (args.arm != 'D5' or args.seed not in (1, 2) or args.r1_seed not in (0, args.seed)):
++        parser.error('E-0017 runs D5 with continuation seed 1 or 2 from R1 at seed 0 or the same seed')
+     return run(args)
+ 
+ 
+diff --git a/src/v2r16_train.py b/src/v2r16_train.py
+index f5b3d80..4130243 100644
+--- a/src/v2r16_train.py
++++ b/src/v2r16_train.py
+@@ -22,23 +22,27 @@ from v2_schedule import DATA_HASHES, ORDER_HASH_ENCODING, load_data, make_step_s
+ 
+ ARMS = ('D1', 'D2a', 'D2b', 'D3')
+ SCHEDULE_ARMS = (*ARMS, 'D4', 'D5')
+-RESUME_SEED_RULE = ('base = derive_seed(20261029, "concat_loop_v2", "V2R16", arm, 0); '
+-                    'epoch indices shuffled by random.Random(base + epoch), epochs 0..2')
++RESUME_SEED_RULE_TEMPLATE = ('base = derive_seed(20261029, "concat_loop_v2", "V2R16", arm, {seed}); '
++                             'epoch indices shuffled by random.Random(base + epoch), epochs 0..2')
++RESUME_ARMS = ('D2a', 'D2b', 'D5')
+ STANDARD = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
+ 
+ 
+-def make_arm_schedule(rows, arm, steps=6000):
++def make_arm_schedule(rows, arm, steps=6000, seed=0):
++    """``seed`` is the continuation order seed of the resumed arms (E-0017 uses 1, 2 for D5)."""
+     if arm not in SCHEDULE_ARMS:
+         raise ValueError('unsupported E-0016 arm')
++    if type(seed) is not int or seed < 0 or (seed and arm not in RESUME_ARMS):
++        raise ValueError('a non-zero order seed applies to the resumed arms only')
+     if arm in ('D1', 'D3', 'D4'):
+         return make_step_schedule(rows, steps)
+     if type(steps) is not int or steps <= 0 or not rows or len(rows) % 8:
+         raise ValueError('positive integer steps and complete batch-8 rows required')
+     order = []
+-    seed = derive_seed(20261029, 'concat_loop_v2', 'V2R16', arm, 0)
++    base = derive_seed(20261029, 'concat_loop_v2', 'V2R16', arm, seed)
+     for epoch in range(3):
+         indices = list(range(len(rows)))
+-        random.Random(seed + epoch).shuffle(indices)
++        random.Random(base + epoch).shuffle(indices)
+         order.extend(indices)
+     if steps * 8 > len(order):
+         raise ValueError('step budget exceeds three epochs')
+@@ -49,8 +53,9 @@ def make_arm_schedule(rows, arm, steps=6000):
+             'warmup_steps': math.ceil(.05*steps), 'step_budget': steps,
+             'order_sha256': hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order)
+                                            .encode('utf-8')).hexdigest(),
+-            'order_hash_encoding': ORDER_HASH_ENCODING, 'order_seed_rule': RESUME_SEED_RULE,
+-            'order_seed': seed, 'order_arm': arm}
++            'order_hash_encoding': ORDER_HASH_ENCODING,
++            'order_seed_rule': RESUME_SEED_RULE_TEMPLATE.format(seed=seed), 'order_seed': base, 'order_arm': arm,
++            **({'continuation_seed': seed} if seed else {})}
+ 
+ 
+ def trim_smoke_schedule(schedule, rows, steps):
