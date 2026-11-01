@@ -1,0 +1,97 @@
+diff --git a/src/test_v2r16_isolated.py b/src/test_v2r16_isolated.py
+index 5b7d11d..5f2dee6 100644
+--- a/src/test_v2r16_isolated.py
++++ b/src/test_v2r16_isolated.py
+@@ -161,22 +161,27 @@ def test_a_few_optimizer_steps_lower_the_isolated_loss_and_time_them(base, tok):
+ 
+ # ---- D4/D5 runner pieces -------------------------------------------------------------
+ 
+-def summary(em, nll, weight=None, last_weight=None, correct=0):
+-    return {'em': em, 'nll': nll, 'count': 1000, 'correct_count': correct,
++def summary(correct, nll, weight=None, last_weight=None, count=1000):
++    return {'em': correct / count, 'nll': nll, 'count': count, 'correct_count': correct,
+             'diagnostics': {} if weight is None else {'address.target_weight': weight},
+             'last_position': {'target_weight_mean': last_weight}}
+ 
+ 
+ def test_isolated_gate_uses_the_e0010_h3_thresholds():
+     import v2r16_isolated as runner
+-    passing = {'normal': summary(.30, 3.0, .2, .3, 300), 'zero': summary(.01, 9.0), 'shuffled': summary(.19, 4.0)}
++    passing = {'normal': summary(310, 3.0, .2, .3), 'zero': summary(10, 9.0), 'shuffled': summary(190, 4.0)}
+     result = runner.gate(passing)
+-    assert result['passed'] and abs(result['em_margin'] - .11) < 1e-12
+-    assert result['correct'] == {'normal': 300, 'zero': 0, 'shuffled': 0}
+-    assert result['target_weight_last_position'] == .3
+-    assert not runner.gate(dict(passing, shuffled=summary(.21, 4.0)))['passed']      # margin < 10 pp
+-    assert not runner.gate(dict(passing, shuffled=summary(.01, 2.9)))['passed']      # NLL not below
+-    assert not runner.gate(dict(passing, normal=summary(.30, 3.0, .124)))['passed']  # all-position weight
++    assert result['passed'] and result['em_margin_fraction'] == '3/25'
++    assert result['counts'] == {'normal': 310, 'zero': 10, 'shuffled': 190}
++    assert result['target_weight'] == .2 and result['target_weight_last_position'] == .3
++    # Exactly 10 pp passes (exact fractions on correct counts; 0.3 - 0.2 < 0.1 in floats); 9.9 pp fails.
++    boundary = {'normal': summary(300, 3.0, .2), 'zero': summary(0, 9.0), 'shuffled': summary(200, 4.0)}
++    assert runner.gate(boundary)['passed'] and runner.gate(boundary)['em_pass']
++    assert not runner.gate(dict(boundary, normal=summary(299, 3.0, .2)))['passed']
++    assert not runner.gate(dict(passing, shuffled=summary(190, 2.9)))['passed']      # NLL not below
++    assert not runner.gate(dict(passing, normal=summary(310, 3.0, .124)))['passed']  # all-position weight
++    with pytest.raises(ValueError):
++        runner.gate(dict(passing, zero=summary(10, 9.0, count=999)))                   # misaligned counts
+ 
+ 
+ def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
+diff --git a/src/v2r16_isolated.py b/src/v2r16_isolated.py
+index f33bc43..9cb9b0e 100644
+--- a/src/v2r16_isolated.py
++++ b/src/v2r16_isolated.py
+@@ -25,13 +25,13 @@ from pathlib import Path
+ import time
+ 
+ from v2_schedule import DATA_HASHES, load_data
++from v2r16_analysis import h3_gate
+ from v2r16_train import STANDARD, checkpoint_records, file_record, make_arm_schedule, trim_smoke_schedule
+ 
+ ARMS = ('D4', 'D5')
+ R1_RUN = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0122-1')
+ ARM_DIR = 'direct_hidden.soft_slot.F_out'
+ CONTEXT_CONTROLS = ('normal', 'oracle_value')  # descriptive comparison with E-0015 only
+-H3 = {'em_margin': .10, 'target_weight': .125}
+ 
+ 
+ def r1_provenance(run, cfg):
+@@ -61,19 +61,12 @@ def r1_provenance(run, cfg):
+ 
+ 
+ def gate(summary):
+-    """E-0010@2 H3 thresholds under the isolated write (new protocol, reported apart)."""
+-    normal, zero, shuffled = (summary[m] for m in ('normal', 'zero', 'shuffled'))
+-    weight = normal['diagnostics'].get('address.target_weight')
+-    margin = normal['em'] - max(zero['em'], shuffled['em'])
+-    checks = {'em_margin': margin, 'em_margin_pass': margin >= H3['em_margin'],
+-              'nll_pass': normal['nll'] < min(zero['nll'], shuffled['nll']),
+-              'target_weight_all_positions': weight,
+-              'target_weight_pass': weight is not None and weight >= H3['target_weight'],
+-              'target_weight_last_position': normal['last_position']['target_weight_mean'],
+-              'correct': {m: summary[m]['correct_count'] for m in ('normal', 'zero', 'shuffled')},
+-              'count': normal['count']}
+-    checks['passed'] = checks['em_margin_pass'] and checks['nll_pass'] and checks['target_weight_pass']
+-    return checks
++    """E-0010@2 H3 under the isolated write (new protocol, reported apart): the reviewed
++    exact-fraction v2r16_analysis.h3_gate on correct counts, all-question-position target
++    weight; the last-position weight is reported alongside."""
++    result = h3_gate(summary, summary['normal']['diagnostics'].get('address.target_weight'))
++    result['target_weight_last_position'] = summary['normal']['last_position']['target_weight_mean']
++    return result
+ 
+ 
+ def run(args):
+@@ -183,7 +176,9 @@ def run(args):
+                 name: gate({m: result['evaluation']['isolated'][m]['position_strata'][name]
+                             for m in ('normal', 'zero', 'shuffled')})
+                 for name in ('position0', 'position1plus')
+-                if all(name in result['evaluation']['isolated'][m]['position_strata'] for m in ('normal', 'zero', 'shuffled'))}
++                if all(name in result['evaluation']['isolated'][m]['position_strata'] for m in ('normal', 'zero', 'shuffled'))
++                and result['evaluation']['isolated']['normal']['position_strata'][name]['diagnostics']
++                .get('address.target_weight') is not None}
+             tick = time.monotonic()
+             model.export_adapter(output/'adapter')
+             torch.cuda.synchronize()

@@ -1,0 +1,723 @@
+diff --git a/src/test_v2r16_isolated.py b/src/test_v2r16_isolated.py
+new file mode 100644
+index 0000000..5b7d11d
+--- /dev/null
++++ b/src/test_v2r16_isolated.py
+@@ -0,0 +1,201 @@
++"""E-0016 D4/D5 isolated-encoding write path. Execute in a GPU allocation."""
++import json
++import time
++
++import pytest
++import torch
++import torch.nn.functional as F
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION, load_base
++from v2_data import encode
++from v2_isolated import annotate_isolated, fact_text
++from v2_memory import (ISOLATED_PAD_ID, answer_logits, build_support, collate, config, isolated_support,
++                       isolated_writes)
++from v2_train import adapted
++import test_v2r_diagnostics as e0015
++
++PARAMETERS = {'projection.A_q', 'projection.A_k', 'projection.A_v', 'reader.Rq', 'reader.Ro', 'fusion.P'}
++
++
++@pytest.fixture(scope='module')
++def base():
++    return load_base()
++
++
++@pytest.fixture(scope='module')
++def tok():
++    return AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++
++
++def isolated_forward(model, batch):
++    """Answer CE with the isolated write (the D4/D5 training computation)."""
++    support, accounting = isolated_support(model, batch)
++    output = model(batch.question_ids, batch.question_mask, memory=support.select(batch.owners).memory, phase='query')
++    logits = answer_logits(output, batch.question_mask)
++    return F.cross_entropy(logits, batch.labels), logits, accounting, output.accounting
++
++
++def test_annotation_is_the_e1_format(tok):
++    rows = e0015.rows_with(tok, 4)
++    for row in rows:
++        before = [dict(item) for item in row['_isolated']]
++        assert annotate_isolated(tok, [row]) == 0 and row['_isolated'] == before
++        for fact, item in zip(row['facts'], row['_isolated']):
++            assert item['ids'] == encode(tok, fact_text(fact)) and item['delimiter'] == len(item['ids']) - 1
++    bad = dict(rows[0], support_text=rows[0]['support_text'] + ' ')
++    with pytest.raises(ValueError, match='concatenated fact format'):
++        annotate_isolated(tok, [bad])
++
++
++@torch.no_grad()
++def test_isolated_support_is_the_e0015_isolated_encoding(base, tok):
++    rows = e0015.rows_with(tok, 4)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        e0015.randomize_exits(model)
++        batch = collate(rows, tok.pad_token_id)
++        snapshot, accounting = isolated_support(model, batch)
++        iso = isolated_writes(model, rows, ISOLATED_PAD_ID, 'cuda')
++        # Same sequences, same slot order: the stored slots equal E-0015's isolated writes.
++        assert torch.equal(snapshot.valid, iso['valid'])
++        assert torch.equal(snapshot.keys, iso['keys']) and torch.equal(snapshot.values, iso['values'])
++        state = snapshot.memory[14]
++        assert state.backend == 'soft_slot' and torch.equal(state.slot_valid, iso['valid'])
++        assert torch.equal(state.slot_keys, iso['keys']) and torch.equal(state.slot_values, iso['values'])
++        assert torch.equal(state.counts, torch.full((4,), 4, device='cuda'))
++        # One support write per fact and no support-side reads, as in build_support.
++        assert accounting[14]['side']['writes'] == int(batch.write_mask.sum()) == 16
++        assert accounting[14]['side']['reads'] == 0
++        contextual, _ = build_support(model, batch, observe=True)
++        assert torch.equal(snapshot.valid, contextual.valid)
++        with pytest.raises(ValueError, match='one question per support owner'):
++            isolated_support(model, collate(rows, tok.pad_token_id, owners=[1, 0, 2, 3]))
++
++
++@torch.no_grad()
++def test_each_slot_depends_only_on_its_own_fact(base, tok):
++    rows = e0015.rows_with(tok, 4)
++    changed = [dict(r) for r in rows]
++    # Replace the tail of fact 1 of row 0 by another single-token name of the same length.
++    facts = [{k: f[k] for k in ('head', 'relation', 'tail')} for f in rows[0]['facts']]
++    old = facts[1]['tail']
++    facts[1]['tail'] = next(n for n in e0015.NAMES if n != old and n not in (f['head'] for f in facts)
++                            and len(encode(tok, ' ' + n)) == 1
++                            and len(encode(tok, fact_text(dict(facts[1], tail=n)))) == len(encode(tok, fact_text(facts[1]))))
++    changed[0] = e0015.make_row(tok, 0, facts, rows[0]['query']['target_fact_index'], prefix=0)
++    e0015.diag.annotate(tok, changed, 4)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        a, _ = isolated_support(model, collate(rows, tok.pad_token_id))
++        b, _ = isolated_support(model, collate(changed, tok.pad_token_id))
++        assert not torch.equal(a.values[0, 1], b.values[0, 1])
++        for j in (0, 2, 3):
++            assert torch.equal(a.values[0, j], b.values[0, j]) and torch.equal(a.keys[0, j], b.keys[0, j])
++        assert torch.equal(a.values[1:], b.values[1:])
++        # The contextual write of the later facts sees the change.
++        ca, _ = build_support(model, collate(rows, tok.pad_token_id), observe=True)
++        cb, _ = build_support(model, collate(changed, tok.pad_token_id), observe=True)
++        assert not torch.equal(ca.values[0, 2], cb.values[0, 2])
++
++
++def test_training_gradients_flow_through_isolated_writes(base, tok):
++    rows = e0015.rows_with(tok, 4)
++    batch = collate(rows, tok.pad_token_id)
++    mask = batch.question_mask
++    last = mask.long().sum(-1) - 1
++    with torch.no_grad():  # Base answer logits, before the adapter is installed (as run_arm)
++        reference = base(batch.question_ids, attention_mask=mask,
++                         position_ids=(mask.long().cumsum(-1) - 1).clamp_min(0), use_cache=False).logits
++        reference = reference[torch.arange(len(last), device=last.device), last].float()
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        side = model.adapters()[14].side
++        model.eval()
++        with torch.no_grad():
++            # Zero-initialized exit: the isolated write leaves the Base answer logits unchanged.
++            _, logits, _, _ = isolated_forward(model, batch)
++            assert torch.equal(logits, reference)
++        e0015.randomize_exits(model)
++        model.train()
++        model.model.eval()
++        loss, _, support_counts, query_counts = isolated_forward(model, batch)
++        loss.backward()
++        assert support_counts[14]['side']['reads'] == 0 and query_counts[14]['side']['writes'] == 0
++        grads = {n: p.grad for n, p in side.named_parameters()}
++        assert set(grads) == PARAMETERS
++        assert all(g is not None and torch.isfinite(g).all() and torch.count_nonzero(g) for g in grads.values())
++        assert all(p.grad is None for n, p in model.model.named_parameters() if '.side.' not in n)
++        # The answer CE reaches the stored isolated slots (keys and values), whose only
++        # producer is the single-fact support pass.
++        model.zero_grad(set_to_none=True)
++        support, _ = isolated_support(model, batch)
++        output = model(batch.question_ids, batch.question_mask, memory=support.select(batch.owners).memory,
++                       phase='query')
++        ce = F.cross_entropy(answer_logits(output, batch.question_mask), batch.labels)
++        dk, dv = torch.autograd.grad(ce, (support.memory[14].slot_keys, support.memory[14].slot_values))
++        assert torch.count_nonzero(dk) and torch.count_nonzero(dv)
++
++
++def test_a_few_optimizer_steps_lower_the_isolated_loss_and_time_them(base, tok):
++    rows = e0015.rows_with(tok, 4)
++    batch = collate(rows, tok.pad_token_id)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.train()
++        model.model.eval()
++        optimizer = torch.optim.AdamW(list(model.adapter_parameters()), lr=3e-3, weight_decay=0.)
++        losses, seconds = [], []
++        for _ in range(12):
++            torch.cuda.synchronize()
++            tick = time.monotonic()
++            optimizer.zero_grad(set_to_none=True)
++            loss, *_ = isolated_forward(model, batch)
++            loss.backward()
++            torch.nn.utils.clip_grad_norm_(list(model.adapter_parameters()), 1.)
++            optimizer.step()
++            torch.cuda.synchronize()
++            seconds.append(time.monotonic() - tick)
++            losses.append(float(loss))
++        print('isolated losses', [round(x, 3) for x in losses], 'step seconds', [round(x, 3) for x in seconds])
++        assert losses[-1] < losses[0]
++
++
++# ---- D4/D5 runner pieces -------------------------------------------------------------
++
++def summary(em, nll, weight=None, last_weight=None, correct=0):
++    return {'em': em, 'nll': nll, 'count': 1000, 'correct_count': correct,
++            'diagnostics': {} if weight is None else {'address.target_weight': weight},
++            'last_position': {'target_weight_mean': last_weight}}
++
++
++def test_isolated_gate_uses_the_e0010_h3_thresholds():
++    import v2r16_isolated as runner
++    passing = {'normal': summary(.30, 3.0, .2, .3, 300), 'zero': summary(.01, 9.0), 'shuffled': summary(.19, 4.0)}
++    result = runner.gate(passing)
++    assert result['passed'] and abs(result['em_margin'] - .11) < 1e-12
++    assert result['correct'] == {'normal': 300, 'zero': 0, 'shuffled': 0}
++    assert result['target_weight_last_position'] == .3
++    assert not runner.gate(dict(passing, shuffled=summary(.21, 4.0)))['passed']      # margin < 10 pp
++    assert not runner.gate(dict(passing, shuffled=summary(.01, 2.9)))['passed']      # NLL not below
++    assert not runner.gate(dict(passing, normal=summary(.30, 3.0, .124)))['passed']  # all-position weight
++
++
++def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
++    import shutil
++    import v2r16_isolated as runner
++    cfg = config('direct_hidden', 'soft_slot', 'F_out')
++    record = runner.r1_provenance(runner.R1_RUN, cfg)
++    assert set(record['checkpoint_files']) == {'adapter.pt', 'config.json'}
++    assert record['adapter_only'] and record['optimizer_state_loaded'] is False
++    copy = tmp_path/'r1'
++    (copy/runner.ARM_DIR).mkdir(parents=True)
++    shutil.copytree(runner.R1_RUN/runner.ARM_DIR/'adapter', copy/runner.ARM_DIR/'adapter')
++    shutil.copy(runner.R1_RUN/'metrics.json', copy/'metrics.json')
++    manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
++    (copy/'manifest.json').write_text(json.dumps(dict(manifest, smoke_steps=20)))
++    with pytest.raises(ValueError, match='completed formal'):
++        runner.r1_provenance(copy, cfg)
++    (copy/'manifest.json').write_text(json.dumps(manifest))
++    assert runner.r1_provenance(copy, cfg)['checkpoint_files'] == record['checkpoint_files']
++    (copy/runner.ARM_DIR/'adapter'/'optimizer.pt').write_bytes(b'x')
++    with pytest.raises(ValueError, match='only adapter'):
++        runner.r1_provenance(copy, cfg)
+diff --git a/src/v2_isolated.py b/src/v2_isolated.py
+new file mode 100644
+index 0000000..70399d4
+--- /dev/null
++++ b/src/v2_isolated.py
+@@ -0,0 +1,38 @@
++"""Isolated encoding of support facts, shared by E-0015 (diagnostics) and E-0016 D4/D5.
++
++Each fact is encoded alone in the E=1 data format ("Head relation Tail ;\\n", the
++same text and visible_delimiters tokenization as the E=1 generator); its delimiter is
++its last token. v2_memory.isolated_batch turns the annotation into single-fact support
++sequences; isolated_writes (offline) and isolated_support (differentiable) consume it.
++"""
++from v2_data import visible_delimiters
++
++
++def fact_text(fact):
++    return f"{fact['head']} {fact['relation']} {fact['tail']} ;\n"
++
++
++def annotate_isolated(tok, rows):
++    """Attach row['_isolated'] (per fact, in support order: {'ids', 'delimiter'}).
++
++    Checks the support is the concatenated fact format and that a one-fact support
++    equals its isolated encoding. Returns how many facts' tokens inside the contextual
++    support differ from their isolated tokens (descriptive; 0 on the released data).
++    """
++    differing = 0
++    for row in rows:
++        if row['support_text'] != ''.join(fact_text(f) for f in row['facts']):
++            raise ValueError('support text is not the concatenated fact format')
++        isolated, previous = [], -1
++        for fact in row['facts']:
++            ids, positions = visible_delimiters(tok, fact_text(fact))
++            if len(positions) != 1 or positions[0]['delimiter_token_index'] != len(ids) - 1:
++                raise ValueError('isolated fact must end at its single delimiter')
++            isolated.append({'ids': ids, 'delimiter': positions[0]['delimiter_token_index']})
++            differing += row['support_input_ids'][previous + 1:fact['delimiter_token_index'] + 1] != ids
++            previous = fact['delimiter_token_index']
++        if len(row['facts']) == 1 and (isolated[0]['ids'] != row['support_input_ids']
++                                       or isolated[0]['delimiter'] != row['facts'][0]['delimiter_token_index']):
++            raise ValueError('isolated encoding differs from the E=1 data format')
++        row['_isolated'] = isolated
++    return differing
+diff --git a/src/v2_memory.py b/src/v2_memory.py
+index c155439..8e2ae0c 100644
+--- a/src/v2_memory.py
++++ b/src/v2_memory.py
+@@ -184,35 +184,77 @@ def observe_writes(model, ids, mask, write_mask):
+     return {'keys': keys, 'values': values, 'features': features, 'valid': valid}
+ 
+ 
+-def isolated_writes(model, rows, pad_id, device):
+-    """E-0015 isolated encoding: each fact of each row encoded alone, in support order.
++def isolated_batch(rows, pad_id, device):
++    """The single-fact sequences of the isolated encoding (E-0015 and E-0016 D4/D5).
+ 
+     rows[i]['_isolated'] lists, per fact in support order, the single-fact support
+-    (E=1 format) as {'ids', 'delimiter'}. The resulting slot j of row i holds fact j.
++    (E=1 format) as {'ids', 'delimiter'}. Returns padded ids, mask, the one-delimiter
++    write mask and, per sequence, its (row, fact) place: slot j of row i holds fact j.
+     """
+-    sequences = [(i, j, item) for i, row in enumerate(rows) for j, item in enumerate(row['_isolated'])]
+     if any(len(row['_isolated']) != len(row['facts']) for row in rows):
+         raise ValueError('isolated encoding needs one sequence per fact')
++    sequences = [(i, j, item) for i, row in enumerate(rows) for j, item in enumerate(row['_isolated'])]
+     ids, mask = pad([item['ids'] for _, _, item in sequences], pad_id, device)
+     write_mask = torch.zeros_like(mask)
+     for k, (_, _, item) in enumerate(sequences):
+         if not 0 <= item['delimiter'] < len(item['ids']):
+             raise ValueError('isolated delimiter outside its sequence')
+         write_mask[k, item['delimiter']] = True
+-    single = observe_writes(model, ids, mask, write_mask)
++    return ids, mask, write_mask, [(i, j) for i, j, _ in sequences]
++
++
++def place_isolated(single, places, rows, names):
++    """Per-row compact slots [rows, max facts, d] from per-sequence vectors [sequences, d].
++
++    Differentiable (index_put on fresh tensors), so the training path keeps the graph.
++    """
+     n = max(len(row['facts']) for row in rows)
+-    result = {}
+-    for name in ('keys', 'values', 'features'):
+-        x = single[name]
+-        result[name] = x.new_zeros(len(rows), n, x.shape[-1])
+-    result['valid'] = torch.zeros(len(rows), n, dtype=torch.bool, device=device)
+-    for k, (i, j, _) in enumerate(sequences):
+-        for name in ('keys', 'values', 'features'):
+-            result[name][i, j] = single[name][k, 0]
+-        result['valid'][i, j] = True
++    device = single[names[0]].device
++    index = tuple(torch.tensor(x, device=device) for x in zip(*places))
++    result = {name: single[name].new_zeros(len(rows), n, single[name].shape[-1]).index_put(index, single[name])
++              for name in names}
++    result['valid'] = torch.zeros(len(rows), n, dtype=torch.bool, device=device).index_put(
++        index, torch.ones(len(places), dtype=torch.bool, device=device))
+     return result
+ 
+ 
++def isolated_writes(model, rows, pad_id, device):
++    """E-0015 isolated encoding (offline): keys, values, frozen features and validity,
++    each fact of each row encoded alone, in support order."""
++    ids, mask, write_mask, places = isolated_batch(rows, pad_id, device)
++    single = observe_writes(model, ids, mask, write_mask)
++    return place_isolated({name: single[name][:, 0] for name in ('keys', 'values', 'features')}, places, rows,
++                          ('keys', 'values', 'features'))
++
++
++# Right padding under the causal mask: the pad id never reaches a valid position.
++ISOLATED_PAD_ID = 0
++
++
++def isolated_support(model, batch):
++    """E-0016 D4/D5 isolated-encoding write: build_support's contract with each fact
++    encoded alone (E=1 format, the sequences of isolated_writes) and written at its
++    delimiter into slot j = its support index. Differentiable; the question side is
++    unchanged. Accounting is that of the single-fact support pass (one write per fact).
++    """
++    if not torch.equal(batch.owners, torch.arange(len(batch.rows), device=batch.owners.device)):
++        raise ValueError('isolated support needs one question per support owner, in order')
++    ids, mask, write_mask, places = isolated_batch(batch.rows, ISOLATED_PAD_ID, batch.support_ids.device)
++    out = model(ids, mask, phase='support', write_mask=write_mask)
++    memory = {}
++    for layer, state in out.cache.memory.items():
++        if state.slot_valid is None or not bool((state.slot_valid.sum(-1) == 1).all()):
++            raise ValueError('isolated support needs one stored slot per single-fact sequence')
++        column = state.slot_valid.long().argmax(-1)
++        sequence = torch.arange(len(column), device=column.device)
++        slots = place_isolated({'keys': state.slot_keys[sequence, column], 'values': state.slot_values[sequence, column]},
++                               places, batch.rows, ('keys', 'values'))
++        memory[layer] = memory_from_slots(slots['keys'], slots['values'], slots['valid'], state.backend)
++    if not torch.equal(slots['valid'].sum(-1), batch.write_mask.sum(-1)):
++        raise ValueError('isolated slots must match the contextual support delimiters')
++    return Snapshot(memory, slots['keys'], slots['values'], slots['valid']), out.accounting
++
++
+ def isolated_snapshot(original, isolated, mode):
+     """iso_kv: isolated keys and values; iso_v / iso_oracle_value: contextual keys, isolated values."""
+     if mode not in ISOLATED_CONTROLS:
+@@ -431,8 +473,7 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
+     elif mode in ISOLATED_CONTROLS:
+         if not torch.equal(batch.owners, torch.arange(len(batch.rows), device=batch.owners.device)):
+             raise ValueError('isolated controls need one question per support owner, in order')
+-        # Right padding under the causal mask: the pad id never reaches valid positions.
+-        isolated = isolated_writes(model, batch.rows, 0, batch.support_ids.device)
++        isolated = isolated_writes(model, batch.rows, ISOLATED_PAD_ID, batch.support_ids.device)
+         snapshot = isolated_snapshot(original, isolated, mode).select(batch.owners)
+     else:
+         # Without explicit donors last_only_shuffled uses shuffled's in-batch donors; the
+diff --git a/src/v2r16_isolated.py b/src/v2r16_isolated.py
+new file mode 100644
+index 0000000..f33bc43
+--- /dev/null
++++ b/src/v2r16_isolated.py
+@@ -0,0 +1,257 @@
++"""E-0016 D4/D5 runner: isolated-encoding write (H-0012). Execute only in an allocated GPU job.
++
++Every support fact is encoded alone in the E=1 format and written at its delimiter into
++slot j = its support index (v2_memory.isolated_support, the E-0015 isolated encoding);
++the question side and the read protocol are unchanged, and training uses the answer CE
++only (no target index). D4 trains from scratch; D5 continues R1's final adapter
++(ATT-0122-1): adapter parameters only, fresh AdamW, fresh 300-step warmup and cosine,
++data order derive_seed(20261029, "concat_loop_v2", "V2R16", "D5", 0).
++
++Schedules, the E-0016 evaluator and the training loop are shared with T-0017
++(v2r16_train, v2r16_memory, v2_train.train). Every control of the gate is evaluated
++under the isolated write (new protocol, reported apart from E-0010); the contextual
++normal and oracle_value are reported for comparison with E-0015 only.
++Smoke output is excluded from evidence. Confirmation is never opened.
++"""
++from __future__ import annotations
++
++import argparse
++from collections import Counter
++from dataclasses import asdict
++from functools import partial
++import json
++import os
++from pathlib import Path
++import time
++
++from v2_schedule import DATA_HASHES, load_data
++from v2r16_train import STANDARD, checkpoint_records, file_record, make_arm_schedule, trim_smoke_schedule
++
++ARMS = ('D4', 'D5')
++R1_RUN = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0122-1')
++ARM_DIR = 'direct_hidden.soft_slot.F_out'
++CONTEXT_CONTROLS = ('normal', 'oracle_value')  # descriptive comparison with E-0015 only
++H3 = {'em_margin': .10, 'target_weight': .125}
++
++
++def r1_provenance(run, cfg):
++    """R1 (ATT-0122-1, an E-0014 v2_train run): completed, formal, E=1 training of the
++    fixed configuration, 6000 steps, reload-identical; adapter files are hashed here."""
++    manifest_path, metrics_path = run/'manifest.json', run/'metrics.json'
++    manifest = json.loads(manifest_path.read_text())
++    if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
++            or manifest.get('seed') != 0 or manifest.get('smoke_steps') or manifest.get('smoke_eval_limit')
++            or manifest.get('options', {}).get('train_facts') != 1
++            or manifest.get('options', {}).get('step_budget') != 6000):
++        raise ValueError('R1 must be the completed formal E=1 6000-step run')
++    metrics = json.loads(metrics_path.read_text())[ARM_DIR]
++    if metrics.get('train', {}).get('steps') != 6000:
++        raise ValueError('R1 did not complete 6000 steps')
++    if metrics.get('checkpoint_reload', {}).get('predictions_identical') is not True:
++        raise ValueError('R1 reload check did not pass')
++    if metrics.get('config') != json.loads(json.dumps(asdict(cfg))):
++        raise ValueError('R1 configuration differs from the fixed E-0016 configuration')
++    files = checkpoint_records(run/ARM_DIR/'adapter')
++    if set(files) != {'adapter.pt', 'config.json'}:
++        raise ValueError('only adapter parameters/config may be resumed')
++    return {'checkpoint': str((run/ARM_DIR/'adapter').resolve()), 'checkpoint_files': files,
++            'source_manifest': file_record(manifest_path), 'source_metrics': file_record(metrics_path),
++            'adapter_only': True, 'optimizer_state_loaded': False,
++            'optimizer': 'fresh AdamW, weight_decay=0', 'warmup': 'fresh 300 steps for formal runs'}
++
++
++def gate(summary):
++    """E-0010@2 H3 thresholds under the isolated write (new protocol, reported apart)."""
++    normal, zero, shuffled = (summary[m] for m in ('normal', 'zero', 'shuffled'))
++    weight = normal['diagnostics'].get('address.target_weight')
++    margin = normal['em'] - max(zero['em'], shuffled['em'])
++    checks = {'em_margin': margin, 'em_margin_pass': margin >= H3['em_margin'],
++              'nll_pass': normal['nll'] < min(zero['nll'], shuffled['nll']),
++              'target_weight_all_positions': weight,
++              'target_weight_pass': weight is not None and weight >= H3['target_weight'],
++              'target_weight_last_position': normal['last_position']['target_weight_mean'],
++              'correct': {m: summary[m]['correct_count'] for m in ('normal', 'zero', 'shuffled')},
++              'count': normal['count']}
++    checks['passed'] = checks['em_margin_pass'] and checks['nll_pass'] and checks['target_weight_pass']
++    return checks
++
++
++def run(args):
++    import torch
++    from transformers import AutoTokenizer
++    from calibrate import MODEL, REVISION, load_base
++    from v2_isolated import annotate_isolated
++    from v2_memory import collate, config, isolated_support
++    from v2_train import adapted, evaluate as legacy_evaluate, train, write_json
++    from v2r16_memory import evaluate, train_forward
++    from v2r_diagnostics import compare_recorded
++
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=True)
++    if any(output.iterdir()):
++        raise ValueError('output must be empty')
++    started = time.monotonic()
++    result, passed, failure, provenance = {}, False, None, None
++    try:
++        train_rows = load_data(args.data_dir/'train.jsonl', 'train')
++        load_data(args.data_dir/'calibration.jsonl', 'calibration')  # verify released bytes; unused
++        dev = load_data(args.data_dir/'dev.jsonl', 'dev')
++        schedule = make_arm_schedule(train_rows, args.arm, args.step_budget)
++        if args.smoke_steps:
++            schedule = trim_smoke_schedule(schedule, train_rows, args.smoke_steps)
++        if args.smoke_eval_limit:
++            dev = dev[:args.smoke_eval_limit]
++        public_schedule = {k: v for k, v in schedule.items() if k not in ('order', 'batches')}
++        write_json(output/'schedule.json', public_schedule)
++        cfg = config('direct_hidden', 'soft_slot', 'F_out')
++        checkpoint = None
++        if args.arm == 'D5':
++            provenance = r1_provenance(args.r1_run, cfg)
++            checkpoint = args.r1_run/ARM_DIR/'adapter'
++        tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++        pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
++        tick = time.monotonic()
++        differing = {'train': annotate_isolated(tokenizer, train_rows), 'dev': annotate_isolated(tokenizer, dev)}
++        for row in dev:
++            ids = tokenizer.encode(' '+row['query']['head'], add_special_tokens=False)
++            if len(ids) != 1:
++                raise ValueError('query subject is not a single token')
++            row['_subject_token_id'] = ids[0]
++        prior = Counter(r['query']['answer_token_id'] for r in train_rows).most_common(1)[0][0]
++        base = load_base()
++        result = {'arm': args.arm, 'config': asdict(cfg), 'lr': .003, 'seed': 0, 'batch_size': 8,
++                  'microbatch_size': 8, 'schedule': public_schedule, 'write_protocol': 'isolated',
++                  'smoke_only': bool(args.smoke_steps), 'eligible_as_evidence': not bool(args.smoke_steps),
++                  'resume_provenance': provenance,
++                  'isolated_annotation': {'context_fact_tokens_differ_from_isolated': differing,
++                                          'seconds': time.monotonic()-tick}}
++        isolated = partial(evaluate, support_fn=isolated_support)
++
++        def evaluate_all(model, destination):
++            summaries, records = {}, {}
++            summaries['isolated'], records['isolated'] = isolated(model, dev, pad_id, destination/'isolated', 'dev',
++                                                                  STANDARD, prior)
++            summaries['contextual'], records['contextual'] = evaluate(model, dev, pad_id, destination/'contextual',
++                                                                      'dev', CONTEXT_CONTROLS, prior)
++            return summaries, records
++
++        def curve_evaluator(model, rows, pad, destination, split, controls, prior_token):
++            return isolated(model, rows, pad, destination, split, controls, prior_token)
++
++        first = collate([train_rows[i] for i in schedule['batches'][0]], pad_id, next(base.parameters()).device)
++        with torch.no_grad():
++            mask = first.question_mask
++            reference = base(first.question_ids, attention_mask=mask,
++                             position_ids=(mask.long().cumsum(-1)-1).clamp_min(0), use_cache=False).logits
++            last = mask.long().sum(-1)-1
++            reference = reference[torch.arange(len(last), device=last.device), last].float()
++        forward = partial(train_forward, support_fn=isolated_support)
++        with adapted(base, cfg=cfg, checkpoint=checkpoint) as model:
++            if asdict(model.config) != asdict(cfg):
++                raise ValueError('checkpoint does not match the fixed E-0016 configuration')
++            for parameter in model.adapter_parameters():
++                parameter.requires_grad_(True)
++            model.eval()
++            if args.arm == 'D4':
++                with torch.no_grad():
++                    _, logits, _, _ = forward(model, first)
++                result['initialization_max_abs'] = float((logits-reference).abs().max())
++                if result['initialization_max_abs'] != 0.:
++                    raise AssertionError('zero exit differs from Base under the isolated write')
++            else:
++                # The loaded adapter reproduces R1's recorded contextual dev predictions.
++                tick = time.monotonic()
++                replay = output/'r1-replay'
++                legacy_evaluate(model, load_data(args.data_dir/'dev.jsonl', 'dev'), pad_id, replay, 'dev',
++                                ('normal',), prior)
++                comparison = compare_recorded(args.r1_run/ARM_DIR, replay, 'dev', ('normal',))
++                if comparison['normal']['prediction_mismatches'] != 0:
++                    raise AssertionError('loaded R1 adapter does not reproduce its recorded dev predictions')
++                provenance['recorded_dev_replay'] = dict(comparison['normal'], seconds=time.monotonic()-tick)
++            del first, reference
++            side = model.adapters()[14].side
++            result['requires_grad_parameter_names'] = sorted(n for n, p in side.named_parameters() if p.requires_grad)
++            result['train'] = train(model, train_rows, schedule, pad_id, .003, 8, output, dev, prior,
++                                    forward_fn=forward, curve_evaluator=curve_evaluator)
++            torch.cuda.synchronize()
++            tick = time.monotonic()
++            result['evaluation'], original_records = evaluate_all(model, output/'evaluation')
++            torch.cuda.synchronize()
++            result['evaluation_seconds'] = time.monotonic()-tick
++            result['gate'] = gate(result['evaluation']['isolated'])
++            result['gate_by_target_position'] = {
++                name: gate({m: result['evaluation']['isolated'][m]['position_strata'][name]
++                            for m in ('normal', 'zero', 'shuffled')})
++                for name in ('position0', 'position1plus')
++                if all(name in result['evaluation']['isolated'][m]['position_strata'] for m in ('normal', 'zero', 'shuffled'))}
++            tick = time.monotonic()
++            model.export_adapter(output/'adapter')
++            torch.cuda.synchronize()
++            result['checkpoint_save_seconds'] = time.monotonic()-tick
++        tick = time.monotonic()
++        with adapted(base, checkpoint=output/'adapter') as reloaded:
++            torch.cuda.synchronize()
++            load_seconds = time.monotonic()-tick
++            if asdict(reloaded.config) != asdict(cfg):
++                raise AssertionError('checkpoint reload configuration changed')
++            reload_metrics, reload_records = evaluate_all(reloaded, output/'reload')
++            if original_records != reload_records or result['evaluation'] != reload_metrics:
++                raise AssertionError('checkpoint reload changed full per-example records or summaries')
++            torch.cuda.synchronize()
++        result['checkpoint_reload'] = {'full_records_identical': True, 'summaries_identical': True,
++                                       'protocols': list(reload_records), 'load_seconds': load_seconds,
++                                       'load_and_evaluation_seconds': time.monotonic()-tick}
++        result['checkpoint_files'] = checkpoint_records(output/'adapter')
++        passed = True
++    except Exception as exc:
++        failure = {'type': type(exc).__name__, 'message': str(exc)}
++        raise
++    finally:
++        wall = time.monotonic()-started
++        result.update(wall_seconds=wall, mig_instance_hours=wall/3600, node_hours=wall/14400)
++        write_json(output/'metrics.json', result)
++        artifacts = [{'path': str(p.resolve()), 'role': str(p.relative_to(output)), **file_record(p)}
++                     for p in sorted(output.rglob('*')) if p.is_file() and p.name != 'manifest.json']
++        gate_result = result.get('gate')
++        write_json(output/'manifest.json', {
++            'status': 'complete' if passed else 'failed', 'experiment': 'E-0016', 'contract': 'E-0016@1',
++            'arm': args.arm, 'write_protocol': 'isolated', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
++            'model': MODEL, 'revision': REVISION, 'smoke_steps': args.smoke_steps,
++            'smoke_eval_limit': args.smoke_eval_limit,
++            'eligible_as_evidence': passed and not bool(args.smoke_steps),
++            'seed': 0, 'lr': .003, 'batch_size': 8, 'microbatch_size': 8,
++            'data_dir': str(args.data_dir.resolve()), 'data_sha256': DATA_HASHES,
++            'resume_provenance': provenance, 'schedule': result.get('schedule'),
++            'requires_grad_parameter_names': result.get('requires_grad_parameter_names'),
++            'checkpoint_files': result.get('checkpoint_files'), 'torch': torch.__version__,
++            'hardware': {'device': torch.cuda.get_device_name(0),
++                         'multiprocessors': torch.cuda.get_device_properties(0).multi_processor_count},
++            'cuda': torch.version.cuda,
++            'metrics': {'wall_seconds': wall, 'mig_instance_hours': wall/3600, 'node_hours': wall/14400,
++                        **({'h3_isolated': gate_result} if gate_result else {})},
++            'artifacts': artifacts, 'failure': failure,
++            'validator': {'name': 'v2r16_isolated', 'passed': passed}})
++    return 0
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--arm', choices=ARMS, required=True)
++    parser.add_argument('--data-dir', type=Path, required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--r1-run', type=Path, default=R1_RUN)
++    parser.add_argument('--step-budget', type=int, default=6000)
++    parser.add_argument('--smoke-steps', type=int, default=0)
++    parser.add_argument('--smoke-eval-limit', type=int, default=0)
++    args = parser.parse_args()
++    if args.step_budget != 6000:
++        parser.error('E-0016 uses --step-budget 6000; shorten only with --smoke-steps')
++    if not 0 <= args.smoke_steps <= args.step_budget:
++        parser.error('smoke steps must be 0..6000')
++    if args.smoke_eval_limit and (not args.smoke_steps or args.smoke_eval_limit < 2):
++        parser.error('smoke eval limit >=2 requires --smoke-steps')
++    return run(args)
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/src/v2r_default_regression.py b/src/v2r_default_regression.py
+index e594bc9..9a8edbe 100644
+--- a/src/v2r_default_regression.py
++++ b/src/v2r_default_regression.py
+@@ -3,7 +3,9 @@
+ `dump --src DIR` imports the V2 modules from DIR (only APIs that existed before
+ E-0014) and saves losses, logits, gradients, four optimizer steps of the formal
+ train() and evaluation logits for every control. `compare` checks two dumps for
+-exact equality. Run both in one PBS allocation; never on a login node.
++exact equality. Trees that have the E-0015 isolated-encoding controls (v2r_diagnostics)
++also dump them for the soft_slot arm (E-0016 D4/D5 refactor of that builder).
++Run both in one PBS allocation; never on a login node.
+ """
+ import argparse
+ import json
+@@ -33,6 +35,13 @@ def dump(src, data_dir, output):
+                              for b in schedule['batches'] for i in b)
+     tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+     pad = tok.pad_token_id
++    try:
++        from v2_memory import ISOLATED_CONTROLS
++        from v2r_diagnostics import annotate
++    except ImportError:
++        ISOLATED_CONTROLS = ()
++    else:
++        annotate(tok, dev, 16)
+     base = load_base()
+     result = {}
+     for arm in ARMS:
+@@ -60,8 +69,9 @@ def dump(src, data_dir, output):
+             dev_batch = collate(dev, pad, 'cuda')
+             donors = collate(dev[-1:] + dev[:-1], pad, 'cuda')
+             out['eval'] = {}
++            isolated = ISOLATED_CONTROLS if arm[1] == 'soft_slot' else ()
+             with torch.no_grad():
+-                for mode in CONTROLS:
++                for mode in CONTROLS + isolated:
+                     details, eval_logits = evaluate_batch(model, dev_batch, mode,
+                                                           **({'donor_batch': donors} if mode == 'shuffled' else {}))
+                     out['eval'][mode] = {'logits': eval_logits.cpu(),
+diff --git a/src/v2r_diagnostics.py b/src/v2r_diagnostics.py
+index 4b9679c..223323a 100644
+--- a/src/v2r_diagnostics.py
++++ b/src/v2r_diagnostics.py
+@@ -27,7 +27,8 @@ import torch
+ from transformers import AutoTokenizer
+ 
+ from calibrate import MODEL, REVISION, load_base
+-from v2_data import encode, visible_delimiters
++from v2_data import encode
++from v2_isolated import annotate_isolated, fact_text  # noqa: F401 (fact_text re-exported for tests)
+ from v2_memory import SWEEP_CONTROLS, collate, evaluate_batch, isolated_writes, observe_writes
+ from v2_schedule import DATA_HASHES, load_data
+ from v2_train import EVAL_BATCH_SIZE, adapted, evaluate, write_json
+@@ -53,10 +54,6 @@ PROJECTION_RANK = 128
+ FACT_GROUPS = (('0', 0, 0), ('1-3', 1, 3), ('>=4', 4, 15))
+ 
+ 
+-def fact_text(fact):
+-    return f"{fact['head']} {fact['relation']} {fact['tail']} ;\n"
+-
+-
+ def annotate(tok, rows, n_facts):
+     """Subject token (as v2_train), per-fact tail token and isolated E=1-format support.
+ 
+@@ -64,35 +61,23 @@ def annotate(tok, rows, n_facts):
+     (same text, same visible_delimiters tokenization; its delimiter is the last token).
+     Returns how many facts' tokens inside the contextual support differ from it.
+     """
+-    differing = 0
+     for row in rows:
+         if len(row['facts']) != n_facts:
+             raise ValueError('fact count mismatch')
+-        if row['support_text'] != ''.join(fact_text(f) for f in row['facts']):
+-            raise ValueError('support text is not the concatenated fact format')
+         subject = encode(tok, ' ' + row['query']['head'])
+         if len(subject) != 1:
+             raise ValueError('query subject is not a single token')
+         row['_subject_token_id'] = subject[0]
+-        tails, isolated, previous = [], [], -1
++        tails = []
+         for fact in row['facts']:
+             tail = encode(tok, ' ' + fact['tail'])
+             if len(tail) != 1:
+                 raise ValueError('tail is not a single token')
+             tails.append(tail[0])
+-            ids, positions = visible_delimiters(tok, fact_text(fact))
+-            if len(positions) != 1 or positions[0]['delimiter_token_index'] != len(ids) - 1:
+-                raise ValueError('isolated fact must end at its single delimiter')
+-            isolated.append({'ids': ids, 'delimiter': positions[0]['delimiter_token_index']})
+-            differing += row['support_input_ids'][previous + 1:fact['delimiter_token_index'] + 1] != ids
+-            previous = fact['delimiter_token_index']
+         if tails[row['query']['target_fact_index']] != row['query']['answer_token_id']:
+             raise ValueError('target tail token differs from the answer token')
+-        if n_facts == 1 and (isolated[0]['ids'] != row['support_input_ids']
+-                             or isolated[0]['delimiter'] != row['facts'][0]['delimiter_token_index']):
+-            raise ValueError('isolated encoding differs from the E=1 data format')
+         row['_tail_token_ids'] = tails
+-        row['_isolated'] = isolated
++    differing = annotate_isolated(tok, rows)
+     return {'rows': len(rows), 'facts': sum(len(r['facts']) for r in rows),
+             'context_fact_tokens_differ_from_isolated': differing}
+ 

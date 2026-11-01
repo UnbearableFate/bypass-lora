@@ -1,0 +1,1987 @@
+diff --git a/src/test_v2r16_analysis.py b/src/test_v2r16_analysis.py
+new file mode 100644
+index 0000000..96050e2
+--- /dev/null
++++ b/src/test_v2r16_analysis.py
+@@ -0,0 +1,88 @@
++import json
++
++import pytest
++
++from v2r16_analysis import (AnalysisError, d1_gate, h3_gate, summarize_curve,
++                            validate_manifest, descriptive_bootstrap)
++
++
++def _point(correct, count=1000, nll=2.0):
++    return {'count': count, 'correct_count': correct, 'em': correct/count, 'nll': nll}
++
++
++def test_d1_exact_thresholds_and_plateau_condition():
++    passed = d1_gate({'tf_normal': _point(700), 'tf_shuffled': _point(200), 'zero': _point(200)}, False)
++    partial = d1_gate({'tf_normal': _point(400), 'tf_shuffled': _point(200), 'zero': _point(200)}, True)
++    failed = d1_gate({'tf_normal': _point(399), 'tf_shuffled': _point(200), 'zero': _point(200)}, True)
++    inconclusive = d1_gate({'tf_normal': _point(399), 'tf_shuffled': _point(200), 'zero': _point(200)}, False)
++    assert passed['status'] == 'pass' and passed['margin_fraction'] == '1/2'
++    assert partial['status'] == 'partial' and partial['margin_fraction'] == '1/5'
++    assert failed['status'] == 'fail'
++    assert inconclusive['status'] == 'inconclusive'
++
++
++def test_h3_exact_margin_nll_and_all_vs_last_weight_choice():
++    controls = {'normal': _point(300, nll=1.0),
++                'zero': _point(200, nll=2.0),
++                'shuffled': _point(100, nll=3.0)}
++    standard = h3_gate(controls, all_question_target_weight=0.125,
++                       last_position_target_weight=0.0)
++    hard = h3_gate(controls, all_question_target_weight=0.0,
++                   last_position_target_weight=0.125, weight_scope='last_position')
++    assert standard['passed'] and standard['em_margin_fraction'] == '1/10'
++    assert standard['target_weight_scope'] == 'all_question_positions'
++    assert hard['passed'] and hard['target_weight_scope'] == 'last_position'
++    controls['normal'] = _point(300, nll=2.0)
++    assert not h3_gate(controls, 0.125)['passed']  # NLL comparison is strict.
++
++
++def _curve(slope):
++    rows = []
++    for step in range(1, 6001):
++        if step <= 300:
++            lr = 0.003 * step/300
++        elif step <= 5000:
++            lr = 0.003
++        else:
++            lr = 0.003 * 0.08 * (6000-step)/999
++        rows.append({'step': step, 'loss': 5.0 + slope*(step-5001), 'lr': lr})
++    return rows
++
++
++def test_curve_ols_plateau_uses_fitted_decline_and_preserves_negative_declines():
++    flatish = summarize_curve(_curve(-0.00005))
++    declining = summarize_curve(_curve(-0.0001))
++    rising = summarize_curve(_curve(0.0001))
++    assert flatish['plateau'] and flatish['fitted_decline_999_steps'] < 0.05
++    assert not declining['plateau'] and declining['fitted_decline_999_steps'] > 0.05
++    assert rising['plateau'] and rising['fitted_decline_999_steps'] < 0.0
++    assert [bucket['steps'] for bucket in flatish['per_500_step_mean_answer_ce']][-1] == [5501, 6000]
++    assert flatish['final_1000_lr_max'] < flatish['peak_lr']
++    assert flatish['final_1000_max_lr_fraction_of_peak'] == pytest.approx(0.08)
++
++
++def test_manifest_rejects_smoke_and_incomplete_runs():
++    manifest = {'status': 'complete', 'validator': {'passed': True},
++                'experiment': 'E-0016', 'contract': 'E-0016@1', 'arm': 'D1',
++                'eligible_as_evidence': True, 'smoke_steps': 0, 'smoke_eval_limit': 0,
++                'metrics': {'train': {'steps': 6000},
++                            'checkpoint_reload': {'full_records_identical': True,
++                                                  'summaries_identical': True}}}
++    validate_manifest(manifest, 'D1')
++    smoke = dict(manifest, smoke_steps=10)
++    with pytest.raises(AnalysisError, match='smoke'):
++        validate_manifest(smoke, 'D1')
++    incomplete = dict(manifest, status='failed')
++    with pytest.raises(AnalysisError, match='complete'):
++        validate_manifest(incomplete, 'D1')
++    missing_contract = dict(manifest)
++    missing_contract.pop('contract')
++    with pytest.raises(AnalysisError, match='contract'):
++        validate_manifest(missing_contract, 'D1')
++
++
++def test_descriptive_bootstrap_reuses_episode_indices_across_controls():
++    records = [{'correct': i % 2 == 0, 'nll': float(i+1)} for i in range(8)]
++    result = descriptive_bootstrap({'normal': records, 'zero': list(records), 'shuffled': list(records)})
++    assert result['normal-zero']['em']['ci95'] == [0., 0.]
++    assert result['normal-shuffled']['nll']['ci95'] == [0., 0.]
+diff --git a/src/test_v2r16_memory.py b/src/test_v2r16_memory.py
+new file mode 100644
+index 0000000..c3d362a
+--- /dev/null
++++ b/src/test_v2r16_memory.py
+@@ -0,0 +1,242 @@
++"""E-0016 real-model and masked-slot regressions; execute only inside PBS."""
++from dataclasses import replace
++from copy import deepcopy
++import json
++from pathlib import Path
++
++import pytest
++import torch
++from transformers import AutoTokenizer
++
++from bypass_core import MemoryState
++from calibrate import MODEL, REVISION, load_base
++from v2_memory import Snapshot, build_support, collate, config, train_forward as old_forward
++from v2_memory import answer_logits
++from v2_run import fixture
++from v2_train import adapted
++from v2r16_environment import selected_profile
++from v2r16_memory import (ADDRESS, DECODER, _query, compact_snapshot, evaluate, evaluate_batch,
++                          freeze_for_address, single_slot, train_forward)
++from v2r16_objective import slot_marginal
++
++
++def test_selected_profile_matches_allocated_uuid_not_any_good_slice_on_host():
++    listing = ('GPU 0: GH200 (UUID: GPU-host)\n'
++               '  MIG 2g.24gb Device 0: (UUID: MIG-good)\n'
++               '  MIG 1g.24gb Device 1: (UUID: MIG-small)\n')
++    assert selected_profile(listing, 'MIG-small') == ('1g.24gb', 'MIG-small')
++    assert selected_profile(listing, 'MIG-good') == ('2g.24gb', 'MIG-good')
++    with pytest.raises(RuntimeError, match='unique MIG'):
++        selected_profile(listing, '0')
++    with pytest.raises(RuntimeError, match='absent or ambiguous'):
++        selected_profile(listing, 'MIG-missing')
++
++
++def test_single_slot_tracks_sparse_native_columns_without_mutating_snapshot():
++    state = MemoryState.empty(2, 3, 'soft_slot')
++    for i in range(4):
++        state = state.write(torch.full((2, 3), float(i+1)), torch.full((2, 3), float(10+i)),
++                            torch.tensor([i in (0, 2, 3), i in (1, 3)]))
++    snapshot = compact_snapshot(Snapshot({14: state}))
++    result = single_slot(snapshot, torch.tensor([1, 0]))
++    assert result.memory[14].slot_valid.tolist() == [[False, False, True, False], [False, True, False, False]]
++    assert result.valid.tolist() == [[False, True, False], [True, False, False]]
++    assert result.memory[14].counts.tolist() == [1, 1]
++    assert state.counts.tolist() == [3, 2]
++    assert torch.equal(result.values, snapshot.values)
++
++
++@pytest.fixture(scope='module')
++def real_inputs():
++    tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    rows = fixture(tokenizer, n_facts=4)[:2]
++    for i, row in enumerate(rows):
++        row['episode_id'] = f'v2r16-fixture-{i}'
++        row['query']['target_fact_index'] = i+1
++    return load_base(), collate(rows, tokenizer.pad_token_id), rows, tokenizer.pad_token_id
++
++
++def exits(model):
++    with torch.no_grad():
++        model.adapters()[14].side.fusion.P.normal_(std=.025)
++
++
++@pytest.mark.parametrize('explicit_builder', (False, True))
++def test_default_wrapper_preserves_exact_outputs_and_gradients(real_inputs, explicit_builder):
++    base, batch, _, _ = real_inputs
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.model.eval()
++        exits(model)
++        reference_loss, reference_logits, _, _ = old_forward(model, batch)
++        reference_loss.backward()
++        grads = {name: p.grad.clone() for name, p in model.adapters()[14].side.named_parameters()}
++        model.zero_grad(set_to_none=True)
++        calls = []
++        def writer(model, selected):
++            calls.append(selected)
++            return build_support(model, selected)
++        options = {'support_fn': writer} if explicit_builder else {}
++        loss, logits, _, _ = train_forward(model, batch, **options)
++        loss.backward()
++        assert torch.equal(reference_loss, loss) and torch.equal(reference_logits, logits)
++        assert all(torch.equal(p.grad, grads[name]) for name, p in model.adapters()[14].side.named_parameters())
++        assert calls == ([batch] if explicit_builder else [])
++
++
++@torch.no_grad()
++def test_evaluation_support_writer_preserves_defaults_and_receives_global_donors(real_inputs, tmp_path):
++    base, _, fixture_rows, pad = real_inputs
++    rows = deepcopy(fixture_rows)
++    for row in rows:
++        row['identity']['split'] = 'dev'
++    calls = []
++    def writer(model, batch):
++        calls.append([r['episode_id'] for r in batch.rows])
++        return build_support(model, batch)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        exits(model)
++        reference = evaluate(model, rows, pad, tmp_path/'default', 'dev', ('normal', 'shuffled'))
++        actual = evaluate(model, rows, pad, tmp_path/'explicit', 'dev', ('normal', 'shuffled'),
++                          support_fn=writer)
++    assert actual == reference
++    recipients = [r['episode_id'] for r in rows]
++    assert calls == [recipients, recipients, recipients[::-1]]
++
++
++def test_standard_training_and_shuffled_evaluation_use_returned_support(real_inputs):
++    base, batch, rows, pad = real_inputs
++    calls = []
++    def zero_values(model, selected):
++        calls.append([r['episode_id'] for r in selected.rows])
++        support, accounting = build_support(model, selected)
++        state = support.memory[14]
++        return Snapshot({14: replace(state, slot_values=state.slot_values*0)}), accounting
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        exits(model)
++        _, zero_logits = evaluate_batch(model, batch, 'zero')
++        loss, logits, _, _ = train_forward(model, batch, support_fn=zero_values)
++        assert torch.equal(logits, zero_logits)
++        loss.backward()
++        assert torch.isfinite(loss)
++        for mode in ('normal', 'shuffled'):
++            donors = collate(rows[::-1], pad) if mode == 'shuffled' else None
++            _, actual = evaluate_batch(model, batch, mode, donors, support_fn=zero_values)
++            assert torch.equal(actual, zero_logits)
++    recipients = [r['episode_id'] for r in rows]
++    assert calls == [recipients, recipients, recipients, recipients[::-1]]
++
++
++def test_d2a_has_only_nonzero_address_gradients_and_frozen_decoder(real_inputs):
++    base, batch, _, _ = real_inputs
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.model.eval()
++        exits(model)
++        assert set(freeze_for_address(model)) == ADDRESS
++        frozen = {n: p.detach().clone() for n, p in model.adapters()[14].side.named_parameters() if n in DECODER}
++        loss, _, _, _ = train_forward(model, batch)
++        loss.backward()
++        parameters = dict(model.adapters()[14].side.named_parameters())
++        assert all(parameters[n].grad is not None and bool(parameters[n].grad.any()) for n in ADDRESS)
++        assert all(parameters[n].grad is None for n in DECODER)
++        torch.optim.AdamW([p for p in parameters.values() if p.requires_grad], lr=.003, weight_decay=0.).step()
++        assert all(torch.equal(parameters[n], tensor) for n, tensor in frozen.items())
++
++
++@torch.no_grad()
++def test_hard_read_matches_selected_value_and_other_positions_have_no_increment(real_inputs):
++    base, batch, _, _ = real_inputs
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        exits(model)
++        support, _ = build_support(model, batch)
++        snapshot = compact_snapshot(support.select(batch.owners))
++        hard, cache = _query(model, batch.question_ids, batch.question_mask, snapshot, strategy='hard')
++        row = torch.arange(len(batch.labels), device=batch.labels.device)
++        chosen = cache['weights'][row, cache['last']].argmax(-1)
++        forced, forced_cache = _query(model, batch.question_ids, batch.question_mask, snapshot,
++                                     strategy='forced', forced_values=snapshot.values[row, chosen])
++        assert torch.equal(hard.logits, forced.logits)
++        last_mask = torch.zeros_like(batch.question_mask).scatter(1, cache['last'][:, None], True)
++        assert not bool(cache['z'][~last_mask].any())
++        assert not bool(forced_cache['z'][~last_mask].any())
++        soft, soft_cache = _query(model, batch.question_ids, batch.question_mask, snapshot, strategy='soft')
++        assert not bool(soft_cache['z'][~last_mask].any())
++
++
++def test_marginal_uses_support_once_has_no_target_metadata_and_reaches_both_paths(real_inputs):
++    base, batch, _, _ = real_inputs
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.model.eval()
++        exits(model)
++        calls = []
++        handle = model.register_forward_pre_hook(lambda m, args, kwargs: calls.append((kwargs.get('phase'), len(args[0]))),
++                                                 with_kwargs=True)
++        try:
++            loss, logits, _, _ = train_forward(model, replace(batch, rows=[{} for _ in batch.rows]), protocol='marginal')
++        finally:
++            handle.remove()
++        assert calls == [('support', 2), ('query', 8)]
++        assert torch.isfinite(loss) and logits.shape[0] == 2
++        loss.backward()
++        parameters = dict(model.adapters()[14].side.named_parameters())
++        assert all(parameters[n].grad is not None and bool(parameters[n].grad.any()) for n in ADDRESS | DECODER)
++
++
++@torch.no_grad()
++def test_batched_marginal_matches_explicit_slot_forward_enumeration(real_inputs):
++    base, batch, _, _ = real_inputs
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        exits(model)
++        actual_loss, actual_logp, _, _ = train_forward(model, batch, protocol='marginal')
++        support, _ = build_support(model, batch)
++        snapshot = compact_snapshot(support.select(batch.owners))
++        n = snapshot.valid.shape[1]
++        owners = torch.arange(len(batch.labels), device=batch.labels.device).repeat_interleave(n)
++        expanded = snapshot.select(owners)
++        ids, mask = batch.question_ids[owners], batch.question_mask[owners]
++        per_slot = []
++        for slot in range(n):
++            values = snapshot.values[:, slot].repeat_interleave(n, 0)
++            output, cache = _query(model, ids, mask, expanded, strategy='forced', forced_values=values)
++            per_slot.append(answer_logits(output, mask)[::n])
++        logw = cache['log_weights'][torch.arange(len(owners), device=owners.device), cache['last']][::n]
++        expected_loss, expected_logp = slot_marginal(logw, torch.stack(per_slot, 1), batch.labels)
++        tolerance = json.loads((Path(__file__).parent/'tolerances.json').read_text())
++        torch.testing.assert_close(actual_loss, expected_loss, atol=tolerance['fp32_atol'], rtol=tolerance['fp32_rtol'])
++        torch.testing.assert_close(actual_logp, expected_logp, atol=tolerance['fp32_atol'], rtol=tolerance['fp32_rtol'])
++
++
++@torch.no_grad()
++def test_teacher_normal_wrong_and_donor_same_index_masks(real_inputs, monkeypatch):
++    import v2r16_memory
++    base, batch, rows, pad = real_inputs
++    targets = [r['query']['target_fact_index'] for r in rows]
++    selected, original = [], v2r16_memory.single_slot
++    def record(snapshot, target):
++        selected.append(target.tolist())
++        return original(snapshot, target)
++    monkeypatch.setattr(v2r16_memory, 'single_slot', record)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        exits(model)
++        evaluate_batch(model, batch, 'tf_normal')
++        evaluate_batch(model, batch, 'tf_wrong')
++        evaluate_batch(model, batch, 'tf_shuffled', collate(rows[::-1], pad))
++    assert selected == [targets, [(t+1) % 4 for t in targets], targets]
++
++
++@torch.no_grad()
++def test_question_hooks_are_removed_after_failure(real_inputs):
++    base, batch, _, _ = real_inputs
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        side = model.adapters()[14].side
++        support, _ = build_support(model, batch)
++        snapshot = compact_snapshot(support.select(batch.owners))
++        before = (len(side._forward_hooks), len(side._forward_pre_hooks), len(side.projection._forward_hooks))
++        with pytest.raises(ValueError, match='forced per-slot'):
++            _query(model, batch.question_ids, batch.question_mask, snapshot, strategy='forced', forced_values=torch.zeros(1, 1))
++        assert before == (len(side._forward_hooks), len(side._forward_pre_hooks), len(side.projection._forward_hooks))
+diff --git a/src/test_v2r16_objective.py b/src/test_v2r16_objective.py
+new file mode 100644
+index 0000000..235a80d
+--- /dev/null
++++ b/src/test_v2r16_objective.py
+@@ -0,0 +1,90 @@
++import inspect
++import unittest
++
++import torch
++import torch.nn.functional as F
++
++from v2r16_objective import slot_marginal
++
++
++class SlotMarginalTests(unittest.TestCase):
++    def test_matches_finite_probability_enumeration(self):
++        log_weights = torch.log(torch.tensor([[0.25, 0.75], [0.6, 0.4]]))
++        logits = torch.tensor([
++            [[2.0, -1.0, 0.5], [-0.5, 1.0, 0.0]],
++            [[0.0, 0.2, 1.1], [1.4, -0.3, 0.1]],
++        ])
++        labels = torch.tensor([0, 2])
++        nll, log_mix = slot_marginal(log_weights, logits, labels)
++
++        probs = F.softmax(logits, dim=-1)
++        enumerated = (log_weights.exp()[..., None] * probs).sum(dim=1)
++        self.assertTrue(torch.allclose(log_mix.exp(), enumerated, atol=1e-7))
++        self.assertTrue(torch.allclose(nll, -enumerated[torch.arange(2), labels].log().mean()))
++
++    def test_mixes_probabilities_not_logits(self):
++        weights = torch.log(torch.tensor([[0.5, 0.5]]))
++        logits = torch.tensor([[[8.0, 0.0], [0.0, 2.0]]])
++        _, log_mix = slot_marginal(weights, logits, torch.tensor([0]))
++        probability_mix = (weights.exp()[..., None] * logits.softmax(-1)).sum(1)
++        logit_mix = (weights.exp()[..., None] * logits).sum(1).softmax(-1)
++        self.assertTrue(torch.allclose(log_mix.exp(), probability_mix))
++        self.assertFalse(torch.allclose(log_mix.exp(), logit_mix))
++
++    def test_gradients_match_explicit_enumeration_and_reach_both_routes(self):
++        log_weights = torch.log(torch.tensor([[0.35, 0.65]], requires_grad=True))
++        log_weights.retain_grad()
++        logits = torch.tensor([[[1.0, -0.4, 0.2], [-0.2, 0.7, 0.1]]], requires_grad=True)
++        labels = torch.tensor([1])
++        nll, _ = slot_marginal(log_weights, logits, labels)
++        grad_w, grad_logits = torch.autograd.grad(nll, (log_weights, logits))
++
++        explicit_w = log_weights.detach().clone().requires_grad_()
++        explicit_logits = logits.detach().clone().requires_grad_()
++        terms = explicit_w[..., None] + F.log_softmax(explicit_logits, dim=-1)
++        explicit_nll = -torch.logsumexp(terms, dim=1)[0, labels[0]]
++        ref_w, ref_logits = torch.autograd.grad(explicit_nll, (explicit_w, explicit_logits))
++        self.assertTrue(torch.allclose(grad_w, ref_w))
++        self.assertTrue(torch.allclose(grad_logits, ref_logits))
++        self.assertGreater(grad_w.abs().sum().item(), 0.0)
++        self.assertGreater(grad_logits.abs().sum().item(), 0.0)
++
++    def test_extreme_log_space_values_remain_finite(self):
++        log_weights = torch.tensor([[-10000.0, 0.0]])
++        logits = torch.tensor([[[1.0e30, -1.0e30], [-1.0e30, 1.0e30]]])
++        nll, log_mix = slot_marginal(log_weights, logits, torch.tensor([1]))
++        self.assertTrue(torch.isfinite(nll))
++        self.assertTrue(torch.isfinite(log_mix).all())
++        self.assertTrue(torch.allclose(log_mix, torch.tensor([[-10000.0, 0.0]])))
++
++    def test_invalid_slots_do_not_affect_result_even_with_all_negative_infinity(self):
++        weights = torch.log(torch.tensor([[0.2, 0.3, 0.5]]))
++        logits = torch.tensor([[[1.0, 0.0], [-torch.inf, -torch.inf], [0.0, 1.0]]])
++        valid = torch.tensor([[True, False, True]])
++        nll, log_mix = slot_marginal(weights, logits, torch.tensor([0]), valid)
++        changed_logits = logits.clone()
++        changed_logits[0, 1] = torch.tensor([torch.inf, -torch.inf])
++        changed_nll, changed_log_mix = slot_marginal(weights, changed_logits, torch.tensor([0]), valid)
++        expected = torch.logsumexp(
++            weights[:, [0, 2], None] + F.log_softmax(logits[:, [0, 2], :], dim=-1), dim=1
++        )
++        self.assertTrue(torch.allclose(log_mix, expected))
++        self.assertTrue(torch.allclose(nll, changed_nll))
++        self.assertTrue(torch.allclose(log_mix, changed_log_mix))
++
++    def test_rejects_empty_rows_and_malformed_shapes(self):
++        weights = torch.zeros(2, 3)
++        logits = torch.zeros(2, 3, 4)
++        labels = torch.tensor([0, 1])
++        with self.assertRaises(ValueError):
++            slot_marginal(weights, logits, labels, torch.tensor([[True, False, False], [False] * 3]))
++        with self.assertRaises(ValueError):
++            slot_marginal(weights[:, :2], logits, labels)
++
++    def test_api_has_no_target_slot_or_auxiliary_label_argument(self):
++        self.assertEqual(tuple(inspect.signature(slot_marginal).parameters),
++                         ("log_weights", "slot_logits", "labels", "slot_valid"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/test_v2r16_schedule.py b/src/test_v2r16_schedule.py
+new file mode 100644
+index 0000000..a8eb103
+--- /dev/null
++++ b/src/test_v2r16_schedule.py
+@@ -0,0 +1,143 @@
++"""Pure E-0016 scheduling/provenance checks; no model import is required."""
++import hashlib
++import json
++import random
++
++import pytest
++
++from v1_data import derive_seed
++from v2_schedule import ORDER_HASH_ENCODING, lr_multiplier, make_step_schedule
++from v2r16_train import (checkpoint_records, evaluation_protocols, make_arm_schedule,
++                         resume_provenance, trim_smoke_schedule)
++
++
++def rows(count=32):
++    return [{'episode_id': f'episode-{i}', 'support_input_ids': [1]*(i % 11+1),
++             'question_input_ids': [2, 3]} for i in range(count)]
++
++
++@pytest.mark.parametrize('arm', ('D1', 'D3', 'D4'))
++def test_from_scratch_schedule_keeps_released_v2_order(arm):
++    data = rows()
++    assert make_arm_schedule(data, arm, 10) == make_step_schedule(data, 10)
++
++
++@pytest.mark.parametrize('arm', ('D2a', 'D2b', 'D5'))
++def test_resume_order_uses_new_arm_namespace_for_each_complete_epoch(arm):
++    data = rows()
++    plan = make_arm_schedule(data, arm, 12)
++    seed = derive_seed(20261029, 'concat_loop_v2', 'V2R16', arm, 0)
++    expected = []
++    for epoch in range(3):
++        indices = list(range(len(data)))
++        random.Random(seed+epoch).shuffle(indices)
++        expected.extend(indices)
++    assert plan['order'] == expected
++    assert plan['batches'] == [expected[i:i+8] for i in range(0, 96, 8)]
++    for start in range(0, 96, 32):
++        assert sorted(plan['order'][start:start+32]) == list(range(32))
++    payload = ''.join(data[i]['episode_id']+'\n' for i in expected).encode('utf-8')
++    assert plan['order_sha256'] == hashlib.sha256(payload).hexdigest()
++    assert plan['order_hash_encoding'] == ORDER_HASH_ENCODING
++    assert plan['tokens'] == sum(len(data[i]['support_input_ids'])+2 for i in expected)
++    assert plan['order_seed'] == seed
++
++
++def test_resume_arms_do_not_reuse_each_other_or_d1_order():
++    data = rows()
++    orders = [tuple(make_arm_schedule(data, arm, 10)['order']) for arm in ('D1', 'D2a', 'D2b', 'D5')]
++    assert len(set(orders)) == 4
++
++
++@pytest.mark.parametrize('arm', ('D1', 'D2a', 'D2b', 'D3', 'D4', 'D5'))
++def test_formal_resume_has_fresh_warmup_and_smoke_recomputes_actual_tokens(arm):
++    data = rows(16384)
++    plan = make_arm_schedule(data, arm)
++    assert plan['steps'] == 6000
++    assert plan['warmup_steps'] == 300
++    assert lr_multiplier(0, plan['steps'], plan['warmup_steps']) == 1/300
++    assert lr_multiplier(299, plan['steps'], plan['warmup_steps']) == 1
++    assert lr_multiplier(5999, plan['steps'], plan['warmup_steps']) == 0
++    smoke = trim_smoke_schedule(plan, data, 20)
++    assert smoke['steps'] == 20 and smoke['warmup_steps'] == 1
++    assert smoke['tokens'] == sum(len(data[i]['support_input_ids'])+2
++                                  for batch in smoke['batches'] for i in batch)
++    assert len(plan['batches']) == 6000
++    assert smoke['order_sha256'] == plan['order_sha256']
++
++
++@pytest.mark.parametrize('arm,steps,count', [('bad', 1, 32), ('D2a', 0, 32), ('D2b', 13, 32),
++                                            ('D2a', 1, 31), ('D2b', 1, 0)])
++def test_invalid_order_request_rejected(arm, steps, count):
++    with pytest.raises(ValueError):
++        make_arm_schedule(rows(count), arm, steps)
++
++
++def source_checkpoint(tmp_path, *, smoke=0, arm='D1'):
++    checkpoint = tmp_path/'adapter'
++    checkpoint.mkdir()
++    (checkpoint/'adapter.pt').write_bytes(b'fixture adapter bytes')
++    (checkpoint/'config.json').write_text('{}')
++    (tmp_path/'metrics.json').write_text(json.dumps({'train': {'steps': 6000},
++        'checkpoint_reload': {'full_records_identical': True, 'summaries_identical': True}}))
++    manifest = {'status': 'complete', 'arm': arm, 'smoke_steps': smoke, 'contract': 'E-0016@1',
++                'seed': 0, 'validator': {'passed': True},
++                'checkpoint_files': checkpoint_records(checkpoint)}
++    (tmp_path/'manifest.json').write_text(json.dumps(manifest))
++    return checkpoint
++
++
++def test_resume_records_all_checkpoint_and_source_hashes(tmp_path):
++    checkpoint = source_checkpoint(tmp_path)
++    provenance = resume_provenance(checkpoint, False)
++    assert provenance['checkpoint_files'] == checkpoint_records(checkpoint)
++    assert set(provenance['source_manifest']) == {'sha256', 'bytes'}
++    assert set(provenance['source_metrics']) == {'sha256', 'bytes'}
++    assert provenance['adapter_only'] and not provenance['optimizer_state_loaded']
++    (checkpoint/'adapter.pt').write_bytes(b'changed adapter')
++    with pytest.raises(ValueError, match='bytes differ'):
++        resume_provenance(checkpoint, False)
++
++
++def test_formal_resume_rejects_smoke_source(tmp_path):
++    checkpoint = source_checkpoint(tmp_path, smoke=20)
++    with pytest.raises(ValueError, match='smoke checkpoint'):
++        resume_provenance(checkpoint, False)
++    assert resume_provenance(checkpoint, True)['adapter_only']
++
++
++def test_resume_requires_d1_parent(tmp_path):
++    checkpoint = source_checkpoint(tmp_path, arm='D2a')
++    with pytest.raises(ValueError, match='completed D1'):
++        resume_provenance(checkpoint, True)
++
++
++@pytest.mark.parametrize('failure', ('steps', 'reload', 'contract', 'validator'))
++def test_resume_refuses_incomplete_or_wrong_protocol_source(tmp_path, failure):
++    checkpoint = source_checkpoint(tmp_path)
++    if failure in ('steps', 'reload'):
++        path = tmp_path/'metrics.json'
++        value = json.loads(path.read_text())
++        if failure == 'steps':
++            value['train']['steps'] = 5999
++        else:
++            value['checkpoint_reload']['full_records_identical'] = False
++    else:
++        path = tmp_path/'manifest.json'
++        value = json.loads(path.read_text())
++        if failure == 'contract':
++            value['contract'] = 'E-0014@1'
++        else:
++            value['validator']['passed'] = False
++    path.write_text(json.dumps(value))
++    with pytest.raises(ValueError):
++        resume_provenance(checkpoint, False)
++
++
++def test_primary_and_additional_evaluation_protocol_coverage():
++    assert evaluation_protocols('D1')['teacher'] == (
++        'standard', ('tf_normal', 'tf_shuffled', 'tf_wrong', 'zero'))
++    d3 = evaluation_protocols('D3')
++    assert d3['hard'][0] == 'hard' and len(d3['hard'][1]) == 6
++    assert d3['soft'][0] == 'soft' and len(d3['soft'][1]) == 6
++    assert d3['marginal'] == ('marginal', ('normal', 'zero', 'shuffled', 'permuted'))
+diff --git a/src/v2_train.py b/src/v2_train.py
+index 1348af2..1555fdb 100644
+--- a/src/v2_train.py
++++ b/src/v2_train.py
+@@ -218,12 +218,15 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
+ 
+ 
+ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior_token, *,
+-          forward_options=None, log_name='train.jsonl', learning_curves=True, monitors=None):
++          forward_options=None, log_name='train.jsonl', learning_curves=True, monitors=None,
++          forward_fn=None, curve_evaluator=None):
+     """Defaults reproduce V2. E-0014 options: forward_options go to train_forward;
+     only adapter parameters with requires_grad are optimized (R4 freezing);
+     monitors maps a completed step to (name, rows) for a calibration normal check."""
+     params = [p for p in model.adapter_parameters() if p.requires_grad]
+     forward_options = forward_options or {}
++    forward = train_forward if forward_fn is None else forward_fn
++    evaluate_curve = evaluate if curve_evaluator is None else curve_evaluator
+     monitors = monitors or {}
+     optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.)
+     curves, grad_norms, history, seen_gradients = {}, [], [], set()
+@@ -250,7 +253,7 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+             batch = collate(selected, pad_id, next(model.parameters()).device)
+             log = {} if forward_options.get('address_weight') else None
+             options = dict(forward_options, log=log) if log is not None else forward_options
+-            loss, _, support_counts, query_counts = train_forward(model, batch, **options)
++            loss, _, support_counts, query_counts = forward(model, batch, **options)
+             if not torch.isfinite(loss):
+                 raise RuntimeError('nonfinite training loss')
+             (loss*(len(selected)/TRAIN_BATCH_SIZE)).backward()
+@@ -291,7 +294,7 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+         if step+1 in milestones:
+             milestone = milestones[step+1]
+             curve_start = time.monotonic()
+-            curves[milestone], _ = evaluate(model, dev, pad_id, output/f'curve-{milestone}', 'dev',
++            curves[milestone], _ = evaluate_curve(model, dev, pad_id, output/f'curve-{milestone}', 'dev',
+                                            ('normal', 'zero', 'shuffled'), prior_token)
+             torch.cuda.synchronize()
+             curve_seconds += time.monotonic()-curve_start
+diff --git a/src/v2r16_analysis.py b/src/v2r16_analysis.py
+new file mode 100644
+index 0000000..1c37dfc
+--- /dev/null
++++ b/src/v2r16_analysis.py
+@@ -0,0 +1,456 @@
++"""Read-only E-0016 seed-0 screening analysis for D1, D2a, D2b and D3."""
++from __future__ import annotations
++
++import argparse
++from fractions import Fraction
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++
++import numpy as np
++from v2_factorial_analysis import paired_bootstrap, BOOTSTRAP_REPEATS, BOOTSTRAP_SEED
++
++ARMS = ('D1', 'D2a', 'D2b', 'D3')
++STANDARD = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
++TEACHER = ('tf_normal', 'tf_shuffled', 'tf_wrong', 'zero')
++E1 = ('normal', 'zero', 'shuffled')
++BOOTSTRAP_NOTE = ('V2 paired episode bootstrap: 10000 draws, RNG 20261029, common episode indices '
++                  'across controls within each arm/split. Intervals are descriptive only and never gate.')
++
++
++class AnalysisError(ValueError):
++    pass
++
++
++def require(condition, message):
++    if not condition:
++        raise AnalysisError(message)
++
++
++def _finite_number(value, name):
++    require(isinstance(value, (int, float)) and not isinstance(value, bool)
++            and math.isfinite(value), f'{name} must be a finite number')
++    return float(value)
++
++
++def _integer(value, name):
++    require(type(value) is int and value >= 0, f'{name} must be a nonnegative integer')
++    return value
++
++
++def _read_json(path):
++    try:
++        return json.loads(Path(path).read_text())
++    except (OSError, json.JSONDecodeError) as exc:
++        raise AnalysisError(f'cannot read JSON {path}: {exc}') from exc
++
++
++def _read_jsonl(path):
++    rows = []
++    try:
++        with Path(path).open() as handle:
++            for line_number, line in enumerate(handle, 1):
++                try:
++                    rows.append(json.loads(line))
++                except json.JSONDecodeError as exc:
++                    raise AnalysisError(f'{path}:{line_number}: invalid JSON: {exc}') from exc
++    except OSError as exc:
++        raise AnalysisError(f'cannot read JSONL {path}: {exc}') from exc
++    return rows
++
++
++def validate_manifest(manifest, arm):
++    """Validate the sealed formal-run contract before consuming run artifacts."""
++    require(manifest.get('status') == 'complete', f'{arm}: run is not complete')
++    require(manifest.get('validator', {}).get('passed') is True,
++            f'{arm}: runner validator did not pass')
++    require(manifest.get('experiment') == 'E-0016', f'{arm}: wrong experiment')
++    require(manifest.get('contract') == 'E-0016@1', f'{arm}: missing or wrong E-0016@1 contract')
++    require(manifest.get('arm') == arm, f'{arm}: manifest arm mismatch')
++    require(manifest.get('eligible_as_evidence') is True, f'{arm}: run is not evidence eligible')
++    require(not manifest.get('smoke_steps') and not manifest.get('smoke_eval_limit'),
++            f'{arm}: smoke output is ineligible for screening')
++
++
++def _check_point_summary(summary, records, label):
++    require(isinstance(summary, dict), f'{label}: missing summary')
++    n = len(records)
++    require(n > 0, f'{label}: no prediction records')
++    require(_integer(summary.get('count'), f'{label}.count') == n,
++            f'{label}: summary count differs from predictions')
++    correct_count = sum(row['correct'] for row in records)
++    require(_integer(summary.get('correct_count'), f'{label}.correct_count') == correct_count,
++            f'{label}: summary correct_count differs from predictions')
++    em = correct_count / n
++    nll = sum(_finite_number(row['nll'], f'{label}.prediction.nll') for row in records) / n
++    require(math.isclose(_finite_number(summary.get('em'), f'{label}.em'), em,
++                         rel_tol=0.0, abs_tol=1e-12), f'{label}: summary EM differs from predictions')
++    require(math.isclose(_finite_number(summary.get('nll'), f'{label}.nll'), nll,
++                         rel_tol=0.0, abs_tol=1e-10), f'{label}: summary NLL differs from predictions')
++    return {'count': n, 'correct_count': correct_count, 'em': em, 'nll': nll}
++
++
++def _check_strata(summary, records, label, *, require_later_stratum=True):
++    require(all(type(r.get('target_fact_position')) is int for r in records),
++            f'{label}: missing or invalid target fact positions')
++    expected = {
++        'position0': [r for r in records if r.get('target_fact_position') == 0],
++        'position1plus': [r for r in records if type(r.get('target_fact_position')) is int
++                          and r['target_fact_position'] > 0],
++    }
++    require(sum(map(len, expected.values())) == len(records),
++            f'{label}: predictions have invalid target fact positions')
++    strata = summary.get('position_strata')
++    require(isinstance(strata, dict), f'{label}: missing position_strata')
++    result = {}
++    for name, rows in expected.items():
++        if not rows:
++            require(not require_later_stratum and name == 'position1plus',
++                    f'{label}: predictions have no {name} rows')
++            require(name not in strata, f'{label}: empty {name} unexpectedly has a summary')
++            result[name] = None
++            continue
++        require(name in strata, f'{label}: summary lacks {name}')
++        result[name] = _check_point_summary(strata[name], rows, f'{label}.{name}')
++    return result
++
++
++def load_protocol(run_dir, metrics, arm, protocol, controls, split='dev'):
++    """Load one runner protocol, verify aligned predictions, and recompute point metrics."""
++    summaries = metrics.get('evaluation', {}).get(protocol)
++    require(isinstance(summaries, dict), f'{arm}: missing evaluation protocol {protocol}')
++    base = Path(run_dir) / 'evaluation' / protocol
++    raw, points, position_strata, prediction_rows = {}, {}, {}, {}
++    ids, targets, target_positions = None, None, None
++    for control in controls:
++        require(control in summaries, f'{arm}/{protocol}: missing summary for {control}')
++        rows = _read_jsonl(base / f'{split}.{control}.predictions.jsonl')
++        require(rows and all(isinstance(row, dict) for row in rows),
++                f'{arm}/{protocol}/{control}: empty or malformed predictions')
++        require(len(rows) == 1000, f'{arm}/{protocol}/{control}: expected the full 1000-row dev split')
++        seen = [row.get('episode_id') for row in rows]
++        require(all(isinstance(value, str) and value for value in seen),
++                f'{arm}/{protocol}/{control}: missing episode IDs')
++        require(len(set(seen)) == len(seen), f'{arm}/{protocol}/{control}: duplicate episode IDs')
++        for index, row in enumerate(rows):
++            require(type(row.get('target')) is int and type(row.get('prediction')) is int,
++                    f'{arm}/{protocol}/{control}: target/prediction must be integer token IDs')
++            require(type(row.get('correct')) is bool and row['correct'] == (row['prediction'] == row['target']),
++                    f'{arm}/{protocol}/{control}: inconsistent correctness')
++            _finite_number(row.get('nll'), f'{arm}/{protocol}/{control}.nll[{index}]')
++        if ids is None:
++            ids = seen
++            targets = [row['target'] for row in rows]
++            target_positions = [row.get('target_fact_position') for row in rows]
++        else:
++            require(seen == ids, f'{arm}/{protocol}: controls are not aligned by episode ID/order')
++            require([row['target'] for row in rows] == targets,
++                    f'{arm}/{protocol}: controls have different answer labels')
++            require([row.get('target_fact_position') for row in rows] == target_positions,
++                    f'{arm}/{protocol}: controls have different target positions')
++        points[control] = _check_point_summary(summaries[control], rows, f'{arm}/{protocol}/{control}')
++        position_strata[control] = _check_strata(
++            summaries[control], rows, f'{arm}/{protocol}/{control}',
++            require_later_stratum=split != 'dev' or protocol != 'e1')
++        raw[control] = summaries[control]
++        prediction_rows[control] = rows
++    return {'controls': points, 'summaries': raw, 'position_strata': position_strata,
++            'episode_ids': ids, 'targets': targets, 'bootstrap': descriptive_bootstrap(prediction_rows)}
++
++
++def descriptive_bootstrap(records):
++    names = list(records)
++    reference = 'tf_normal' if 'tf_normal' in records else 'normal'
++    n = len(records[reference])
++    require(all(len(records[name]) == n for name in names), 'bootstrap control counts differ')
++    columns = [(name, metric) for name in names for metric in ('correct', 'nll')]
++    values = np.asarray([[float(records[name][i][metric]) for name, metric in columns] for i in range(n)])
++    draws = paired_bootstrap(values)
++    index = {key: i for i, key in enumerate(columns)}
++    return {f'{reference}-{name}': {
++        metric: {'estimate': float((values[:, index[reference, source]]-values[:, index[name, source]]).mean()),
++                 'ci95': np.quantile(draws[:, index[reference, source]]-draws[:, index[name, source]], [.025, .975]).tolist()}
++        for metric, source in (('em', 'correct'), ('nll', 'nll'))}
++        for name in names if name != reference}
++
++
++def em_margin(normal, zero, shuffled):
++    n = normal['count']
++    require(n > 0 and zero['count'] == n and shuffled['count'] == n,
++            'EM gate requires aligned equal nonzero counts')
++    return Fraction(normal['correct_count'] - max(zero['correct_count'], shuffled['correct_count']), n)
++
++
++def d1_gate(teacher, plateau):
++    """Classify the D1 teacher-forced stage-one screening criterion."""
++    margin = em_margin(teacher['tf_normal'], teacher['zero'], teacher['tf_shuffled'])
++    passed = margin >= Fraction(1, 2)
++    if passed:
++        status = 'pass'
++    elif margin >= Fraction(1, 5):
++        status = 'partial'
++    elif plateau:
++        status = 'fail'
++    else:
++        status = 'inconclusive'
++    return {'status': status, 'passed': passed,
++            'margin': float(margin), 'margin_fraction': str(margin),
++            'threshold_fraction': '1/2', 'fail_requires_plateau': margin < Fraction(1, 5)}
++
++
++def h3_gate(controls, all_question_target_weight=None, last_position_target_weight=None,
++            *, weight_scope='all_question_positions'):
++    """Exact-fraction E-0010 H3 point gate, or D3's registered hard last-only variant."""
++    require(weight_scope in ('all_question_positions', 'last_position'), 'unknown H3 address-weight scope')
++    chosen_weight = (all_question_target_weight if weight_scope == 'all_question_positions'
++                     else last_position_target_weight)
++    chosen_weight = _finite_number(chosen_weight, f'{weight_scope} target weight')
++    margin = em_margin(controls['normal'], controls['zero'], controls['shuffled'])
++    nll_pass = controls['normal']['nll'] < min(controls['zero']['nll'], controls['shuffled']['nll'])
++    em_pass = margin >= Fraction(1, 10)
++    weight_pass = chosen_weight >= 0.125
++    return {'passed': em_pass and nll_pass and weight_pass,
++            'protocol': 'E-0010@2 standard H3' if weight_scope == 'all_question_positions'
++                        else 'E-0016 D3 last-only hard H3 (distinct protocol)',
++            'em_margin': float(margin), 'em_margin_fraction': str(margin),
++            'em_threshold_fraction': '1/10', 'em_pass': em_pass,
++            'nll_pass': nll_pass, 'target_weight': chosen_weight,
++            'target_weight_scope': weight_scope, 'weight_threshold': 0.125,
++            'weight_pass': weight_pass,
++            'counts': {name: controls[name]['correct_count'] for name in ('normal', 'zero', 'shuffled')},
++            'nll': {name: controls[name]['nll'] for name in ('normal', 'zero', 'shuffled')}}
++
++
++def summarize_curve(rows):
++    """Summarize per-step answer CE, 500-step means and final-window OLS trend."""
++    require(len(rows) == 6000, 'formal training curve must contain all 6000 steps')
++    for expected_step, row in enumerate(rows, 1):
++        require(row.get('step') == expected_step, 'training curve steps must be ordered 1..6000')
++        _finite_number(row.get('loss'), f'train.loss[{expected_step}]')
++        _finite_number(row.get('lr'), f'train.lr[{expected_step}]')
++    bins = []
++    for start in range(0, 6000, 500):
++        chunk = rows[start:start+500]
++        bins.append({'steps': [start+1, start+len(chunk)],
++                     'mean_answer_ce': sum(float(row['loss']) for row in chunk)/len(chunk)})
++    window = rows[5000:6000]
++    ys = [float(row['loss']) for row in window]
++    xs = list(range(5001, 6001))
++    xbar, ybar = sum(xs)/len(xs), sum(ys)/len(ys)
++    slope = sum((x-xbar)*(y-ybar) for x, y in zip(xs, ys)) / sum((x-xbar)**2 for x in xs)
++    fitted_decline = -999.0 * slope
++    lrs = [float(row['lr']) for row in window]
++    peak_lr = max(float(row['lr']) for row in rows)
++    peak_fraction = max(lrs)/peak_lr if peak_lr else 0.0
++    return {'per_500_step_mean_answer_ce': bins,
++            'final_1000_step_mean_answer_ce': sum(ys)/len(ys),
++            'final_window_ols_slope_per_step': slope,
++            'fitted_decline_999_steps': fitted_decline,
++            'plateau': fitted_decline < 0.05,
++            'final_1000_lr_min': min(lrs), 'final_1000_lr_max': max(lrs),
++            'peak_lr': peak_lr, 'final_1000_max_lr_fraction_of_peak': peak_fraction,
++            'interpretation': ('The final 1000-step window runs at low learning rate; its fitted decline is a '
++                               'plateau rule only and does not establish convergence.')}
++
++
++def load_run(arm, run_dir):
++    run_dir = Path(run_dir).resolve()
++    manifest = _read_json(run_dir/'manifest.json')
++    validate_manifest(manifest, arm)
++    metrics_path = run_dir/'metrics.json'
++    metrics = _read_json(metrics_path)
++    require(metrics.get('arm') == arm, f'{arm}: metrics arm mismatch')
++    require(metrics.get('eligible_as_evidence') is True and metrics.get('smoke_only') is False,
++            f'{arm}: metrics mark run as smoke or ineligible')
++    require(metrics.get('train', {}).get('steps') == 6000,
++            f'{arm}: metrics must record exactly 6000 train steps')
++    require(metrics.get('checkpoint_reload', {}).get('full_records_identical') is True
++            and metrics['checkpoint_reload'].get('summaries_identical') is True,
++            f'{arm}: metrics checkpoint reload mismatch')
++
++    curve_rows = _read_jsonl(run_dir/'train.jsonl')
++    curve = summarize_curve(curve_rows)
++    protocols = {}
++    if arm == 'D1':
++        protocols['standard'] = load_protocol(run_dir, metrics, arm, 'standard', STANDARD)
++        protocols['teacher'] = load_protocol(run_dir, metrics, arm, 'teacher', TEACHER)
++        protocols['e1'] = load_protocol(run_dir, metrics, arm, 'e1', E1, split='dev')
++        teacher_gate = d1_gate(protocols['teacher']['controls'], curve['plateau'])
++        primary = {'teacher_forced': teacher_gate,
++                   'teacher_controls': protocols['teacher']['controls']}
++    elif arm in ('D2a', 'D2b'):
++        protocols['standard'] = load_protocol(run_dir, metrics, arm, 'standard', STANDARD)
++        protocols['e1'] = load_protocol(run_dir, metrics, arm, 'e1', E1, split='dev')
++        normal = protocols['standard']['summaries']['normal']
++        gate = h3_gate(protocols['standard']['controls'],
++                       normal['diagnostics']['address.target_weight'],
++                       normal['last_position']['target_weight_mean'])
++        primary = {'h3': gate}
++    else:
++        protocols['hard'] = load_protocol(run_dir, metrics, arm, 'hard', STANDARD)
++        protocols['soft'] = load_protocol(run_dir, metrics, arm, 'soft', STANDARD)
++        protocols['marginal'] = load_protocol(run_dir, metrics, arm, 'marginal',
++                                              ('normal', 'zero', 'shuffled', 'permuted'))
++        normal = protocols['hard']['summaries']['normal']
++        gate = h3_gate(protocols['hard']['controls'],
++                       last_position_target_weight=normal['last_position']['target_weight_mean'],
++                       weight_scope='last_position')
++        primary = {'hard_last_only_h3': gate}
++    input_files = [run_dir/'manifest.json', metrics_path, run_dir/'train.jsonl']
++    for protocol, payload in protocols.items():
++        file_protocol = protocol
++        for control in payload['controls']:
++            input_files.append(run_dir/'evaluation'/file_protocol/f'dev.{control}.predictions.jsonl')
++    provenance = [{'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
++                   'bytes': path.stat().st_size} for path in input_files]
++    return {'run_directory': str(run_dir), 'arm': arm, 'primary_screening': primary,
++            'protocols': protocols, 'training_curve': curve,
++            'training': {key: metrics['train'].get(key) for key in
++                         ('steps', 'tokens', 'training_seconds', 'stable_step_seconds',
++                          'parameter_names_with_nonzero_gradient')},
++            'timing': {'wall_seconds': metrics.get('wall_seconds'),
++                       'mig_instance_hours': metrics.get('mig_instance_hours'),
++                       'node_hours': metrics.get('node_hours'),
++                       'evaluation_seconds': metrics.get('evaluation_seconds'),
++                       'checkpoint_save_seconds': metrics.get('checkpoint_save_seconds'),
++                       'checkpoint_reload': metrics.get('checkpoint_reload')},
++            'supervision_note': ('D1 stage one uses target_fact_index to teacher-force the target slot; '
++                                 'its result is extra-supervision screening only.' if arm == 'D1' else
++                                 'This arm starts from the supervised D1 adapter; its result is conditional '
++                                 'on that teacher-forced value prewarm.' if arm in ('D2a', 'D2b') else
++                                 'D3 uses the registered last-question-position protocol and no target fact index.'),
++            'single_seed_note': 'Seed 0 only; screening signal, not replication or confirmation.',
++            'input_provenance': provenance}
++
++
++def analyze(arm_paths):
++    require(bool(arm_paths), 'at least one --arm is required')
++    require(len(arm_paths) == len(set(arm_paths)), 'duplicate arms are not allowed')
++    require(set(arm_paths) <= set(ARMS), 'unsupported E-0016 arm')
++    arms = {arm: load_run(arm, arm_paths[arm]) for arm in ARMS if arm in arm_paths}
++    missing = [arm for arm in ARMS if arm not in arms]
++    return {'experiment': 'E-0016', 'contract': 'E-0016@1',
++            'scope': 'seed-0 per-arm screening only; no hypothesis conclusion',
++            'completeness': {'required_arms': list(ARMS), 'included_arms': list(arms),
++                             'missing_arms': missing, 'complete': not missing},
++            'arms': arms, 'bootstrap': {'generated': True, 'repetitions': BOOTSTRAP_REPEATS,
++                                      'seed': BOOTSTRAP_SEED, 'note': BOOTSTRAP_NOTE},
++            'spec_digest': os.environ.get('SR_SPEC_DIGEST')}
++
++
++def markdown(report):
++    lines = ['# E-0016 per-arm screening', '',
++             f"Coverage: {', '.join(report['completeness']['included_arms'])}; "
++             f"missing: {', '.join(report['completeness']['missing_arms']) or 'none'}.",
++             'No cross-arm hypothesis conclusion is made.', '',
++             '| arm | protocol | primary result | EM margin | NLL gate | address weight |',
++             '|---|---|---|---:|---|---:|']
++    for arm, item in report['arms'].items():
++        result = item['primary_screening']
++        if arm == 'D1':
++            gate = result['teacher_forced']
++            lines.append(f"| {arm} | teacher-forced stage one | {gate['status']} | "
++                         f"{gate['margin']*100:+.1f} pp | n/a | n/a |")
++        else:
++            key = 'hard_last_only_h3' if arm == 'D3' else 'h3'
++            gate = result[key]
++            weight = gate['target_weight']
++            lines.append(f"| {arm} | {gate['protocol']} | {'pass' if gate['passed'] else 'not passed'} | "
++                         f"{gate['em_margin']*100:+.1f} pp | {'pass' if gate['nll_pass'] else 'fail'} | {weight:.4f} |")
++    for arm, item in report['arms'].items():
++        lines.extend(['', f'## {arm}', '', item['supervision_note'], item['single_seed_note'],
++                      '', '### Controls and position strata', '',
++                      '| protocol | control | correct / count | EM | NLL | all-position target weight | last-position target weight | n_eff | argmax slot counts | position 0 (correct/count, EM, NLL) | position 1+ (correct/count, EM, NLL) |',
++                      '|---|---|---:|---:|---:|---:|---:|---:|---|---|---|'])
++        for protocol, data in item['protocols'].items():
++            for control, point in data['controls'].items():
++                summary = data['summaries'][control]
++                diag = summary.get('diagnostics', {})
++                last = summary.get('last_position', {})
++                all_weight = diag.get('address.target_weight')
++                last_weight = last.get('target_weight_mean')
++                neff = diag.get('address.n_eff')
++                counts = last.get('argmax_slot_counts')
++                strata = data['position_strata'][control]
++                p0, p1 = strata['position0'], strata['position1plus']
++                later = 'n/a' if p1 is None else f"{p1['correct_count']}/{p1['count']}, {p1['em']:.4f}, {p1['nll']:.6f}"
++                lines.append(f"| {protocol} | {control} | {point['correct_count']} / {point['count']} | "
++                             f"{point['em']:.4f} | {point['nll']:.6f} | "
++                             f"{_cell(all_weight, '.6f')} | {_cell(last_weight, '.6f')} | "
++                             f"{_cell(neff, '.4f')} | {counts} | "
++                             f"{p0['correct_count']}/{p0['count']}, {p0['em']:.4f}, {p0['nll']:.6f} | "
++                             f"{later} |")
++        curve = item['training_curve']
++        lines.extend(['', '### Training and timing', '',
++                      f"Training steps: {item['training']['steps']}; final 1000-step mean answer CE: "
++                      f"{curve['final_1000_step_mean_answer_ce']:.6f}; fitted decline over 999 steps: "
++                      f"{curve['fitted_decline_999_steps']:.6f}; plateau: {curve['plateau']}.",
++                      f"Final-window LR: {curve['final_1000_lr_min']:.6g}–{curve['final_1000_lr_max']:.6g}; "
++                      f"maximum is {curve['final_1000_max_lr_fraction_of_peak']*100:.2f}% of peak "
++                      f"({'below ~8% of peak' if curve['final_1000_max_lr_fraction_of_peak'] <= 0.08 else 'above ~8% of peak'}). "
++                      f"{curve['interpretation']}",
++                      f"Timing: wall {item['timing']['wall_seconds']} s; MIG "
++                      f"{item['timing']['mig_instance_hours']} MIG-h; node "
++                      f"{item['timing']['node_hours']} node-h.", '',
++                      'Per-500-step mean answer CE:', ''])
++        lines.extend(f"- Steps {bucket['steps'][0]}–{bucket['steps'][1]}: {bucket['mean_answer_ce']:.6f}"
++                     for bucket in curve['per_500_step_mean_answer_ce'])
++    lines.extend(['', BOOTSTRAP_NOTE, ''])
++    return '\n'.join(lines)
++
++
++def _file_artifact(path, role):
++    data = Path(path).read_bytes()
++    return {'path': str(Path(path).resolve()), 'role': role,
++            'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
++
++
++def _cell(value, format_spec):
++    return '' if value is None else format(value, format_spec)
++
++
++def write_report(report, output):
++    output = Path(output).resolve()
++    require(not any(output.iterdir()) if output.exists() else True,
++            'analysis output directory must be empty')
++    output.mkdir(parents=True, exist_ok=True)
++    json_path, md_path = output/'report.json', output/'report.md'
++    json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False)+'\n')
++    md_path.write_text(markdown(report))
++    artifacts = [_file_artifact(json_path, 'report.json'), _file_artifact(md_path, 'report.md')]
++    manifest = {'status': 'complete', 'experiment': 'E-0016', 'contract': 'E-0016@1',
++                'spec_digest': report.get('spec_digest'),
++                'metrics': {'arms_included': report['completeness']['included_arms'],
++                            'missing_arms': report['completeness']['missing_arms'],
++                            'complete': report['completeness']['complete']},
++                'artifacts': artifacts,
++                'validator': {'name': 'v2r16_analysis', 'passed': True}}
++    (output/'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n')
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--arm', action='append', required=True, metavar='ARM=DIR')
++    parser.add_argument('--output', required=True, type=Path)
++    args = parser.parse_args()
++    arm_paths = {}
++    input_paths = []
++    for item in args.arm:
++        name, sep, path = item.partition('=')
++        require(sep and name in ARMS and path, f'invalid --arm {item!r}; expected ARM=DIR')
++        require(name not in arm_paths, f'duplicate --arm {name}')
++        arm_paths[name] = Path(path).resolve()
++        input_paths.append(arm_paths[name])
++    output = args.output.resolve()
++    require(not any(output == path or path in output.parents for path in input_paths),
++            'analysis output must be outside every input run')
++    report = analyze(arm_paths)
++    write_report(report, output)
++    print(f"included={','.join(report['completeness']['included_arms'])}; "
++          f"complete={str(report['completeness']['complete']).lower()}")
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/v2r16_environment.py b/src/v2r16_environment.py
+new file mode 100644
+index 0000000..ef40974
+--- /dev/null
++++ b/src/v2r16_environment.py
+@@ -0,0 +1,46 @@
++"""Verify the allocated MIG slice, after the PBS allocation check has passed."""
++import json
++import os
++from pathlib import Path
++import re
++import subprocess
++
++
++def selected_profile(listing, visible):
++    devices = re.findall(r'MIG\s+(\S+)\s+Device[^\n]*UUID:\s*([^\)]+)\)', listing)
++    if not devices:
++        raise RuntimeError('nvidia-smi did not identify a MIG device')
++    identifiers = [part.strip() for part in visible.split(',') if part.strip()]
++    if len(identifiers) != 1:
++        raise RuntimeError('exactly one CUDA-visible MIG device is required')
++    if identifiers[0].startswith('MIG-'):
++        matches = [item for item in devices if item[1].strip() == identifiers[0]]
++        if len(matches) != 1:
++            raise RuntimeError('CUDA-visible MIG UUID absent or ambiguous in nvidia-smi')
++        return matches[0]
++    if len(devices) == 1:
++        return devices[0]
++    raise RuntimeError('cannot map CUDA device index to a unique MIG profile')
++
++
++def verify_gpu_profile(output):
++    import torch
++    output = Path(output)
++    listing = subprocess.check_output(['nvidia-smi', '-L'], text=True)
++    (output/'nvidia-smi.txt').write_text(listing)
++    report = {'cuda_visible_devices': os.environ.get('CUDA_VISIBLE_DEVICES', ''),
++              'torch_device_count': torch.cuda.device_count(), 'passed': False}
++    try:
++        profile, uuid = selected_profile(listing, report['cuda_visible_devices'])
++        report.update(nvidia_smi_profile=profile, nvidia_smi_uuid=uuid,
++                      torch_device_name=torch.cuda.get_device_name(0),
++                      multiprocessor_count=torch.cuda.get_device_properties(0).multi_processor_count)
++        if report['torch_device_count'] != 1 or profile != '2g.24gb' or not report['torch_device_name'].endswith('MIG 2g.24gb'):
++            raise RuntimeError('requires actual MIG 2g.24gb for timing and bitwise comparisons')
++        report['passed'] = True
++    except Exception as exc:
++        report['error'] = repr(exc)
++        raise
++    finally:
++        (output/'hardware.json').write_text(json.dumps(report, indent=2)+'\n')
++    return report
+diff --git a/src/v2r16_job.pbs b/src/v2r16_job.pbs
+new file mode 100644
+index 0000000..914c0f3
+--- /dev/null
++++ b/src/v2r16_job.pbs
+@@ -0,0 +1,32 @@
++#!/bin/bash
++set -euo pipefail
++: "${SR_CODE_COMMIT:?registered commit required}"
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++R16_PROJECT=/work/xg24i002/x10041/bypass-lora
++R16_SOURCE="$R16_PROJECT/snapshots/$SR_CODE_COMMIT"
++R16_OUTPUT="$R16_PROJECT/runs/$SR_ATTEMPT_ID"
++R16_PYTHON="$R16_PROJECT/envs/3c916b51337d-cuda/bin/python"
++mkdir -p "$R16_OUTPUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$R16_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
++  > "$R16_OUTPUT/allocation.json"
++/usr/bin/jq -e '.ok == true' "$R16_OUTPUT/allocation.json"
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$R16_SOURCE/src"
++export TMPDIR="/local/${PBS_JOBID}/v2r16"
++mkdir -p "$TMPDIR"
++cd "$R16_SOURCE"
++if [[ "${R16_STAGE:-smoke}" == smoke ]]; then
++  exec "$R16_PYTHON" src/v2r16_smoke.py --output "$R16_OUTPUT"
++fi
++: "${R16_ARM:?formal arm required}"
++R16_ARGS=()
++if [[ -n "${R16_CHECKPOINT:-}" ]]; then
++  R16_ARGS+=(--checkpoint "$R16_CHECKPOINT")
++fi
++exec "$R16_PYTHON" src/v2r16_launch.py --arm "$R16_ARM" --output "$R16_OUTPUT" "${R16_ARGS[@]}"
+diff --git a/src/v2r16_launch.py b/src/v2r16_launch.py
+new file mode 100644
+index 0000000..63226d4
+--- /dev/null
++++ b/src/v2r16_launch.py
+@@ -0,0 +1,49 @@
++"""PBS formal-run wrapper: guard hardware and preserve application failure facts."""
++import argparse
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++
++from v2r16_environment import verify_gpu_profile
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--arm', required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--checkpoint', type=Path)
++    args = parser.parse_args()
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    child_manifest = out/'arm/manifest.json'
++    report, error = None, None
++    try:
++        hardware = verify_gpu_profile(out)
++        command = [sys.executable, 'src/v2r16_train.py', '--arm', args.arm,
++                   '--data-dir', '/work/xg24i002/x10041/bypass-lora/runs/ATT-0039-1/data',
++                   '--output', str(out/'arm')]
++        if args.checkpoint:
++            command += ['--checkpoint', str(args.checkpoint)]
++        completed = subprocess.run(command)
++        if child_manifest.exists():
++            report = json.loads(child_manifest.read_text())
++            report['hardware_verification'] = hardware
++        if completed.returncode or report is None or report['status'] != 'complete' or not report['validator']['passed']:
++            raise RuntimeError(f'training child failed: exit {completed.returncode}')
++    except Exception as exc:
++        error = repr(exc)
++        raise
++    finally:
++        if report is None:
++            report = {'status': 'partial', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++                      'metrics': {}, 'validator': {'name': 'v2r16-formal-launch', 'passed': False}}
++        report['launch_error'] = error
++        report.setdefault('artifacts', []).extend({'path': str(p), 'role': p.name} for p in out.glob('*.json')
++                                                 if p.name != 'manifest.json')
++        (out/'manifest.json').write_text(json.dumps(report, indent=2, allow_nan=False)+'\n')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/v2r16_memory.py b/src/v2r16_memory.py
+new file mode 100644
+index 0000000..ea3e1e1
+--- /dev/null
++++ b/src/v2r16_memory.py
+@@ -0,0 +1,292 @@
++"""E-0016 decoder-first and last-position latent-slot protocols.
++
++Legacy V2 operators are unchanged. Extra supervision is used only by the
++explicit teacher protocol and teacher evaluation controls. Marginal training
++never reads target_fact_index.
++"""
++from collections import defaultdict
++from dataclasses import replace
++import json
++from pathlib import Path
++
++import torch
++import torch.nn.functional as F
++
++from v2_memory import (CONTROLS, Snapshot, answer_logits, build_support,
++                       capture_projection, collate, control_snapshot, read_vectors,
++                       slot_columns)
++from v2r16_objective import slot_marginal
++
++ADDRESS = {'projection.A_q', 'projection.A_k', 'reader.Rq'}
++DECODER = {'projection.A_v', 'reader.Ro', 'fusion.P'}
++TF_CONTROLS = ('tf_normal', 'tf_shuffled', 'tf_wrong', 'zero')
++
++
++def freeze_for_address(model):
++    side = model.adapters()[14].side
++    if set(dict(side.named_parameters())) != ADDRESS | DECODER:
++        raise ValueError('E-0016 requires the six-parameter-group V2-03 adapter')
++    for name, parameter in side.named_parameters():
++        parameter.requires_grad_(name in ADDRESS)
++        parameter.grad = None
++    return sorted(ADDRESS)
++
++
++def compact_snapshot(snapshot):
++    """Public valid-slot order only; compact views retain the support graph."""
++    state = snapshot.memory[14]
++    if state.backend != 'soft_slot' or not bool((state.counts > 0).all()):
++        raise ValueError('compact views require nonempty SoftmaxSlot memory')
++    width = int(state.counts.max())
++    keys, values, valid = [], [], []
++    for row in range(state.batch_size):
++        columns = state.slot_valid[row].nonzero().flatten()
++        n = len(columns)
++        keys.append(F.pad(state.slot_keys[row, columns], (0, 0, 0, width-n)))
++        values.append(F.pad(state.slot_values[row, columns], (0, 0, 0, width-n)))
++        valid.append(torch.arange(width, device=columns.device) < n)
++    return Snapshot(snapshot.memory, torch.stack(keys), torch.stack(values), torch.stack(valid))
++
++
++def single_slot(snapshot, fact_indices):
++    """Keep exactly the selected fact without renumbering its original column."""
++    state = snapshot.memory[14]
++    columns = slot_columns(state.slot_valid, fact_indices)
++    valid = torch.zeros_like(state.slot_valid).scatter(1, columns[:, None], True)
++    memory = replace(state, slot_valid=valid, counts=torch.ones_like(state.counts))
++    compact_valid = torch.zeros_like(snapshot.valid).scatter(1, fact_indices[:, None], True)
++    return Snapshot({14: memory}, snapshot.keys, snapshot.values, compact_valid)
++
++
++def _query(model, ids, mask, snapshot, *, strategy='standard', mode='normal', target=None,
++           forced_values=None, diagnostics=False):
++    """One question forward; a scoped hook replaces only the requested increment.
++
++    For last-position protocols the pre-hook also masks native reader execution
++    outside the last valid question position. The attention mask stays intact.
++    The per-slot forward and its normal softmax address use identical pre-read
++    query features, because the sole intervention layer is layer 14.
++    """
++    if (model.config.layers != (14,) or model.config.backend != 'soft_slot' or model.config.steps != 1
++            or model.config.readout != 'increment' or model.config.fusion != 'F_out'):
++        raise ValueError('E-0016 is single-layer, single-read SoftmaxSlot')
++    if strategy not in ('standard', 'hard', 'soft', 'forced'):
++        raise ValueError('unknown read strategy')
++    side, layer = model.adapters()[14].side, model.adapters()[14]
++    row = torch.arange(len(ids), device=ids.device)
++    last = mask.long().sum(-1)-1
++    target = torch.zeros_like(last) if target is None else target
++    last_only = strategy != 'standard'
++    read_mask = torch.zeros_like(mask).scatter(1, last[:, None], True) if last_only else mask
++    cache, handles = {}, []
++    if diagnostics:
++        def residual(module, args, kwargs):
++            cache['residual_norm'] = (args[0] if args else kwargs['hidden_states']).float().norm(dim=-1)
++        handles.append(layer.register_forward_pre_hook(residual, with_kwargs=True))
++    with capture_projection(side) as seen:
++        def restrict_reads(module, args):
++            if args[4] != 'query':
++                raise ValueError('question-only hook reached a support forward')
++            return (*args[:3], read_mask, *args[4:])
++
++        def replace_read(module, args, output):
++            z, state, accounting = output
++            qbar = seen['q']
++            oracle = mode if mode in ('oracle_key', 'oracle_value') else 'normal'
++            raw, weights, scores, _ = read_vectors(qbar, snapshot, side.reader, 'soft_slot', target, oracle)
++            eligible = snapshot.valid[:, None].expand_as(scores)
++            log_scores = scores.masked_fill(~eligible, -torch.inf)
++            empty = ~eligible.any(-1, keepdim=True)
++            log_scores = torch.where(empty, torch.zeros_like(log_scores), log_scores)
++            log_weights = log_scores.log_softmax(-1).masked_fill(~eligible, -torch.inf)
++            if strategy == 'hard' and mode != 'oracle_value':
++                chosen = weights.argmax(-1)
++                raw = snapshot.values.gather(1, chosen[..., None].expand(-1, -1, qbar.shape[-1]))
++                raw = raw * snapshot.valid.any(-1)[:, None, None]
++            elif strategy == 'forced':
++                if forced_values is None or forced_values.shape != qbar[:, 0].shape:
++                    raise ValueError('forced per-slot values must match question rows')
++                raw = forced_values[:, None].expand_as(qbar)
++            if strategy in ('hard', 'forced') or mode in ('oracle_key', 'oracle_value'):
++                # Match the original S=1 increment, including cancellation rounding.
++                z = (qbar + side.reader.eta * (raw * side.reader.read_gain @ side.reader.Ro))-qbar
++                z = z * read_mask[..., None]
++            cache.update(weights=weights, log_weights=log_weights, z=z)
++            if diagnostics:
++                cache['fusion_ratio'] = (z @ side.fusion.P).norm(dim=-1) / cache['residual_norm'].clamp_min(1e-12)
++            return z, state, accounting
++
++        if last_only:
++            handles.append(side.register_forward_pre_hook(restrict_reads))
++        handles.append(side.register_forward_hook(replace_read))
++        try:
++            output = model(ids, mask, memory=snapshot.memory, phase='query')
++        finally:
++            for handle in handles:
++                handle.remove()
++    cache['last'] = last
++    return output, cache
++
++
++def _marginal_from_support(model, batch, snapshot, support_counts, *, diagnostics=False):
++    n = snapshot.valid.shape[1]
++    if not bool(snapshot.valid.all()):
++        raise ValueError('marginal training requires equal nonempty fact counts')
++    owners = torch.arange(len(batch.labels), device=batch.labels.device).repeat_interleave(n)
++    expanded = snapshot.select(owners)
++    output, cache = _query(model, batch.question_ids.index_select(0, owners),
++                           batch.question_mask.index_select(0, owners), expanded,
++                           strategy='forced', forced_values=snapshot.values.reshape(-1, snapshot.values.shape[-1]))
++    logits = answer_logits(output, batch.question_mask.index_select(0, owners)).reshape(len(batch.labels), n, -1)
++    last = cache['last']
++    expanded_row = torch.arange(len(owners), device=last.device)
++    log_weights = cache['log_weights'][expanded_row, last][::n]
++    loss, mixture = slot_marginal(log_weights, logits, batch.labels, snapshot.valid)
++    return loss, mixture, support_counts, output.accounting
++
++
++def train_forward(model, batch, *, protocol='standard', support_fn=build_support):
++    """Answer objectives with an optional structured-support writer.
++
++    The writer has the build_support(model, batch) -> (Snapshot, accounting)
++    contract. The standard path preserves the legacy operations and their order.
++    """
++    if protocol not in ('standard', 'teacher', 'marginal'):
++        raise ValueError('unknown training protocol')
++    support, support_counts = support_fn(model, batch)
++    if protocol == 'standard':
++        memory = support.select(batch.owners).memory
++        output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
++        logits = answer_logits(output, batch.question_mask)
++        return F.cross_entropy(logits, batch.labels), logits, support_counts, output.accounting
++    snapshot = compact_snapshot(support.select(batch.owners))
++    if protocol == 'marginal':
++        # No target_fact_index or other slot labels enter this branch.
++        return _marginal_from_support(model, batch, snapshot, support_counts)
++    target = torch.tensor([r['query']['target_fact_index'] for r in batch.rows], device=batch.labels.device)
++    snapshot = single_slot(snapshot, target)
++    output = model(batch.question_ids, batch.question_mask, memory=snapshot.memory, phase='query')
++    logits = answer_logits(output, batch.question_mask)
++    return F.cross_entropy(logits, batch.labels), logits, support_counts, output.accounting
++
++
++@torch.no_grad()
++def evaluate_batch(model, batch, mode='normal', donor_batch=None, *, strategy='standard',
++                   support_fn=build_support):
++    if model.training or mode not in (*CONTROLS, *TF_CONTROLS):
++        raise ValueError('evaluation needs eval mode and a registered control')
++    original, support_counts = support_fn(model, batch)
++    original = compact_snapshot(original).select(batch.owners)
++    shuffled = mode in ('shuffled', 'tf_shuffled')
++    if shuffled:
++        if donor_batch is None or len(donor_batch.rows) != len(batch.rows):
++            raise ValueError('shuffled requires one explicit global donor per query')
++        if any(a['episode_id'] == b['episode_id'] for a, b in zip(batch.rows, donor_batch.rows)):
++            raise ValueError('donor must differ from recipient')
++        donor, _ = support_fn(model, donor_batch)
++        snapshot = compact_snapshot(donor).select(donor_batch.owners)
++    else:
++        snapshot = control_snapshot(original, mode if mode in CONTROLS else 'normal')
++    target = torch.tensor([r['query']['target_fact_index'] for r in batch.rows], device=batch.labels.device)
++    if mode.startswith('tf_'):
++        chosen = (target+1) % original.valid.sum(-1) if mode == 'tf_wrong' else target
++        snapshot = single_slot(snapshot, chosen)
++    if strategy == 'marginal' and mode != 'zero':
++        loss, logits, _, _ = _marginal_from_support(model, batch, snapshot, support_counts)
++        _, cache = _query(model, batch.question_ids, batch.question_mask, snapshot,
++                           strategy='soft', mode=mode, target=target, diagnostics=True)
++    else:
++        read_strategy = 'soft' if strategy == 'marginal' else strategy
++        output, cache = _query(model, batch.question_ids, batch.question_mask, snapshot,
++                               strategy=read_strategy, mode=mode, target=target, diagnostics=True)
++        logits = answer_logits(output, batch.question_mask)
++    if not torch.isfinite(logits).all():
++        raise RuntimeError('nonfinite full-vocabulary evaluation logits')
++    weights, last = cache['weights'], cache['last']
++    row = torch.arange(len(target), device=target.device)
++    neff = torch.where(weights.sum(-1) > 0, 1/weights.square().sum(-1).clamp_min(1e-30), 0)
++    all_weight = weights.gather(-1, target[:, None, None].expand(-1, weights.shape[1], 1)).squeeze(-1)
++    counts = batch.question_mask.sum(-1)
++    argmax = torch.where(snapshot.valid.any(-1), weights[row, last].argmax(-1), -1)
++    return {
++        'all_target_weight': None if shuffled else ((all_weight*batch.question_mask).sum(-1)/counts).tolist(),
++        'last_target_weight': None if shuffled else all_weight[row, last].tolist(),
++        'all_n_eff': ((neff*batch.question_mask).sum(-1)/counts).tolist(),
++        'last_n_eff': neff[row, last].tolist(), 'last_argmax': argmax.tolist(),
++        'fusion_to_residual_all': ((cache['fusion_ratio']*batch.question_mask).sum(-1)/counts).tolist(),
++        'fusion_to_residual_last': cache['fusion_ratio'][row, last].tolist(),
++    }, logits
++
++
++@torch.no_grad()
++def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None, *,
++             strategy='standard', support_fn=build_support):
++    """E-0016 per-example diagnostics, including position-0 versus later facts."""
++    from v2_train import distribution, write_json
++    if split not in ('dev', 'calibration') or len(rows) < 2 or any(r['identity']['split'] != split for r in rows):
++        raise ValueError('only released dev/calibration data with >=2 rows')
++    model.eval()
++    output = Path(output)
++    output.mkdir(parents=True, exist_ok=True)
++    summaries, predictions = {}, {}
++    for mode in controls:
++        records = []
++        for start in range(0, len(rows), 16):
++            selected = rows[start:start+16]
++            batch = collate(selected, pad_id, next(model.parameters()).device)
++            donors = None
++            if mode in ('shuffled', 'tf_shuffled'):
++                donors = collate([rows[(i-1) % len(rows)] for i in range(start, start+len(selected))],
++                                pad_id, next(model.parameters()).device)
++            details, logits = evaluate_batch(model, batch, mode, donors, strategy=strategy,
++                                             support_fn=support_fn)
++            losses = (-logits.gather(1, batch.labels[:, None]).squeeze(1)
++                      if strategy == 'marginal' and mode != 'zero' else
++                      F.cross_entropy(logits, batch.labels, reduction='none'))
++            pred = logits.argmax(-1).tolist()
++            for i, episode in enumerate(selected):
++                record = {'episode_id': episode['episode_id'], 'target': int(batch.labels[i]),
++                          'prediction': pred[i], 'correct': pred[i] == int(batch.labels[i]), 'nll': float(losses[i]),
++                          'question_tokens': int(batch.question_mask[i].sum()),
++                          'target_fact_position': episode['query']['target_fact_index'],
++                          'relation': episode['query']['relation'], 'n_facts': len(episode['facts'])}
++                for name, values in details.items():
++                    record[name] = None if values is None else values[i]
++                records.append(record)
++        def summarize(group):
++            summary = {'count': len(group), 'correct_count': sum(r['correct'] for r in group),
++                       'em': sum(r['correct'] for r in group)/len(group),
++                       'nll': sum(r['nll'] for r in group)/len(group)}
++            if prior_token is not None:
++                summary['prior_em'] = sum(r['target'] == prior_token for r in group)/len(group)
++            token_count = sum(r['question_tokens'] for r in group)
++            summary['diagnostics'] = {
++                name: sum(r[field]*r['question_tokens'] for r in group)/token_count
++                for name, field in (('address.target_weight', 'all_target_weight'), ('address.n_eff', 'all_n_eff'))
++                if all(r[field] is not None for r in group)}
++            valid_argmax = [r for r in group if r['last_argmax'] >= 0]
++            width = max(r['n_facts'] for r in group)
++            counts = [sum(r['last_argmax'] == i for r in valid_argmax) for i in range(width)]
++            summary['last_position'] = {'argmax_slot_counts': counts,
++                'argmax_most_common_slot_rate': max(counts)/len(valid_argmax) if valid_argmax else None,
++                'target_weight_mean': (sum(r['last_target_weight'] for r in group)/len(group)
++                                       if all(r['last_target_weight'] is not None for r in group) else None),
++                'n_eff_mean': sum(r['last_n_eff'] for r in group)/len(group),
++                'fusion_to_residual': distribution([r['fusion_to_residual_last'] for r in group])}
++            summary['all_question_positions'] = {'fusion_to_residual': distribution([r['fusion_to_residual_all'] for r in group])}
++            return summary
++        summary = summarize(records)
++        groups = {'position0': [r for r in records if r['target_fact_position'] == 0],
++                  'position1plus': [r for r in records if r['target_fact_position'] > 0]}
++        summary['position_strata'] = {name: summarize(group) for name, group in groups.items() if group}
++        summary['protocol'] = strategy
++        summary['address_weight_scope'] = ('all question positions (counterfactual outside last position); primary gate uses last'
++                                          if strategy != 'standard' else 'all valid question positions')
++        if mode in ('shuffled', 'tf_shuffled'):
++            summary['donor_rule'] = 'global ordered split: recipient i receives support (i-1) modulo split size'
++        with (output/f'{split}.{mode}.predictions.jsonl').open('w') as handle:
++            for record in records:
++                handle.write(json.dumps(record, allow_nan=False)+'\n')
++        summaries[mode], predictions[mode] = summary, records
++    write_json(output/f'{split}.metrics.json', summaries)
++    return summaries, predictions
+diff --git a/src/v2r16_objective.py b/src/v2r16_objective.py
+new file mode 100644
+index 0000000..a76da86
+--- /dev/null
++++ b/src/v2r16_objective.py
+@@ -0,0 +1,59 @@
++"""Stable objectives for marginalizing over latent memory slots."""
++
++from __future__ import annotations
++
++import torch
++import torch.nn.functional as F
++
++
++def slot_marginal(
++    log_weights: torch.Tensor,
++    slot_logits: torch.Tensor,
++    labels: torch.Tensor,
++    slot_valid: torch.Tensor | None = None,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """Return mean answer NLL and per-row log probabilities marginalized over slots.
++
++    ``log_weights`` contains normalized log address probabilities with shape
++    ``[B, N]``. ``slot_logits`` contains the answer vocabulary logits from
++    reading each slot independently and has shape ``[B, N, V]``. Invalid
++    slots are excluded from the mixture without renormalizing the remaining
++    address weights. Every row must have at least one valid slot.
++    """
++    if log_weights.ndim != 2:
++        raise ValueError("log_weights must have shape [B, N]")
++    if slot_logits.ndim != 3:
++        raise ValueError("slot_logits must have shape [B, N, V]")
++    batch, slots = log_weights.shape
++    if slots < 1 or slot_logits.shape[:2] != (batch, slots):
++        raise ValueError("slot_logits must match log_weights batch and slot dimensions")
++    vocab = slot_logits.shape[2]
++    if vocab < 1:
++        raise ValueError("slot_logits must contain at least one vocabulary item")
++    if labels.shape != (batch,):
++        raise ValueError("labels must have shape [B]")
++    if labels.dtype != torch.long:
++        raise ValueError("labels must have dtype torch.long")
++
++    if slot_valid is None:
++        valid = torch.ones((batch, slots), dtype=torch.bool, device=log_weights.device)
++    else:
++        if slot_valid.shape != (batch, slots):
++            raise ValueError("slot_valid must have shape [B, N]")
++        if slot_valid.dtype != torch.bool:
++            raise ValueError("slot_valid must have dtype torch.bool")
++        valid = slot_valid.to(device=log_weights.device)
++    if not bool(valid.any(dim=1).all()):
++        raise ValueError("each row must contain at least one valid slot")
++
++    # Neutralize invalid logits before log_softmax, since an all -inf invalid
++    # slot would otherwise produce NaNs that can leak through autograd.
++    safe_logits = torch.where(valid[..., None], slot_logits.float(), 0.0)
++    slot_log_probs = F.log_softmax(safe_logits, dim=-1)
++    joint_log_probs = log_weights.float()[..., None] + slot_log_probs
++    joint_log_probs = joint_log_probs.masked_fill(~valid[..., None], -torch.inf)
++    log_mixture_probabilities = torch.logsumexp(joint_log_probs, dim=1)
++
++    target_log_probs = log_mixture_probabilities.gather(1, labels.to(log_mixture_probabilities.device)[:, None])
++    mean_nll = -target_log_probs.mean()
++    return mean_nll, log_mixture_probabilities
+diff --git a/src/v2r16_smoke.py b/src/v2r16_smoke.py
+new file mode 100644
+index 0000000..54d849f
+--- /dev/null
++++ b/src/v2r16_smoke.py
+@@ -0,0 +1,95 @@
++"""Registered E-0016 smoke, old/new identity and D3 cost gate; PBS only."""
++import argparse
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++import time
++
++from v2r16_environment import verify_gpu_profile
++
++PROJECT = Path('/work/xg24i002/x10041/bypass-lora')
++REFERENCE = PROJECT/'snapshots/e1660c954ff1f1efb2738a1708d3eb095f060541'
++DATA = PROJECT/'runs/ATT-0039-1/data'
++
++
++def execute(argv, log):
++    with Path(log).open('w') as handle:
++        process = subprocess.run([sys.executable, *map(str, argv)], stdout=handle, stderr=subprocess.STDOUT)
++    if process.returncode:
++        raise RuntimeError(f'child exit {process.returncode}: {log}')
++
++
++def read(path):
++    return json.loads(Path(path).read_text())
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    start = time.monotonic()
++    metrics, passed, failure = {}, False, None
++    try:
++        hardware = verify_gpu_profile(out)
++        metrics['hardware.profile_verified'] = hardware['passed']
++        with tempfile.TemporaryDirectory(dir=out, prefix='tests-') as scratch:
++            execute(['-m', 'pytest', '-q', '-p', 'no:cacheprovider',
++                     'src/test_v2r16_objective.py', 'src/test_v2r16_schedule.py',
++                     'src/test_v2r16_memory.py', 'src/test_v2r16_analysis.py',
++                     f'--basetemp={scratch}', f'--junitxml={out/"tests.xml"}'], out/'tests.log')
++        metrics['tests.passed'] = True
++        with tempfile.TemporaryDirectory(dir=out, prefix='identity-') as scratch:
++            for label, source in (('reference', REFERENCE/'src'), ('candidate', Path.cwd()/'src')):
++                execute(['src/v2r_default_regression.py', 'dump', '--src', source, '--data-dir', DATA,
++                         '--output', Path(scratch)/f'{label}.pt'], out/f'identity-{label}.log')
++            execute(['src/v2r_default_regression.py', 'compare', Path(scratch)/'reference.pt',
++                     Path(scratch)/'candidate.pt', '--output', out/'identity.json'], out/'identity-compare.log')
++        metrics['default.identical'] = read(out/'identity.json')['identical']
++        execute(['src/v2_train.py', '--data-dir', DATA, '--output', out/'baseline', '--lr', '.003',
++                 '--tap', 'direct_hidden', '--backend', 'soft_slot', '--fusion', 'F_out',
++                 '--step-budget', '6000', '--smoke-steps', '20', '--smoke-eval-limit', '32',
++                 '--eval-splits', 'dev'], out/'baseline.log')
++        baseline = read(out/'baseline/direct_hidden.soft_slot.F_out/metrics.json')['train']['stable_step_seconds']
++        metrics['baseline.stable_step_seconds'] = baseline
++        for arm in ('D1', 'D3', 'D2a', 'D2b'):
++            command = ['src/v2r16_train.py', '--arm', arm, '--data-dir', DATA, '--output', out/arm,
++                       '--smoke-steps', '20', '--smoke-eval-limit', '32']
++            if arm.startswith('D2'):
++                command += ['--checkpoint', out/'D1/adapter']
++            execute(command, out/f'{arm}.log')
++            record = read(out/arm/'metrics.json')
++            manifest = read(out/arm/'manifest.json')
++            if manifest['status'] != 'complete' or not manifest['validator']['passed']:
++                raise RuntimeError(f'{arm}: incomplete smoke application')
++            metrics[f'{arm}.stable_step_seconds'] = record['train']['stable_step_seconds']
++            metrics[f'{arm}.reload_identical'] = record['checkpoint_reload']['full_records_identical']
++            metrics[f'{arm}.evaluation_seconds'] = record['evaluation_seconds']
++            metrics[f'{arm}.curve_seconds'] = record['train']['learning_curve_evaluation_seconds']
++            metrics[f'{arm}.wall_seconds'] = record['wall_seconds']
++            if arm == 'D3':
++                ratio = record['train']['stable_step_seconds']/baseline
++                metrics['D3.step_time_ratio'] = ratio
++                metrics['D3.cost_gate_passed'] = ratio <= 3
++                if ratio > 3:
++                    raise RuntimeError(f'E-0016 D3 cost stop: {ratio:.4f} times V2-03 (>3)')
++        passed = True
++    except Exception as exc:
++        failure = repr(exc)
++        raise
++    finally:
++        metrics['wall_seconds'] = time.monotonic()-start
++        (out/'manifest.json').write_text(json.dumps({
++            'status': 'complete' if passed else 'partial', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'metrics': metrics, 'failure': failure,
++            'artifacts': [{'path': str(p.resolve()), 'role': p.name} for p in out.rglob('*')
++                          if p.is_file() and p.name != 'manifest.json'],
++            'validator': {'name': 'v2r16-smoke-default-regression-and-cost-gate', 'passed': passed}}, indent=2)+'\n')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/v2r16_train.py b/src/v2r16_train.py
+new file mode 100644
+index 0000000..f5b3d80
+--- /dev/null
++++ b/src/v2r16_train.py
+@@ -0,0 +1,284 @@
++"""E-0016 D1/D2a/D2b/D3 runner. Execute only in an allocated GPU job.
++
++Schedule helpers deliberately have no torch dependency. Formal runs use the
++sealed 6000-step recipe; smoke output is explicitly excluded from evidence.
++"""
++from __future__ import annotations
++
++import argparse
++from collections import Counter
++from dataclasses import asdict
++from functools import partial
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import random
++import time
++
++from v1_data import derive_seed
++from v2_schedule import DATA_HASHES, ORDER_HASH_ENCODING, load_data, make_step_schedule
++
++ARMS = ('D1', 'D2a', 'D2b', 'D3')
++SCHEDULE_ARMS = (*ARMS, 'D4', 'D5')
++RESUME_SEED_RULE = ('base = derive_seed(20261029, "concat_loop_v2", "V2R16", arm, 0); '
++                    'epoch indices shuffled by random.Random(base + epoch), epochs 0..2')
++STANDARD = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
++
++
++def make_arm_schedule(rows, arm, steps=6000):
++    if arm not in SCHEDULE_ARMS:
++        raise ValueError('unsupported E-0016 arm')
++    if arm in ('D1', 'D3', 'D4'):
++        return make_step_schedule(rows, steps)
++    if type(steps) is not int or steps <= 0 or not rows or len(rows) % 8:
++        raise ValueError('positive integer steps and complete batch-8 rows required')
++    order = []
++    seed = derive_seed(20261029, 'concat_loop_v2', 'V2R16', arm, 0)
++    for epoch in range(3):
++        indices = list(range(len(rows)))
++        random.Random(seed + epoch).shuffle(indices)
++        order.extend(indices)
++    if steps * 8 > len(order):
++        raise ValueError('step budget exceeds three epochs')
++    batches = [order[i:i+8] for i in range(0, steps*8, 8)]
++    return {'order': order, 'batches': batches, 'steps': steps,
++            'tokens': sum(len(rows[i]['support_input_ids']) + len(rows[i]['question_input_ids'])
++                          for batch in batches for i in batch),
++            'warmup_steps': math.ceil(.05*steps), 'step_budget': steps,
++            'order_sha256': hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order)
++                                           .encode('utf-8')).hexdigest(),
++            'order_hash_encoding': ORDER_HASH_ENCODING, 'order_seed_rule': RESUME_SEED_RULE,
++            'order_seed': seed, 'order_arm': arm}
++
++
++def trim_smoke_schedule(schedule, rows, steps):
++    if type(steps) is not int or steps < 1:
++        raise ValueError('positive integer smoke steps required')
++    plan = dict(schedule)
++    plan['batches'] = schedule['batches'][:steps]
++    plan['steps'] = len(plan['batches'])
++    plan['tokens'] = sum(len(rows[i]['support_input_ids']) + len(rows[i]['question_input_ids'])
++                         for batch in plan['batches'] for i in batch)
++    plan['warmup_steps'] = math.ceil(.05*plan['steps'])
++    plan['smoke_steps'] = steps
++    return plan
++
++
++def file_record(path):
++    payload = Path(path).read_bytes()
++    return {'sha256': hashlib.sha256(payload).hexdigest(), 'bytes': len(payload)}
++
++
++def checkpoint_records(directory):
++    directory = Path(directory)
++    files = {str(p.relative_to(directory)): file_record(p) for p in sorted(directory.rglob('*')) if p.is_file()}
++    if not files:
++        raise ValueError('empty adapter checkpoint')
++    return files
++
++
++def resume_provenance(checkpoint, smoke):
++    checkpoint = Path(checkpoint).resolve()
++    manifest_path, metrics_path = checkpoint.parent/'manifest.json', checkpoint.parent/'metrics.json'
++    manifest = json.loads(manifest_path.read_text())
++    if (manifest.get('status') != 'complete' or manifest.get('arm') != 'D1' or
++            manifest.get('contract') != 'E-0016@1' or manifest.get('seed') != 0 or
++            manifest.get('validator', {}).get('passed') is not True):
++        raise ValueError('D2 requires a completed D1 adapter')
++    if not smoke and manifest.get('smoke_steps'):
++        raise ValueError('formal D2 cannot resume a smoke checkpoint')
++    files = checkpoint_records(checkpoint)
++    if files != manifest.get('checkpoint_files'):
++        raise ValueError('D1 checkpoint bytes differ from recorded provenance')
++    if set(files) != {'adapter.pt', 'config.json'}:
++        raise ValueError('only adapter parameters/config may be resumed')
++    metrics = json.loads(metrics_path.read_text())
++    reload = metrics.get('checkpoint_reload', {})
++    if reload.get('full_records_identical') is not True or reload.get('summaries_identical') is not True:
++        raise ValueError('D1 reload check did not pass')
++    if not smoke and metrics.get('train', {}).get('steps') != 6000:
++        raise ValueError('D1 actual training did not complete 6000 steps')
++    return {'checkpoint': str(checkpoint), 'checkpoint_files': files,
++            'source_manifest': file_record(manifest_path), 'source_metrics': file_record(metrics_path),
++            'adapter_only': True, 'optimizer_state_loaded': False,
++            'optimizer': 'fresh AdamW, weight_decay=0', 'warmup': 'fresh 300 steps for formal runs'}
++
++
++def evaluation_protocols(arm):
++    if arm == 'D3':
++        return {'hard': ('hard', STANDARD), 'soft': ('soft', STANDARD),
++                'marginal': ('marginal', ('normal', 'zero', 'shuffled', 'permuted'))}
++    protocols = {'standard': ('standard', STANDARD)}
++    if arm == 'D1':
++        protocols['teacher'] = ('standard', ('tf_normal', 'tf_shuffled', 'tf_wrong', 'zero'))
++    return protocols
++
++
++def run(args):
++    import torch
++    from transformers import AutoTokenizer
++    from calibrate import MODEL, REVISION, load_base
++    from v2_memory import config
++    from v2r_data import METADATA_SHA256, load_variant
++    from v2r16_memory import evaluate, freeze_for_address, train_forward
++    from v2_train import adapted, train, write_json
++
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=True)
++    if any(output.iterdir()):
++        raise ValueError('output must be empty')
++    started = time.monotonic()
++    result, passed, failure, provenance = {}, False, None, None
++    try:
++        train_rows = load_data(args.data_dir/'train.jsonl', 'train')
++        # Verify all released E=16 bytes, even though curves and final scoring use dev.
++        load_data(args.data_dir/'calibration.jsonl', 'calibration')
++        dev = load_data(args.data_dir/'dev.jsonl', 'dev')
++        e1_metadata, e1 = load_variant(args.e1_data_dir, 1, 'dev') if args.arm != 'D3' else (None, None)
++        schedule = make_arm_schedule(train_rows, args.arm, args.step_budget)
++        if args.smoke_steps:
++            schedule = trim_smoke_schedule(schedule, train_rows, args.smoke_steps)
++        if args.smoke_eval_limit:
++            dev = dev[:args.smoke_eval_limit]
++            if e1 is not None:
++                e1 = e1[:args.smoke_eval_limit]
++        public_schedule = {k: v for k, v in schedule.items() if k not in ('order', 'batches')}
++        write_json(output/'schedule.json', public_schedule)
++        if args.checkpoint:
++            provenance = resume_provenance(args.checkpoint, bool(args.smoke_steps))
++        tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++        pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
++        for rows in (dev, e1):
++            for row in rows or []:
++                ids = tokenizer.encode(' '+row['query']['head'], add_special_tokens=False)
++                if len(ids) != 1:
++                    raise ValueError('query subject is not a single token')
++                row['_subject_token_id'] = ids[0]
++        prior = Counter(r['query']['answer_token_id'] for r in train_rows).most_common(1)[0][0]
++        cfg = config('direct_hidden', 'soft_slot', 'F_out')
++        base = load_base()
++        result = {'arm': args.arm, 'config': asdict(cfg), 'lr': .003, 'seed': 0,
++                  'batch_size': 8, 'microbatch_size': 8, 'schedule': public_schedule,
++                  'smoke_only': bool(args.smoke_steps), 'eligible_as_evidence': not bool(args.smoke_steps),
++                  'resume_provenance': provenance}
++        protocols = evaluation_protocols(args.arm)
++
++        def evaluate_all(model, destination):
++            summaries, records = {}, {}
++            for name, (strategy, controls) in protocols.items():
++                summaries[name], records[name] = evaluate(model, dev, pad_id, destination/name, 'dev',
++                                                          controls, prior, strategy=strategy)
++            if e1 is not None:
++                summaries['e1'], records['e1'] = evaluate(
++                    model, e1, pad_id, destination/'e1', 'dev', ('normal', 'zero', 'shuffled'),
++                    e1_metadata['prior']['answer_token_id'])
++            return summaries, records
++
++        def curve_evaluator(model, rows, pad, destination, split, controls, prior_token):
++            strategy = 'hard' if args.arm == 'D3' else 'standard'
++            controls = ('tf_normal', 'zero', 'tf_shuffled') if args.arm == 'D1' else controls
++            return evaluate(model, rows, pad, destination, split, controls, prior_token, strategy=strategy)
++
++        with adapted(base, cfg=cfg, checkpoint=args.checkpoint) as model:
++            if asdict(model.config) != asdict(cfg):
++                raise ValueError('resume checkpoint does not match fixed E-0016 configuration')
++            if args.arm == 'D2a':
++                freeze_for_address(model)
++            else:
++                for parameter in model.adapter_parameters():
++                    parameter.requires_grad_(True)
++            side = model.adapters()[14].side
++            selected = sorted(n for n, p in side.named_parameters() if p.requires_grad)
++            result['requires_grad_parameter_names'] = selected
++            frozen_before = {n: p.detach().clone() for n, p in side.named_parameters() if not p.requires_grad}
++            forward = partial(train_forward, protocol='teacher' if args.arm == 'D1' else 'marginal')
++            options = {'forward_fn': forward} if args.arm in ('D1', 'D3') else {}
++            result['train'] = train(model, train_rows, schedule, pad_id, .003, 8, output, dev, prior,
++                                    curve_evaluator=curve_evaluator, **options)
++            if any(not torch.equal(p, frozen_before[n]) for n, p in side.named_parameters() if n in frozen_before):
++                raise AssertionError('frozen adapter parameters changed')
++            if args.arm == 'D2a':
++                seen = result['train']['parameter_names_with_nonzero_gradient']
++                if not seen or not set(seen) <= set(selected):
++                    raise AssertionError('D2a gradients outside addressing parameters or no nonzero gradient')
++            torch.cuda.synchronize()
++            tick = time.monotonic()
++            result['evaluation'], original_records = evaluate_all(model, output/'evaluation')
++            torch.cuda.synchronize()
++            result['evaluation_seconds'] = time.monotonic()-tick
++            tick = time.monotonic()
++            model.export_adapter(output/'adapter')
++            torch.cuda.synchronize()
++            result['checkpoint_save_seconds'] = time.monotonic()-tick
++        tick = time.monotonic()
++        with adapted(base, checkpoint=output/'adapter') as reloaded:
++            torch.cuda.synchronize()
++            load_seconds = time.monotonic()-tick
++            if asdict(reloaded.config) != asdict(cfg):
++                raise AssertionError('checkpoint reload configuration changed')
++            reload_metrics, reload_records = evaluate_all(reloaded, output/'reload')
++            if original_records != reload_records or result['evaluation'] != reload_metrics:
++                raise AssertionError('checkpoint reload changed full per-example records or summaries')
++            torch.cuda.synchronize()
++        result['checkpoint_reload'] = {'full_records_identical': True, 'summaries_identical': True,
++                                       'protocols': list(reload_records), 'load_seconds': load_seconds,
++                                       'load_and_evaluation_seconds': time.monotonic()-tick}
++        result['checkpoint_files'] = checkpoint_records(output/'adapter')
++        passed = True
++    except Exception as exc:
++        failure = {'type': type(exc).__name__, 'message': str(exc)}
++        raise
++    finally:
++        wall = time.monotonic()-started
++        result.update(wall_seconds=wall, mig_instance_hours=wall/3600, node_hours=wall/14400)
++        write_json(output/'metrics.json', result)
++        artifacts = [{'path': str(p.resolve()), 'role': p.name, **file_record(p)}
++                     for p in sorted(output.rglob('*')) if p.is_file() and p.name != 'manifest.json']
++        write_json(output/'manifest.json', {
++            'status': 'complete' if passed else 'failed', 'experiment': 'E-0016', 'contract': 'E-0016@1', 'arm': args.arm,
++            'spec_digest': os.environ.get('SR_SPEC_DIGEST'), 'model': MODEL, 'revision': REVISION,
++            'smoke_steps': args.smoke_steps, 'smoke_eval_limit': args.smoke_eval_limit,
++            'eligible_as_evidence': passed and not bool(args.smoke_steps),
++            'seed': 0, 'lr': .003, 'batch_size': 8, 'microbatch_size': 8,
++            'data_dir': str(args.data_dir.resolve()), 'data_sha256': DATA_HASHES,
++            'e1_data_dir': str(args.e1_data_dir.resolve()) if args.arm != 'D3' else None,
++            'e1_metadata_sha256': METADATA_SHA256[1] if args.arm != 'D3' else None,
++            'resume_provenance': provenance, 'schedule': result.get('schedule'),
++            'requires_grad_parameter_names': result.get('requires_grad_parameter_names'),
++            'checkpoint_files': result.get('checkpoint_files'), 'torch': torch.__version__,
++            'hardware': {'device': torch.cuda.get_device_name(0),
++                         'multiprocessors': torch.cuda.get_device_properties(0).multi_processor_count},
++            'cuda': torch.version.cuda, 'metrics': {'wall_seconds': wall, 'mig_instance_hours': wall/3600,
++                                                   'node_hours': wall/14400},
++            'artifacts': artifacts, 'failure': failure,
++            'validator': {'name': 'v2r16_train', 'passed': passed}})
++    return 0
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--arm', choices=ARMS, required=True)
++    parser.add_argument('--data-dir', type=Path, required=True)
++    parser.add_argument('--e1-data-dir', type=Path,
++                        default=Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0112-1/e1'))
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--step-budget', type=int, default=6000)
++    parser.add_argument('--smoke-steps', type=int, default=0)
++    parser.add_argument('--smoke-eval-limit', type=int, default=0)
++    parser.add_argument('--checkpoint', type=Path)
++    args = parser.parse_args()
++    if bool(args.checkpoint) != (args.arm in ('D2a', 'D2b')):
++        parser.error('only D2a/D2b require --checkpoint pointing to a completed D1 adapter')
++    if args.step_budget != 6000:
++        parser.error('E-0016 uses --step-budget 6000; shorten only with --smoke-steps')
++    if not 0 <= args.smoke_steps <= args.step_budget:
++        parser.error('smoke steps must be 0..6000')
++    if args.smoke_eval_limit and (not args.smoke_steps or args.smoke_eval_limit < 2):
++        parser.error('smoke eval limit >=2 requires --smoke-steps')
++    return run(args)
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
