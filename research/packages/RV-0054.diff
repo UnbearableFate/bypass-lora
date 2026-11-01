@@ -1,0 +1,211 @@
+diff --git a/src/test_e0017_seeds.py b/src/test_e0017_seeds.py
+index 169f1f3..59529a4 100644
+--- a/src/test_e0017_seeds.py
++++ b/src/test_e0017_seeds.py
+@@ -2,6 +2,7 @@
+ give new ones, and the D5 start run must carry the expected seed. The released-data
+ checks read train splits only; the initialization check needs a GPU allocation."""
+ import json
++from pathlib import Path
+ import random
+ import shutil
+ 
+@@ -67,22 +68,70 @@ def test_released_data_seed_zero_reproduces_the_recorded_r1_and_d5_orders():
+     assert all(p['warmup_steps'] == 300 and p['steps'] == 6000 for p in seeded.values())
+ 
+ 
+-def test_start_run_provenance_checks_the_recorded_seed(tmp_path):
+-    import v2r16_isolated as runner
+-    from v2_memory import config
+-    cfg = config('direct_hidden', 'soft_slot', 'F_out')
+-    copy = tmp_path/'r1'
++def r1_copy(tmp_path, runner, name='r1', **manifest_changes):
++    copy = tmp_path/name
+     (copy/runner.ARM_DIR).mkdir(parents=True)
+     shutil.copytree(runner.R1_RUN/runner.ARM_DIR/'adapter', copy/runner.ARM_DIR/'adapter')
+     shutil.copy(runner.R1_RUN/'metrics.json', copy/'metrics.json')
+     manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
+-    (copy/'manifest.json').write_text(json.dumps(dict(manifest, seed=1)))
+-    assert runner.r1_provenance(copy, cfg, 1)['start_seed'] == 1
++    (copy/'manifest.json').write_text(json.dumps(dict(manifest, **manifest_changes)))
++    return copy
++
++
++def test_start_run_provenance_checks_the_recorded_seed(tmp_path):
++    import v2r16_isolated as runner
++    from v2_memory import config
++    cfg = config('direct_hidden', 'soft_slot', 'F_out')
++    copy = r1_copy(tmp_path, runner, seed=1)
++    pin = runner.R1_ADAPTER_SHA256
++    assert runner.r1_provenance(copy, cfg, 1, adapter_sha256=pin)['start_seed'] == 1
+     with pytest.raises(ValueError, match='at seed 0'):
+-        runner.r1_provenance(copy, cfg)
++        runner.r1_provenance(copy, cfg, adapter_sha256=pin)
+     with pytest.raises(ValueError, match='at seed 2'):
+-        runner.r1_provenance(copy, cfg, 2)
+-    assert runner.r1_provenance(runner.R1_RUN, cfg, 0)['start_seed'] == 0
++        runner.r1_provenance(copy, cfg, 2, adapter_sha256=pin)
++    assert runner.r1_provenance(runner.R1_RUN, cfg, 0, adapter_sha256=pin)['start_seed'] == 0
++
++
++def test_start_adapter_is_bound_to_the_expected_producer_digest(tmp_path):
++    """RV-0050: an unchanged or byte-identical source passes; a different loadable
++    same-config adapter.pt, a wrong digest or no digest fails before loading."""
++    import v2r16_isolated as runner
++    from v2_memory import config
++    from v2r16_train import file_record
++    cfg = config('direct_hidden', 'soft_slot', 'F_out')
++    pin = runner.R1_ADAPTER_SHA256
++    assert file_record(runner.R1_RUN/runner.ARM_DIR/'adapter'/'adapter.pt')['sha256'] == pin
++    record = runner.r1_provenance(r1_copy(tmp_path, runner, 'same'), cfg, adapter_sha256=pin)
++    assert record['expected_adapter_sha256'] == pin and record['checkpoint_files']['adapter.pt']['sha256'] == pin
++    swapped = r1_copy(tmp_path, runner, 'swapped')
++    d5 = Path(RUNS)/'ATT-0159-1'/'run'/'adapter'
++    assert (d5/'config.json').read_bytes() == (swapped/runner.ARM_DIR/'adapter'/'config.json').read_bytes()
++    shutil.copy(d5/'adapter.pt', swapped/runner.ARM_DIR/'adapter'/'adapter.pt')
++    with pytest.raises(ValueError, match='expected producer digest'):
++        runner.r1_provenance(swapped, cfg, adapter_sha256=pin)
++    # The swapped source passes only with its own digest, which the job must pin explicitly.
++    own = file_record(d5/'adapter.pt')['sha256']
++    assert runner.r1_provenance(swapped, cfg, adapter_sha256=own)['checkpoint_files']['adapter.pt']['sha256'] == own
++    for bad in (None, '', pin.upper(), pin[:-1], 'x'*64):
++        with pytest.raises(ValueError, match='expected lowercase hex sha256'):
++            runner.r1_provenance(runner.R1_RUN, cfg, adapter_sha256=bad)
++
++
++def test_cli_requires_a_pinned_digest_for_other_start_runs(monkeypatch, tmp_path):
++    import sys
++    import v2r16_isolated as runner
++    called = []
++    monkeypatch.setattr(runner, 'run', lambda args: called.append(args) or 0)
++    common = ['v2r16_isolated.py', '--arm', 'D5', '--data-dir', V2, '--output', str(tmp_path/'out'),
++              '--experiment', 'E-0017', '--seed', '1']
++    monkeypatch.setattr(sys, 'argv', common + ['--r1-seed', '1', '--r1-run', str(tmp_path/'stage-a')])
++    with pytest.raises(SystemExit):
++        runner.main()
++    monkeypatch.setattr(sys, 'argv', common + ['--r1-seed', '1', '--r1-run', str(tmp_path/'stage-a'),
++                                               '--r1-adapter-sha256', 'a'*64])
++    assert runner.main() == 0 and called[-1].r1_adapter_sha256 == 'a'*64
++    monkeypatch.setattr(sys, 'argv', common)  # ATT-0122-1 defaults to the trusted R1 digest
++    assert runner.main() == 0 and called[-1].r1_adapter_sha256 == runner.R1_ADAPTER_SHA256
+ 
+ 
+ def test_adapter_initialization_follows_the_seed():
+diff --git a/src/test_v2r16_isolated.py b/src/test_v2r16_isolated.py
+index 5f2dee6..44ce1b4 100644
+--- a/src/test_v2r16_isolated.py
++++ b/src/test_v2r16_isolated.py
+@@ -188,7 +188,7 @@ def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
+     import shutil
+     import v2r16_isolated as runner
+     cfg = config('direct_hidden', 'soft_slot', 'F_out')
+-    record = runner.r1_provenance(runner.R1_RUN, cfg)
++    record = runner.r1_provenance(runner.R1_RUN, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)
+     assert set(record['checkpoint_files']) == {'adapter.pt', 'config.json'}
+     assert record['adapter_only'] and record['optimizer_state_loaded'] is False
+     copy = tmp_path/'r1'
+@@ -198,9 +198,9 @@ def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
+     manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
+     (copy/'manifest.json').write_text(json.dumps(dict(manifest, smoke_steps=20)))
+     with pytest.raises(ValueError, match='completed formal'):
+-        runner.r1_provenance(copy, cfg)
++        runner.r1_provenance(copy, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)
+     (copy/'manifest.json').write_text(json.dumps(manifest))
+-    assert runner.r1_provenance(copy, cfg)['checkpoint_files'] == record['checkpoint_files']
++    assert runner.r1_provenance(copy, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)['checkpoint_files'] == record['checkpoint_files']
+     (copy/runner.ARM_DIR/'adapter'/'optimizer.pt').write_bytes(b'x')
+     with pytest.raises(ValueError, match='only adapter'):
+-        runner.r1_provenance(copy, cfg)
++        runner.r1_provenance(copy, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)
+diff --git a/src/v2r16_isolated.py b/src/v2r16_isolated.py
+index e31f481..3da617f 100644
+--- a/src/v2r16_isolated.py
++++ b/src/v2r16_isolated.py
+@@ -35,16 +35,24 @@ from v2r16_train import STANDARD, checkpoint_records, file_record, make_arm_sche
+ 
+ ARMS = ('D4', 'D5')
+ R1_RUN = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0122-1')
++# ATT-0122-1's adapter.pt as loaded by E-0016 D5 (ATT-0159-1, RES-0153) while the replay of
++# R1's recorded dev predictions was still exact (0/1000 mismatches): the trusted R1 digest.
++R1_ADAPTER_SHA256 = '9ea30adb36d914fb09e689fddbb0f27d91e32323231ac359245fcbd3024eb616'
+ ARM_DIR = 'direct_hidden.soft_slot.F_out'
+ CONTEXT_CONTROLS = ('normal', 'oracle_value')  # descriptive comparison with E-0015 only
+ CALIBRATION_CONTROLS = ('normal', 'zero', 'shuffled')  # E-0017 descriptive only
+ EXPERIMENTS = {'E-0016': 'E-0016@1', 'E-0017': 'E-0017@1'}
+ 
+ 
+-def r1_provenance(run, cfg, seed=0):
++def r1_provenance(run, cfg, seed=0, *, adapter_sha256):
+     """A run of the R1 recipe (an E-0014/E-0017 v2_train run, e.g. ATT-0122-1 at seed 0):
+     completed, formal, E=1 training of the fixed configuration at the expected seed,
+-    6000 steps, reload-identical; adapter files are hashed here."""
++    6000 steps, reload-identical. Its adapter.pt must have the expected sha256, which comes
++    from outside the source directory (R1_ADAPTER_SHA256, or the digest a stage-A producer
++    job published when it ended, pinned in the continuation job)."""
++    if not (isinstance(adapter_sha256, str) and len(adapter_sha256) == 64
++            and all(c in '0123456789abcdef' for c in adapter_sha256)):
++        raise ValueError('an expected lowercase hex sha256 of the start adapter.pt is required')
+     manifest_path, metrics_path = run/'manifest.json', run/'metrics.json'
+     manifest = json.loads(manifest_path.read_text())
+     if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
+@@ -62,7 +70,10 @@ def r1_provenance(run, cfg, seed=0):
+     files = checkpoint_records(run/ARM_DIR/'adapter')
+     if set(files) != {'adapter.pt', 'config.json'}:
+         raise ValueError('only adapter parameters/config may be resumed')
++    if files['adapter.pt']['sha256'] != adapter_sha256:
++        raise ValueError('start adapter.pt differs from the expected producer digest')
+     return {'checkpoint': str((run/ARM_DIR/'adapter').resolve()), 'checkpoint_files': files, 'start_seed': seed,
++            'expected_adapter_sha256': adapter_sha256,
+             'source_manifest': file_record(manifest_path), 'source_metrics': file_record(metrics_path),
+             'adapter_only': True, 'optimizer_state_loaded': False,
+             'optimizer': 'fresh AdamW, weight_decay=0', 'warmup': 'fresh 300 steps for formal runs'}
+@@ -73,8 +84,9 @@ def replay_record(comparison, episodes):
+ 
+     The episode identities and order must match (an error otherwise). Numerical prediction
+     and NLL differences are recorded, not failures: a cross-job difference that the MIG slice
+-    explains is noted and the run continues (D-0018, D-0019). Adapter identity is enforced
+-    by the provenance hashes, and the same-job save/reload check stays exact."""
++    explains is noted and the run continues (D-0018, D-0019). The start weights are bound by
++    r1_provenance to an expected adapter.pt digest from outside the source directory, checked
++    before loading and again after it; the same-job save/reload check stays exact."""
+     normal = comparison['normal']
+     if normal['same_episode_order'] is not True or normal['episodes'] != episodes:
+         raise AssertionError('start-run replay does not cover the same dev episodes in the same order')
+@@ -123,7 +135,7 @@ def run(args):
+         cfg = config('direct_hidden', 'soft_slot', 'F_out')
+         checkpoint = None
+         if args.arm == 'D5':
+-            provenance = r1_provenance(args.r1_run, cfg, args.r1_seed)
++            provenance = r1_provenance(args.r1_run, cfg, args.r1_seed, adapter_sha256=args.r1_adapter_sha256)
+             checkpoint = args.r1_run/ARM_DIR/'adapter'
+         tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+         pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+@@ -173,6 +185,8 @@ def run(args):
+         with adapted(base, cfg=cfg, checkpoint=checkpoint) as model:
+             if asdict(model.config) != asdict(cfg):
+                 raise ValueError('checkpoint does not match the fixed E-0016 configuration')
++            if checkpoint is not None and checkpoint_records(checkpoint) != provenance['checkpoint_files']:
++                raise ValueError('start adapter files changed between the digest check and loading')
+             for parameter in model.adapter_parameters():
+                 parameter.requires_grad_(True)
+             model.eval()
+@@ -269,6 +283,8 @@ def main():
+     parser.add_argument('--experiment', choices=tuple(EXPERIMENTS), default='E-0016')
+     parser.add_argument('--r1-run', type=Path, default=R1_RUN, help='D5 start: a run of the R1 recipe')
+     parser.add_argument('--r1-seed', type=int, default=0, help='the seed the start run must have recorded')
++    parser.add_argument('--r1-adapter-sha256', default=None,
++                        help='expected sha256 of the start adapter.pt (required unless --r1-run is ATT-0122-1)')
+     parser.add_argument('--seed', type=int, default=0, help='D5 continuation order seed')
+     parser.add_argument('--step-budget', type=int, default=6000)
+     parser.add_argument('--smoke-steps', type=int, default=0)
+@@ -280,6 +296,10 @@ def main():
+         parser.error('smoke steps must be 0..6000')
+     if args.smoke_eval_limit and (not args.smoke_steps or args.smoke_eval_limit < 2):
+         parser.error('smoke eval limit >=2 requires --smoke-steps')
++    if args.r1_adapter_sha256 is None:
++        if args.arm == 'D5' and args.r1_run != R1_RUN:
++            parser.error('--r1-adapter-sha256 is required for a start run other than ATT-0122-1')
++        args.r1_adapter_sha256 = R1_ADAPTER_SHA256
+     if args.experiment == 'E-0016' and (args.seed or args.r1_seed or args.r1_run != R1_RUN):
+         parser.error('E-0016 is D4/D5 at seed 0 from ATT-0122-1')
+     if args.experiment == 'E-0017' and (args.arm != 'D5' or args.seed not in (1, 2) or args.r1_seed not in (0, args.seed)):
