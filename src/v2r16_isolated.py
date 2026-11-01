@@ -25,13 +25,13 @@ from pathlib import Path
 import time
 
 from v2_schedule import DATA_HASHES, load_data
+from v2r16_analysis import h3_gate
 from v2r16_train import STANDARD, checkpoint_records, file_record, make_arm_schedule, trim_smoke_schedule
 
 ARMS = ('D4', 'D5')
 R1_RUN = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0122-1')
 ARM_DIR = 'direct_hidden.soft_slot.F_out'
 CONTEXT_CONTROLS = ('normal', 'oracle_value')  # descriptive comparison with E-0015 only
-H3 = {'em_margin': .10, 'target_weight': .125}
 
 
 def r1_provenance(run, cfg):
@@ -61,19 +61,12 @@ def r1_provenance(run, cfg):
 
 
 def gate(summary):
-    """E-0010@2 H3 thresholds under the isolated write (new protocol, reported apart)."""
-    normal, zero, shuffled = (summary[m] for m in ('normal', 'zero', 'shuffled'))
-    weight = normal['diagnostics'].get('address.target_weight')
-    margin = normal['em'] - max(zero['em'], shuffled['em'])
-    checks = {'em_margin': margin, 'em_margin_pass': margin >= H3['em_margin'],
-              'nll_pass': normal['nll'] < min(zero['nll'], shuffled['nll']),
-              'target_weight_all_positions': weight,
-              'target_weight_pass': weight is not None and weight >= H3['target_weight'],
-              'target_weight_last_position': normal['last_position']['target_weight_mean'],
-              'correct': {m: summary[m]['correct_count'] for m in ('normal', 'zero', 'shuffled')},
-              'count': normal['count']}
-    checks['passed'] = checks['em_margin_pass'] and checks['nll_pass'] and checks['target_weight_pass']
-    return checks
+    """E-0010@2 H3 under the isolated write (new protocol, reported apart): the reviewed
+    exact-fraction v2r16_analysis.h3_gate on correct counts, all-question-position target
+    weight; the last-position weight is reported alongside."""
+    result = h3_gate(summary, summary['normal']['diagnostics'].get('address.target_weight'))
+    result['target_weight_last_position'] = summary['normal']['last_position']['target_weight_mean']
+    return result
 
 
 def run(args):
@@ -183,7 +176,9 @@ def run(args):
                 name: gate({m: result['evaluation']['isolated'][m]['position_strata'][name]
                             for m in ('normal', 'zero', 'shuffled')})
                 for name in ('position0', 'position1plus')
-                if all(name in result['evaluation']['isolated'][m]['position_strata'] for m in ('normal', 'zero', 'shuffled'))}
+                if all(name in result['evaluation']['isolated'][m]['position_strata'] for m in ('normal', 'zero', 'shuffled'))
+                and result['evaluation']['isolated']['normal']['position_strata'][name]['diagnostics']
+                .get('address.target_weight') is not None}
             tick = time.monotonic()
             model.export_adapter(output/'adapter')
             torch.cuda.synchronize()

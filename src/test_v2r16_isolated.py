@@ -161,22 +161,27 @@ def test_a_few_optimizer_steps_lower_the_isolated_loss_and_time_them(base, tok):
 
 # ---- D4/D5 runner pieces -------------------------------------------------------------
 
-def summary(em, nll, weight=None, last_weight=None, correct=0):
-    return {'em': em, 'nll': nll, 'count': 1000, 'correct_count': correct,
+def summary(correct, nll, weight=None, last_weight=None, count=1000):
+    return {'em': correct / count, 'nll': nll, 'count': count, 'correct_count': correct,
             'diagnostics': {} if weight is None else {'address.target_weight': weight},
             'last_position': {'target_weight_mean': last_weight}}
 
 
 def test_isolated_gate_uses_the_e0010_h3_thresholds():
     import v2r16_isolated as runner
-    passing = {'normal': summary(.30, 3.0, .2, .3, 300), 'zero': summary(.01, 9.0), 'shuffled': summary(.19, 4.0)}
+    passing = {'normal': summary(310, 3.0, .2, .3), 'zero': summary(10, 9.0), 'shuffled': summary(190, 4.0)}
     result = runner.gate(passing)
-    assert result['passed'] and abs(result['em_margin'] - .11) < 1e-12
-    assert result['correct'] == {'normal': 300, 'zero': 0, 'shuffled': 0}
-    assert result['target_weight_last_position'] == .3
-    assert not runner.gate(dict(passing, shuffled=summary(.21, 4.0)))['passed']      # margin < 10 pp
-    assert not runner.gate(dict(passing, shuffled=summary(.01, 2.9)))['passed']      # NLL not below
-    assert not runner.gate(dict(passing, normal=summary(.30, 3.0, .124)))['passed']  # all-position weight
+    assert result['passed'] and result['em_margin_fraction'] == '3/25'
+    assert result['counts'] == {'normal': 310, 'zero': 10, 'shuffled': 190}
+    assert result['target_weight'] == .2 and result['target_weight_last_position'] == .3
+    # Exactly 10 pp passes (exact fractions on correct counts; 0.3 - 0.2 < 0.1 in floats); 9.9 pp fails.
+    boundary = {'normal': summary(300, 3.0, .2), 'zero': summary(0, 9.0), 'shuffled': summary(200, 4.0)}
+    assert runner.gate(boundary)['passed'] and runner.gate(boundary)['em_pass']
+    assert not runner.gate(dict(boundary, normal=summary(299, 3.0, .2)))['passed']
+    assert not runner.gate(dict(passing, shuffled=summary(190, 2.9)))['passed']      # NLL not below
+    assert not runner.gate(dict(passing, normal=summary(310, 3.0, .124)))['passed']  # all-position weight
+    with pytest.raises(ValueError):
+        runner.gate(dict(passing, zero=summary(10, 9.0, count=999)))                   # misaligned counts
 
 
 def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
