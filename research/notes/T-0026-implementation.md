@@ -122,6 +122,62 @@ Every quantity is an exact Fraction, computed from the per-record floats and rep
   - 95 tests passed;
   - a 4-rows-per-hop smoke on ATT-0234-1 completed and wrote all reads, oracles, controls and the mapping.
 
+## 5. Rule 4 repair: successor-slot CE S4 pilot (`src/v3_succ.py`, `src/test_v3_succ.py`; D-0035)
+The diagnostic (ATT-0253-1, EV-0116) met (a), (b) and (c), so D-0034 selects this repair. All definitions follow D-0035.
+
+### Arms
+- `succ --labels correct` and `succ --labels permuted`.
+- Both start from ATT-0196-1, with readiness ATT-0227-1, in the V3-03 configuration (S = 4).
+- Both use `v3_schedule(train, 'train', steps=2000)`: the first 16,000 episodes of the stage-A order, 100 warmup steps, LR 3e-3, and the shared schedule shape over 2,000 steps.
+- Init and order are identical. The only difference is the labels.
+
+### Successor CE (`succ_forward`)
+- The answer CE is `train_forward`'s standard path under the isolated write. With no labels, the loss and logits are exactly equal to it (test).
+- The answer-position loop is replayed with gradients through `v3_train.replay`, on the compact snapshot of the same support graph. Every step checks that it matches the native side output at that position within the loop tolerance; a mismatch raises.
+- Each step's slot logits are `slot_read`'s logits; their softmax is the read weight. Labels (`successor_labels`) cover steps s = 2..min(4, h) with `path.fact_indices[s-1]`. Step 1 and steps beyond h are unlabelled.
+- The loss is answer CE + 1 × the mean −log_softmax over the batch's labelled pairs; a batch without labels adds 0.
+- Arms other than the shared slot loop are rejected.
+- Permuted labels: pi(label), where pi is a seeded uniform derangement of the episode's slots, `derive_seed(SEED, 'V3', 'succ', 'permuted-successor', 0, episode_id)`. The label count and positions are unchanged.
+- The training tally is written to `successor.jsonl`, and the label count seen in training must equal the schedule's count.
+
+### Evaluation and reload
+- T2 dev at S = 4 with normal, zero, shuffled and permuted reads (`evaluate_arm`). The checkpoint is saved and reloaded, and the records must be identical.
+- `pilot` holds the dev hop counts and the exact hop-2 mean of `path_weight_last[1][1]`, the step-2 weight on path fact 2.
+
+### Comparison (`compare`)
+- Both pilots are validated:
+  - complete and formal;
+  - the right labels on each side;
+  - unchanged artifacts;
+  - the same start;
+  - the pilot summary recomputed from the saved normal records;
+  - equal schedule, config, variant, data and label count.
+- `decide` then applies D-0035 with exact fractions:
+  - (i) primary EM, correct − permuted, ≥ +3 pp;
+  - (ii) hop-2 step-2 weight on fact 2 ≥ 1/8 for correct and < 1/8 for permuted.
+- Hop 1 is reported descriptively.
+
+### Tests
+- CPU:
+  - labels per hop;
+  - the derangement (no fixed points, seeded, per episode);
+  - label counts;
+  - every D-0035 boundary at equality;
+  - the pilot summary;
+  - `compare` on synthetic runs: it accepts a valid pair and rejects swapped roles, another start, or a changed artifact.
+- GPU (D5 stand-in):
+  - the pilot schedule is the first 2,000 batches of the stage-A schedule;
+  - with no labels, the forward equals `train_forward`;
+  - the successor CE equals the CE computed from the evaluator's own per-step weights;
+  - the CE reaches Rq;
+  - permuted labels have the same count but a different loss;
+  - V3-06 is rejected.
+- Pre-review job ATT-0254-1/RES-0226 (not evidence):
+  - 13 tests passed;
+  - 4-step smokes of both arms trained, evaluated and reloaded with identical records;
+  - stable step 0.32–0.34 s;
+  - the answer-position replay error was at most 1e-6 relative.
+- Known cosmetic issue: a PyTorch warning about `float()` on a tensor that requires grad, at the replay check. The value is only compared against the tolerance.
+
 ## Not yet implemented
 - V3-05b: not needed under A3.
-- The repair arm, if the D-0034 mapping selects one: it will be implemented and reviewed before it runs.
