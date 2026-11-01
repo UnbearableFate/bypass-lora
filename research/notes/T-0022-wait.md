@@ -1,4 +1,35 @@
-# T-0022 current continuation: RV-0060 low fixes in PBS ATT-0197-1
+# T-0022 current continuation: awaiting focused recheck RV-0062
+
+This section supersedes all historical sections below. No PBS job is pending.
+ATT-0197-1/PBS3768755/RES-0191 is complete and passed:408regressions,zero failures/
+skips,and all three actual RB1-02/01/07 CLI smoke manifests complete with
+reload.identical=true and checked lock-schema/monitor/checkpoint inventory.
+Allocation verified on mg1098;profile metadata2g,ordinary nonfatal policy.
+Exact162MIGsecond usage and result imported once. All8T0022attempts total
+1918MIGseconds=0.1331944444node_h;no pending usage.
+
+Updated PBS cost-report output is in ATT0197/cost-report;committed JSON/MD
+are byte-identical. RBc forecast0.509314-0.679085node_h uses one load/eval,no
+export/reload. Prefix maximum0.243899s and RB1 core2.443961node_h are unchanged;
+future intervention/analysis/planning costs remain additional before release.
+
+The one focused recheck RV-0062 (second/final in RV0060round) was requested and
+assigned reviewer-3. Scope frozen at de4443b130653bfbd6c1418ce69d582ee75b57af;
+executed runtime source183ad685785b8249d8a1c679a09e8dd5280d8cd5. Do not change
+any scoped code/config/dependency/evidence file before the answer. Read
+T-0022-review-followup.md for all four fixes and exact runtime/artifact refs.
+
+On review answer:read research/reviews/RV-0062.md. If passing,add one diagnostic
+evidence supporting H-0017's implementation invariants with all relevant ATT/RES
+refs,then finalize delivery notes (408checks,D0026/27diagnostics,cost table,A2SHA,
+both RVs,EV id and actual0.1331944444node_h) and deliverT0022. If findings remain,
+follow the task's standing review-round rule or ask coordinator as applicable.
+No RBc/RB1 release or official/RB confirmation evaluation is authorized here.
+Do not poll inbox or sleep;the reviewer/coordinator will resume this session.
+
+---
+
+# Historical continuation before ATT-0197-1 completed
 
 This section supersedes every section below. RV-0060 passed with four lows;
 coordinator MSG-0599 authorized fixing all four then one focused recheck. Code
