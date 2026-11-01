@@ -61,3 +61,20 @@ RV-0017 passes under low-only rule: one low finding, no medium/high. Fixed weigh
 PBS timing report at `/work/xg24i002/x10041/bypass-lora/runs/ATT-0068-1/smoke-cost-report.json`, containing all12 arms. Formal6000step estimate1467.2–1543.6seconds, 1.5x requests2201–2316seconds (~36.7–38.6min, short-mig needed). Includes full dev/calibration six-control final eval, dev curves and reload,10s fixed allowance. Batch-count extrapolation from smoke16rows each, not full-run timing. Initial calibration estimates352–378seconds support9min requests.
 
 RV-0019 PASS,0findings (MSG0187): source d8cc3d4 resolves RV0017 low reporting defect; focused ATT0068-1 inspected. No training rerun required. Historical f7c4d2b diagnostic maxima retain disclosed weighted-batch-max meaning. Formal trainer now reviewed; calibration selection and final delivery still pending.
+
+## Initial calibration results and required endpoint extension
+
+All six initial jobs ended exit0; scheduler usage imported from `calibration-ended-observations.json`. Results ATT0061..66 map respectively RES0064..69; combined diagnostic EV0056. Source remains reviewed f7c4d2b training path; final reporting-only fix d8cc3d4 does not invalidate these results.
+
+Registered analysis ATT0070-1 / RES0070 / EV0057, source631f87e65157af1012326ffce0b1c78df10ecfe4, PBS3761647 exit0/wall1s. New src/v2_calibration_report.py verifies manifest, representative arm, full schedule/hash,300finite losses, reload and2048cal rows, then uses shared strict0.5% tie selector. Report `/work/xg24i002/x10041/bypass-lora/runs/ATT-0070-1/calibration-report.json` contains artifact hashes, all controls, gradient/clip and timing.
+
+|Backend|LR|normal NLL|zero NLL|shuffled NLL|normal EM|zero EM|shuffled EM|mean grad norm|clip fraction|
+|---|---|---|---|---|---|---|---|---|---|
+|kernel|0.0003|5.138646|9.233152|5.139059|0.015137|0.008301|0.014160|6.900588|1.0|
+|kernel|0.001|4.704182|9.230779|4.703015|0.017090|0.008789|0.018555|3.562330|1.0|
+|kernel|0.003|4.627133|9.230779|4.628094|0.019531|0.008789|0.018066|1.673319|0.98|
+|soft|0.0003|5.130321|9.230779|5.130886|0.011719|0.008789|0.013672|7.096797|1.0|
+|soft|0.001|4.682995|9.233152|4.684171|0.019531|0.008301|0.015137|3.631211|1.0|
+|soft|0.003|4.627491|9.230779|4.628111|0.014160|0.008789|0.017090|1.733944|0.993333|
+
+Both provisional selections0.003 are upper endpoints; E0009 requires one extension to0.01 for each. ATT0071-1(kernel,PBS3761654) and ATT0072-1(soft,PBS3761655) submitted source631f87e (training same as d8cc3d4, reviewed coverage confirmed by register). Same300steps/200170tokens/full evaluation,9min request based on measured initial5.5–6min. Notify N-20261101-172903-22af covers both. Final selection must use initial6+extension2, `v2_calibration_report.py --final`; no further extensions after this pair. Main original-calibration normal/shuffled metrics are close but no H0003 conclusion belongs to calibration.
