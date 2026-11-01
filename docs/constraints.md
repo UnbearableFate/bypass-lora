@@ -23,7 +23,7 @@ where the CLI reads them.
   - 旧证据 [plan §18；用户 2026-11-01]：UnbearableFate/LoopLora @ `a255e814740ff85ab3b4ec4836c88f0a8f802b2d`（GitHub 公开仓库），只作只读审计与参考。旧 S-RE checkpoint 不在本文件系统上，按计划 fallback 跳过冻结 S-RE 读算子诊断（plan §6.1–6.2，H-0007）。不得声称旧指标已在本地复现。
   - 计算 [用户 2026-11-01]：只通过 miyabi-mcp 向 Miyabi-G PBS（group xg24i002）提交作业。登录节点只做控制工作：编辑、记录、暂存小型源码快照、依赖解析与下载。测试、冒烟检查、训练、评估与数据分析都放进作业，即使输入很小也不在登录节点运行。
 - Resource ceiling (per experiment / per batch / total; units such as CPU-h, GPU-h, node-h; queues):
-  - V0+V1 总算力 [用户 2026-11-01]：≤ **200 node·h**（Miyabi-G；MIG 作业按 miyabi-mcp 账本的实际计量计入）。达到 80% 时协调者先报告，超出前必须由用户同意。
+  - V0+V1 总算力 [用户 2026-11-01]：≤ **200 node·h**（Miyabi-G）。整节点作业按实际 node·h 计；MIG 队列作业按 1/4 计，即 node·h = miyabi-mcp 账本的 mig_instance_hours × 0.25 [用户 2026-11-01]。达到 80% 时协调者先报告，超出前必须由用户同意。
   - 训练 tokens [用户 2026-11-01]：取消训练 tokens 上限（原为 V0+V1 ≤ 18M 非 padding 输入 tokens，来自 plan §6.4、§7.3、§14）。tokens 仍按样本呈现次数如实记录，但不再作为资源上限；算力只受上面的 node·h 上限约束。[协调者默认] 实验契约中每个 arm 的 token 数属于实验设计（各 arm 相同的样本预算），不是资源上限，改动按契约修订处理。
   - 每个作业 [协调者默认；用户 2026-11-01：资源只看 node·h 上限]：单节点；walltime 按实测 × 1.5 申请；遵守队列自身的时限（如 debug 队列 ≤ 30 min）；作业不得跨越 2026-11-25 09:00 JST 的计划停机。不再另设单作业时长或并发作业数的上限。
   - 预算核算 [plan §14.4]：每个 arm 实测加载、稳定训练步、评估与保存时间；node·h 只按实测换算。时间不足时统一缩短所有 arm 的步数，不允许各 arm 停在不同的样本预算上。
