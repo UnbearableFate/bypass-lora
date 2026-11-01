@@ -251,26 +251,90 @@ def decide(correct, permuted):
                      if i and ii else 'the repair route stops (AD-0003 drop condition)')}
 
 
-def validate_pilot(run, labels, start):
-    """A complete formal pilot of the given labels from the same start; returns its summary."""
+def pilot_reference():
+    """Trusted D-0035 reference from the pinned released T2 data: digests, the 2,000-step prefix
+    schedule (order, tokens), the label counts of both arms, the ordered dev identities
+    (episode_id, hop, target) and the expected V3-03 configuration and variant."""
+    from v2_memory import config
+    from v3_eval import load_released_data
+    from v3_loop import T2_DATA, T2_METADATA_SHA256
+    metadata, train_rows = load_released_data(T2_DATA, T2_METADATA_SHA256, 'train')
+    _, dev = load_released_data(T2_DATA, T2_METADATA_SHA256, 'dev')
+    schedule = v3.v3_schedule(train_rows, 'train', steps=PILOT_STEPS)
+    return {'metadata_sha256': T2_METADATA_SHA256, 'train_sha256': metadata['splits']['train']['sha256'],
+            'dev_sha256': metadata['splits']['dev']['sha256'], 'order_sha256': schedule['order_sha256'],
+            'tokens': schedule['tokens'], 'warmup_steps': schedule['warmup_steps'],
+            'labels': {name: label_counts(train_rows, schedule, name) for name in LABELS},
+            'config': json.loads(json.dumps(asdict(v3.arm_config(config('direct_hidden', 'soft_slot', 'F_out'), ARM)))),
+            'variant': asdict(v3.arm_variant(ARM)),
+            'dev': [(r['episode_id'], r['axes']['hop'], r['query']['answer_token_id']) for r in dev]}
+
+
+def _finite_weights(record, steps):
+    weights = record.get('path_weight_last')
+    return (isinstance(weights, list) and len(weights) == steps
+            and all(isinstance(step, list) and len(step) == record['hop']
+                    and all(type(w) is float and math.isfinite(w) for w in step) for step in weights))
+
+
+def validate_pilot(run, labels, start, reference):
+    """One formal D-0035 pilot of the given labels, bound to the readiness-checked start, the
+    trusted reference (configuration, 2,000-step prefix, label counts, released data, dev
+    identities) and its producer manifest. Returns (summary recomputed from the records, metrics)."""
     from v2r16_train import file_record
     run = Path(run)
     manifest = json.loads((run/'manifest.json').read_text())
     if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
-            or manifest.get('contract') != v3.CONTRACT or manifest.get('command') != 'succ'
-            or manifest.get('labels') != labels or manifest.get('smoke_only') is not False
+            or manifest.get('contract') != v3.CONTRACT or manifest.get('experiment') != v3.EXPERIMENT
+            or manifest.get('command') != 'succ' or manifest.get('labels') != labels
+            or manifest.get('arm') != f'{ARM}-succ-{labels}' or manifest.get('smoke_only') is not False
             or manifest.get('eligible_as_evidence') is not True):
         raise ValueError(f'{run} is not a complete formal {labels} pilot')
-    for artifact in manifest['artifacts']:
-        if file_record(Path(artifact['path'])) != {k: artifact[k] for k in ('sha256', 'bytes')}:
+    for artifact in manifest.get('artifacts', []):
+        if file_record(Path(artifact['path'])) != {k: artifact.get(k) for k in ('sha256', 'bytes')}:
             raise ValueError(f'artifact changed: {artifact["path"]}')
+    steps = v3.ARMS[ARM]['steps']
+    records_path = run/f'eval-s{steps}'/'dev.normal.jsonl'
+    for path in (run/'metrics.json', records_path):  # exactly one producer binding per consumed path
+        v3._verified_artifact(manifest, path)
     metrics = json.loads((run/'metrics.json').read_text())
-    if metrics.get('start') != start:
-        raise ValueError(f'{run} was not trained from the analysis start')
-    normal = [json.loads(line) for line in (run/'eval-s4'/'dev.normal.jsonl').read_text().splitlines()]
+    if (metrics.get('experiment') != v3.CONTRACT or metrics.get('command') != 'succ' or metrics.get('labels') != labels
+            or metrics.get('arm') != ARM or metrics.get('coefficient') != COEFFICIENT
+            or metrics.get('decision') != 'D-0035' or metrics.get('smoke_only') is not False):
+        raise ValueError(f'{run}: not a D-0035 {labels} pilot')
+    if json.loads(json.dumps(metrics.get('config'))) != reference['config'] or metrics.get('variant') != reference['variant']:
+        raise ValueError(f'{run}: configuration or variant differs from V3-03')
+    if not start.get('readiness') or metrics.get('start') != json.loads(json.dumps(v3._jsonable(start))):
+        raise ValueError(f'{run} was not trained from the readiness-checked analysis start')
+    schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
+    if (schedule.get('steps') != PILOT_STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
+            or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']
+            or schedule.get('warmup_steps') != reference['warmup_steps']
+            or train.get('steps') != PILOT_STEPS or train.get('tokens') != reference['tokens']):
+        raise ValueError(f'{run}: not the completed 2,000-step prefix schedule')
+    if (metrics.get('successor_labels') != reference['labels'][labels]
+            or metrics.get('successor_loss', {}).get('labels_seen') != reference['labels'][labels]['total']):
+        raise ValueError(f'{run}: successor labels differ from the reference count')
+    data = metrics.get('data', {})
+    if (data.get('metadata_sha256') != reference['metadata_sha256'] or data.get('dev_sha256') != reference['dev_sha256']
+            or data.get('train_sha256') != reference['train_sha256'] or data.get('dev_rows') != len(reference['dev'])):
+        raise ValueError(f'{run}: not the pinned released T2 data')
+    reload = metrics.get('checkpoint_reload', {})
+    if reload.get('full_records_identical') is not True or reload.get('steps') != steps:
+        raise ValueError(f'{run}: reload check missing')
+    normal = [json.loads(line) for line in records_path.read_text().splitlines()]
+    if [(r.get('episode_id'), r.get('hop'), r.get('target')) for r in normal] != [tuple(x) for x in reference['dev']]:
+        raise ValueError(f'{run}: records are not the released dev episodes in order')
+    if any(type(r.get('prediction')) is not int or r.get('correct') is not (r['prediction'] == r['target'])
+           or r.get('steps') != steps or not _finite_weights(r, steps) for r in normal):
+        raise ValueError(f'{run}: inconsistent or malformed per-example records')
     summary = pilot_summary(normal)
-    if v3._jsonable(summary) != metrics['pilot']:
+    if v3._jsonable(summary) != metrics.get('pilot'):
         raise ValueError(f'{run}: recomputed pilot summary differs from its metrics')
+    stored = metrics.get('evaluation', {}).get('normal', {})
+    for hop, counts in summary['hops'].items():
+        if {k: stored.get(hop, {}).get(k) for k in counts} != counts:
+            raise ValueError(f'{run}: stored {hop} summary disagrees with its records')
     return summary, metrics
 
 
@@ -278,8 +342,9 @@ def run_compare(args, output, result):
     start = v3.start_provenance(args.start_run, args.start_sha256, ready_run=args.ready_run)
     if start['formal_start'] is not True:
         raise ValueError('the comparison needs the formal common start')
-    correct, correct_metrics = validate_pilot(args.correct_run, 'correct', start)
-    permuted, permuted_metrics = validate_pilot(args.permuted_run, 'permuted', start)
+    reference = pilot_reference()
+    correct, correct_metrics = validate_pilot(args.correct_run, 'correct', start, reference)
+    permuted, permuted_metrics = validate_pilot(args.permuted_run, 'permuted', start, reference)
     for key in ('schedule', 'config', 'variant', 'data'):
         if correct_metrics[key] != permuted_metrics[key]:
             raise ValueError(f'the pilots differ in {key}')
@@ -287,6 +352,7 @@ def run_compare(args, output, result):
         raise ValueError('the pilots differ in their label count')
     result.update(start=start, runs={'correct': str(Path(args.correct_run).resolve()),
                                      'permuted': str(Path(args.permuted_run).resolve())},
+                  reference={k: v for k, v in reference.items() if k != 'dev'},
                   summaries={'correct': correct, 'permuted': permuted}, d0035=decide(correct, permuted))
 
 
