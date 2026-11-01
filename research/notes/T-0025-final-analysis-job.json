@@ -1,0 +1,65 @@
+{
+  "experiment": "E-0021@1",
+  "task": "T-0025",
+  "source_commit": "ffa4c7124939bbd82b1319f56be8e27913e0ff59",
+  "review": "RV-0069",
+  "full_intervention_results": [
+    {
+      "attempt": "ATT-0262-1",
+      "result": "RES-0243"
+    },
+    {
+      "attempt": "ATT-0263-1",
+      "result": "RES-0244"
+    },
+    {
+      "attempt": "ATT-0264-1",
+      "result": "RES-0245"
+    },
+    {
+      "attempt": "ATT-0265-1",
+      "result": "RES-0246"
+    },
+    {
+      "attempt": "ATT-0266-1",
+      "result": "RES-0247"
+    }
+  ],
+  "measured_before_final_analysis": {
+    "MIG_seconds": 45306,
+    "node_h": 3.14625,
+    "remaining_to_cap_node_h": 0.8537499999999998
+  },
+  "final_analysis": {
+    "attempt": "ATT-0267-1",
+    "run": "RUN-0267",
+    "spec_digest": "blake2b:21f1b1db6674371d6e0846958f5ad3c40f1cff35ce8926c923130accf90957f9",
+    "job_id": "3769776.opbs",
+    "requested_walltime": "00:01:30",
+    "expected_seconds": 60,
+    "input": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0025/final-input.json",
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0267-1",
+    "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-073446-ad0c77/script.sh",
+    "notification": "N-20261102-073447-a277",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-073447-a277 --notifier miyabi-g2"
+  },
+  "rule9_records": {
+    "T0_training_attempt": "ATT-0239-1",
+    "T0_result": "RES-0228",
+    "T0_macro_accuracy": 0.773,
+    "T0_minus_Base_pp": 7.15,
+    "gradient_start_prior_attempt": "ATT-0197-1",
+    "gradient_start_prior_result": "RES-0191",
+    "gradient_start_xml": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/checks/checks.xml",
+    "gradient_start_test": "src.test_rb_model.test_four_layer_two_step_gradient_and_frozen_Jacobian[RB1-02,RB1-04,RB1-08]",
+    "gradient_start_scope": "Synthetic-text GPU two-step test at four target layers: only zero-initialized fusion exits have nonzero step1 gradients; all projection/read/exit gradients finite nonzero after first update; original backbone receives no gradients and stays unchanged.",
+    "RB1_02_formal_preclip_norm_first_three": [
+      1.3495819568634033,
+      1.2372127771377563,
+      2.2236337661743164
+    ],
+    "RB1_02_formal_steps_file": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1/steps.jsonl",
+    "formal_gradient_limitation": "Formal steps.jsonl records aggregate preclip norms, not per-parameter-family startup norms. Implementation test records the latter; final analysis leaves gradient_started null because it does not ingest the prior test.",
+    "probe_authority": "Coordinator owns any single rule9 probe after delivery; no probe started."
+  }
+}

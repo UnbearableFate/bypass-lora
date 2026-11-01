@@ -1,0 +1,126 @@
+{
+  "task": "T-0025",
+  "experiment": "E-0021@1",
+  "decision": "D-0032",
+  "review": "RV-0069",
+  "source_commit": "ffa4c7124939bbd82b1319f56be8e27913e0ff59",
+  "expected": {
+    "source_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+    "lr_lock_sha256": "38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d",
+    "base_manifest_sha256": "076a1a0595de6620508a7e99810a96baf979483d805428465807d40beadde196"
+  },
+  "final_analysis": {
+    "attempt": "ATT-0267-1",
+    "run": "RUN-0267",
+    "spec_digest": "blake2b:21f1b1db6674371d6e0846958f5ad3c40f1cff35ce8926c923130accf90957f9",
+    "job_id": "3769776.opbs",
+    "requested_walltime": "00:01:30",
+    "expected_seconds": 60,
+    "input": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0025/final-input.json",
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0267-1",
+    "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-073446-ad0c77/script.sh",
+    "notification": "N-20261102-073447-a277",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-073447-a277 --notifier miyabi-g2",
+    "result": "RES-0248",
+    "status": "complete",
+    "validator_passed": true,
+    "bootstrap_repeats": 10000,
+    "bootstrap_seed": 20261101,
+    "document": "DOC-0263@1"
+  },
+  "selection": {
+    "S_F_star": "RB1-03",
+    "C_star_RB": "RB1-09",
+    "effective_concat_arms": [
+      "RB1-08",
+      "RB1-09"
+    ],
+    "near_best_effective_concat_arms": [
+      "RB1-08",
+      "RB1-09"
+    ]
+  },
+  "raw_gates": {
+    "G0": true,
+    "GR": false,
+    "GH": false,
+    "GL": false,
+    "GC": false
+  },
+  "resolved_gates": {
+    "G0": true,
+    "GR": false,
+    "GL": false,
+    "GC": false
+  },
+  "resolved_actions": {
+    "progression": "check_T0_and_gradient_then_at_most_one_probe",
+    "RB5_matrix": null,
+    "RB5_matrix_status": "final",
+    "if_pilot_C_S4_minus_C_S1_ge_1pp": null,
+    "if_pilot_C_S4_minus_C_S1_lt_1pp": null,
+    "C_S1_S4_pilot": false
+  },
+  "screening_evidence": {
+    "H-0013": {
+      "id": "EV-0118",
+      "warnings": [],
+      "summary": "EV-0118 screening/valid (challenges H-0013)"
+    },
+    "H-0014": {
+      "id": "EV-0119",
+      "warnings": [],
+      "summary": "EV-0119 screening/valid (challenges H-0014)"
+    },
+    "H-0015": {
+      "id": "EV-0120",
+      "warnings": [],
+      "summary": "EV-0120 screening/valid"
+    },
+    "H-0016": {
+      "id": "EV-0121",
+      "warnings": [],
+      "summary": "EV-0121 screening/valid"
+    }
+  },
+  "hypothesis_statuses_changed": false,
+  "rule9_probe_started": false,
+  "cost": {
+    "MIG_seconds": 45324,
+    "MIG_hours": 12.59,
+    "node_hours": 3.1475,
+    "native_rounded_node_hours": 3.14749975,
+    "cap_node_hours": 4
+  },
+  "full_intervention_results": [
+    {
+      "attempt": "ATT-0262-1",
+      "result": "RES-0243"
+    },
+    {
+      "attempt": "ATT-0263-1",
+      "result": "RES-0244"
+    },
+    {
+      "attempt": "ATT-0264-1",
+      "result": "RES-0245"
+    },
+    {
+      "attempt": "ATT-0265-1",
+      "result": "RES-0246"
+    },
+    {
+      "attempt": "ATT-0266-1",
+      "result": "RES-0247"
+    }
+  ],
+  "limitations": [
+    "single trained seed",
+    "dev-selected S_F*/C*,uncertainty excludes selection/seeds",
+    "T0 S1 only",
+    "unequal parameter budgets",
+    "fixed latency omits S2/C_up",
+    "no confirmation or rule9 probe",
+    "formal per-family gradient telemetry absent;prior GPU gradient-start test supplied"
+  ]
+}

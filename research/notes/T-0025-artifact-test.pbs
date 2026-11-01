@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+RB1_PROJECT=/work/xg24i002/x10041/bypass-lora
+RB1_SOURCE="$RB1_PROJECT/snapshots/$SR_CODE_COMMIT"
+RB1_OUT="$RB1_PROJECT/runs/$SR_ATTEMPT_ID"
+RB1_PY="$RB1_PROJECT/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$RB1_OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$RB1_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$RB1_OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$RB1_OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$RB1_SOURCE/src"
+export TMPDIR="/local/${PBS_JOBID}/rb1-artifact-test"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$RB1_OUT/nvidia-smi.txt" 2>&1 || true
+cd "$RB1_SOURCE"
+exec "$RB1_PY" - "$RB1_OUT" "$RB1_SOURCE" <<'PY'
+import hashlib,json,os,subprocess,sys,time
+from pathlib import Path
+import xml.etree.ElementTree as ET
+out,source=map(Path,sys.argv[1:])
+reviewed=Path('/work/xg24i002/x10041/bypass-lora/snapshots/ffa4c7124939bbd82b1319f56be8e27913e0ff59')
+files=('src/rb1_analysis.py','src/rb1_artifacts.py','src/rb1_rules.py','src/rb_read_diagnostics.py',
+       'src/rb1_intervene.py','src/rb1_latency.py','src/bypass_core.py','src/bypass_model.py',
+       'src/rb_history.py','src/rb_train.py','src/rb_data.py','src/v1_run.py','src/v1_data.py',
+       'src/v1_lora.py','src/rb_latency.py','src/v5_latency.py','src/calibrate.py','pyproject.toml','uv.lock')
+def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+passed=False;metrics={};start=time.monotonic()
+try:
+    hashes={name:digest(source/name) for name in files}
+    assert all(hashes[name]==digest(reviewed/name) for name in files)
+    metrics.update(production_matches_RV0069_source=True,source_hashes=hashes)
+    with (out/'checks.log').open('w') as log:
+        result=subprocess.run([sys.executable,'-m','pytest','src/test_rb1_artifacts.py','-q',
+            '-p','no:cacheprovider','-o','junit_family=legacy','--junitxml='+str(out/'checks.xml')],
+            stdout=log,stderr=subprocess.STDOUT)
+    root=ET.parse(out/'checks.xml').getroot();cases=list(root.iter('testcase'))
+    failures=sum(c.find('failure') is not None or c.find('error') is not None for c in cases)
+    skips=sum(c.find('skipped') is not None for c in cases)
+    target='test_rejects_other_familys_locked_lr_despite_consistent_run_metadata_and_schedule'
+    metrics.update({'checks.exit_code':result.returncode,'checks.cases':len(cases),
+                    'checks.failed':failures,'checks.skipped':skips,
+                    'restored_family_lr_rejection_test_present':any(c.get('name')==target for c in cases),
+                    'formal_RB1_results_read':False})
+    assert result.returncode==0 and len(cases)==16 and failures==skips==0
+    assert metrics['restored_family_lr_rejection_test_present']
+    passed=True
+finally:
+    metrics['elapsed_s']=time.monotonic()-start
+    (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
+        'contract':'E-0021@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+        'source_commit':os.environ['SR_CODE_COMMIT'],'metrics':metrics,
+        'artifacts':[{'path':str(p),'role':p.name} for p in (out/'checks.log',out/'checks.xml') if p.is_file()],
+        'validator':{'name':'RB1_RV0069_coverage_only','passed':passed}},indent=2)+'\n')
+PY

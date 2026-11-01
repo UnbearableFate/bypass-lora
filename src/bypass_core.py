@@ -392,18 +392,24 @@ def kernel_prefix_states(kbar, vbar, reader, valid, write=None, state=None):
 
 def read_kernel_prefix(qbar, reader, matrices, masses, counts, active, *, steps=1,
                        update="accumulate", readout="increment", fixed_query=False,
-                       current_keys=None):
+                       current_keys=None, observe_read=None):
     """Batch all causal states through the single, unchanged LatentReader loop."""
     batch, length, rank = qbar.shape
     state = MemoryState(matrices.reshape(-1, rank, rank), masses.reshape(-1, rank),
                         counts.reshape(-1), "kernel_matrix", rank)
     weights = []
-    if current_keys is not None:
+    if current_keys is not None or observe_read is not None:
         class ObservedState:
+            step = 0
+
             def read(self, query, eps, temperature):
-                weight = (query * current_keys.reshape(-1, rank)).sum(-1) / (
-                    (query * state.c).sum(-1) + eps)
-                weights.append(torch.where(active.reshape(-1), weight, torch.zeros_like(weight)))
+                self.step += 1
+                if current_keys is not None:
+                    weight = (query * current_keys.reshape(-1, rank)).sum(-1) / (
+                        (query * state.c).sum(-1) + eps)
+                    weights.append(torch.where(active.reshape(-1), weight, torch.zeros_like(weight)))
+                if observe_read is not None:
+                    observe_read(query.reshape(batch, length, rank), self.step)
                 return state.read(query, eps, temperature)
         memory = ObservedState()
     else:

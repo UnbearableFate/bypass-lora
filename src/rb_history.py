@@ -106,9 +106,22 @@ def run_history(q, k, v, reader, valid, config, options):
         matrices, masses, counts = prior_m, prior_c, prior_n
     elif config.mode != 'inclusive':
         raise ValueError('history interventions other than strict require an inclusive model')
+    read_metrics = []
+    observe_read = None
+    if options.get('trace_reads') and kind != 'iv_off':
+        from rb_read_diagnostics import prefix_read_metrics
+
+        def observe_read(query, step):
+            if step in (1, config.steps):
+                metrics = prefix_read_metrics(query, keys, valid,
+                    kind='iv_strict' if kind is None and config.mode == 'strict' else kind,
+                    donor=options.get('donor'), window=options.get('window'))
+                read_metrics.append({'step': step, **metrics})
+
     outputs, weights = read_kernel_prefix(q, reader, matrices, masses, counts, valid,
         steps=config.steps, update=config.update, readout=config.readout,
-        fixed_query=config.fixed_query, current_keys=keys if options.get('trace_reads') else None)
+        fixed_query=config.fixed_query, current_keys=keys if options.get('trace_reads') else None,
+        observe_read=observe_read)
     if kind == 'iv_off':
         outputs = torch.zeros_like(outputs)
     diagnostics = {}
@@ -117,6 +130,8 @@ def run_history(q, k, v, reader, valid, config, options):
                                   'valid': valid.detach().clone()}
     if weights is not None:
         diagnostics['current_weight'] = weights
+    if read_metrics:
+        diagnostics['read_metrics'] = read_metrics
     return SequenceResult(outputs, final,
         {'valid_tokens': valid.sum().detach(), 'writes': valid.sum().detach(),
          'reads': valid.sum().detach()*config.steps, 'reader_steps': config.steps}, diagnostics)
