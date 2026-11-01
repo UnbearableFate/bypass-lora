@@ -1,0 +1,332 @@
+diff --git a/src/test_v3_succ.py b/src/test_v3_succ.py
+index 9363e8b..1ec0d90 100644
+--- a/src/test_v3_succ.py
++++ b/src/test_v3_succ.py
+@@ -161,37 +161,77 @@ def test_succ_forward_rejects_a_tokenwise_arm(base, tok, train_rows):
+         succ.succ_forward(model, batch, labels='correct', tally=[])
+ 
+ 
+-# ---- comparison on synthetic pilot runs -----------------------------------------------------------
++# ---- formal admission and comparison (synthetic trusted reference) --------------------------------
+ 
+-def synthetic_pilot(directory, labels, hop_correct, weight, start):
+-    import json
++import json  # noqa: E402
++from types import SimpleNamespace  # noqa: E402
++
++SYN_START = {'formal_start': True, 'run': '/synthetic/start', 'readiness': {'run': '/synthetic/ready'}}
++
++
++def syn_reference(per_hop=4):
++    dev = [(f'{h}-{i}', h, 100*h + i) for h in (1, 2, 3) for i in range(per_hop)]
++    labels = {'total': 30, 'by_hop': {'1': 0, '2': 10, '3': 20}, 'episodes': 16000}
++    return {'metadata_sha256': 'm'*64, 'train_sha256': 't'*64, 'dev_sha256': 'd'*64, 'order_sha256': 'o'*64,
++            'tokens': 12345, 'warmup_steps': 100, 'labels': {'correct': labels, 'permuted': dict(labels)},
++            'config': {'steps': 4, 'rank': 128, 'branch': 'memory'}, 'variant': {'fixed_query': False},
++            'dev': dev}
++
++
++def write_pilot(directory, labels, hop_correct, weight, reference, start=SYN_START, metrics_change=None,
++                record_change=None, manifest_change=None):
++    """A pilot run consistent with the reference; the *_change hooks corrupt one part."""
+     from v2r16_train import file_record
+     (directory/'eval-s4').mkdir(parents=True)
+     normal = []
+-    for h, correct in zip((1, 2, 3), hop_correct):
+-        for i in range(4):
+-            steps = [[.1]*h for _ in range(4)]
+-            steps[1] = [.1, weight][:h] if h > 1 else [.1]
+-            normal.append({'episode_id': f'{h}-{i}', 'hop': h, 'correct': i < correct, 'path_weight_last': steps})
++    for episode, hop, target in reference['dev']:
++        index = int(episode.split('-')[1])
++        steps = [[.1]*hop for _ in range(4)]
++        if hop > 1:
++            steps[1][1] = weight
++        correct = index < hop_correct[hop-1]
++        normal.append({'episode_id': episode, 'hop': hop, 'target': target, 'prediction': target if correct else 0,
++                       'correct': correct, 'steps': 4, 'path_weight_last': steps})
++    if record_change:
++        record_change(normal)
+     (directory/'eval-s4'/'dev.normal.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in normal))
+-    shared = {'schedule': {'steps': 2000}, 'config': {'steps': 4}, 'variant': {}, 'data': {'dev_rows': 12},
+-              'successor_labels': {'total': 10}}
+-    metrics = dict(shared, start=start, pilot=v3._jsonable(succ.pilot_summary(normal)))
++    hops = {f'hop{h}': {'count': sum(r['hop'] == h for r in normal),
++                        'correct_count': sum(r['correct'] for r in normal if r['hop'] == h)} for h in (1, 2, 3)}
++    metrics = {'experiment': v3.CONTRACT, 'command': 'succ', 'labels': labels, 'arm': succ.ARM, 'coefficient': 1.,
++               'decision': 'D-0035', 'smoke_only': False, 'config': reference['config'], 'variant': reference['variant'],
++               'start': start, 'schedule': {'steps': 2000, 'stage': 'train', 'order_sha256': reference['order_sha256'],
++                                             'tokens': reference['tokens'], 'warmup_steps': 100},
++               'train': {'steps': 2000, 'tokens': reference['tokens']},
++               'successor_labels': reference['labels'][labels], 'successor_loss': {'labels_seen': 30},
++               'data': {'metadata_sha256': 'm'*64, 'train_sha256': 't'*64, 'dev_sha256': 'd'*64,
++                        'dev_rows': len(reference['dev'])},
++               'checkpoint_reload': {'full_records_identical': True, 'steps': 4},
++               'evaluation': {'normal': hops}}
++    try:
++        metrics['pilot'] = v3._jsonable(succ.pilot_summary(normal))
++    except (ValueError, IndexError, TypeError, ZeroDivisionError):
++        metrics['pilot'] = None
++    metrics = json.loads(json.dumps(metrics))  # no shared dicts with the reference or the start
++    if metrics_change:
++        metrics_change(metrics)
+     (directory/'metrics.json').write_text(json.dumps(metrics))
+-    artifacts = [{'path': str(p), **file_record(p)} for p in (directory/'metrics.json', directory/'eval-s4'/'dev.normal.jsonl')]
+-    (directory/'manifest.json').write_text(json.dumps({
+-        'status': 'complete', 'validator': {'passed': True}, 'contract': v3.CONTRACT, 'command': 'succ',
+-        'labels': labels, 'smoke_only': False, 'eligible_as_evidence': True, 'artifacts': artifacts}))
++    artifacts = [{'path': str(p.resolve()), **file_record(p)}
++                 for p in (directory/'metrics.json', directory/'eval-s4'/'dev.normal.jsonl')]
++    manifest = {'status': 'complete', 'validator': {'passed': True}, 'experiment': v3.EXPERIMENT, 'contract': v3.CONTRACT,
++                'command': 'succ', 'labels': labels, 'arm': f'{succ.ARM}-succ-{labels}', 'smoke_only': False,
++                'eligible_as_evidence': True, 'artifacts': artifacts}
++    if manifest_change:
++        manifest_change(manifest)
++    (directory/'manifest.json').write_text(json.dumps(manifest))
+     return directory
+ 
+ 
+-def test_compare_validates_both_pilots_and_applies_d0035(tmp_path, monkeypatch):
+-    import json
+-    from types import SimpleNamespace
+-    start = {'formal_start': True, 'run': '/synthetic/start'}
+-    monkeypatch.setattr(v3, 'start_provenance', lambda *a, **k: dict(start))
+-    good = synthetic_pilot(tmp_path/'c', 'correct', (2, 2, 2), .25, start)
+-    bad = synthetic_pilot(tmp_path/'p', 'permuted', (2, 1, 1), .0625, start)
++def test_compare_admits_valid_pilots_and_applies_d0035(tmp_path, monkeypatch):
++    reference = syn_reference()
++    monkeypatch.setattr(v3, 'start_provenance', lambda *a, **k: dict(SYN_START))
++    monkeypatch.setattr(succ, 'pilot_reference', lambda: reference)
++    good = write_pilot(tmp_path/'c', 'correct', (2, 2, 2), .25, reference)
++    bad = write_pilot(tmp_path/'p', 'permuted', (2, 1, 1), .0625, reference)
+     args = SimpleNamespace(start_run=None, start_sha256=None, ready_run=None, correct_run=good, permuted_run=bad)
+     result = {}
+     succ.run_compare(args, tmp_path, result)
+@@ -199,11 +239,94 @@ def test_compare_validates_both_pilots_and_applies_d0035(tmp_path, monkeypatch):
+     assert result['d0035']['i_primary_em']['difference_pp'] == 25  # (50+50)/2 - (25+25)/2
+     with pytest.raises(ValueError):  # swapped roles
+         succ.run_compare(SimpleNamespace(**dict(vars(args), correct_run=bad, permuted_run=good)), tmp_path, {})
+-    other = synthetic_pilot(tmp_path/'o', 'permuted', (2, 1, 1), .0625, dict(start, run='/other'))
+-    with pytest.raises(ValueError):  # another start
+-        succ.run_compare(SimpleNamespace(**dict(vars(args), permuted_run=other)), tmp_path, {})
+-    (bad/'eval-s4'/'dev.normal.jsonl').write_text('')
+-    with pytest.raises(ValueError):  # a changed artifact
+-        succ.run_compare(args, tmp_path, {})
+-    metrics = json.loads((good/'metrics.json').read_text())
+-    assert metrics['pilot']['hop2_step2_fact2_exact'] == .25
++
++
++def _drop(manifest, name):
++    manifest['artifacts'] = [a for a in manifest['artifacts'] if not a['path'].endswith(name)]
++
++
++def _set(path, value):
++    def change(metrics):
++        node = metrics
++        for key in path[:-1]:
++            node = node[key]
++        node[path[-1]] = value
++    return change
++
++
++def _shift_hash(manifest):
++    manifest['artifacts'][0]['bytes'] += 1
++
++
++INVALID = {
++    'metrics_unbound': {'manifest_change': lambda m: _drop(m, 'metrics.json')},
++    'records_unbound': {'manifest_change': lambda m: _drop(m, 'dev.normal.jsonl')},
++    'no_artifacts': {'manifest_change': lambda m: m.update(artifacts=[])},
++    'duplicate_binding': {'manifest_change': lambda m: m['artifacts'].append(dict(m['artifacts'][1]))},
++    'wrong_hash': {'manifest_change': _shift_hash},
++    'smoke': {'manifest_change': lambda m: m.update(smoke_only=True)},
++    'wrong_arm': {'manifest_change': lambda m: m.update(arm='V3-02-succ-correct')},
++    'wrong_coefficient': {'metrics_change': _set(('coefficient',), .5)},
++    'wrong_decision': {'metrics_change': _set(('decision',), 'D-0034')},
++    'wrong_config': {'metrics_change': _set(('config', 'steps'), 1)},
++    'wrong_variant': {'metrics_change': _set(('variant', 'fixed_query'), True)},
++    'wrong_start': {'metrics_change': _set(('start', 'run'), '/other')},
++    'wrong_order': {'metrics_change': _set(('schedule', 'order_sha256'), 'x'*64)},
++    'one_step_schedule': {'metrics_change': lambda m: (m['schedule'].update(steps=1), m['train'].update(steps=1))},
++    'smoke_schedule': {'metrics_change': _set(('schedule', 'smoke_steps'), 4)},
++    'incomplete_training': {'metrics_change': _set(('train', 'steps'), 1999)},
++    'wrong_tokens': {'metrics_change': _set(('train', 'tokens'), 1)},
++    'wrong_label_count': {'metrics_change': _set(('successor_labels', 'total'), 29)},
++    'wrong_labels_seen': {'metrics_change': _set(('successor_loss', 'labels_seen'), 29)},
++    'wrong_data': {'metrics_change': _set(('data', 'dev_sha256'), 'x'*64)},
++    'missing_reload': {'metrics_change': lambda m: m.pop('checkpoint_reload')},
++    'reload_differs': {'metrics_change': _set(('checkpoint_reload', 'full_records_identical'), False)},
++    'stored_summary_differs': {'metrics_change': _set(('evaluation', 'normal', 'hop2', 'correct_count'), 3)},
++    'invented_row': {'record_change': lambda rs: rs.__setitem__(0, dict(rs[0], episode_id='new'))},
++    'missing_row': {'record_change': lambda rs: rs.pop()},
++    'reordered_rows': {'record_change': lambda rs: rs.reverse()},
++    'wrong_target': {'record_change': lambda rs: rs.__setitem__(5, dict(rs[5], target=-1))},
++    'inconsistent_correct': {'record_change': lambda rs: rs.__setitem__(5, dict(rs[5], correct=not rs[5]['correct']))},
++    'wrong_steps': {'record_change': lambda rs: rs.__setitem__(5, dict(rs[5], steps=2))},
++    'nan_weight': {'record_change': lambda rs: rs.__setitem__(5, dict(rs[5], path_weight_last=[[.1, float('nan')]]*4))},
++    'short_weights': {'record_change': lambda rs: rs.__setitem__(5, dict(rs[5], path_weight_last=[[.1, .1]]*3))},
++    'missing_weights': {'record_change': lambda rs: rs.__setitem__(5, dict(rs[5], path_weight_last=None))},
++}
++
++
++@pytest.mark.parametrize('case', sorted(INVALID))
++def test_admission_rejects_each_invalid_pilot(tmp_path, case):
++    reference = syn_reference()
++    write_pilot(tmp_path/'ok', 'correct', (2, 2, 2), .25, reference)
++    assert succ.validate_pilot(tmp_path/'ok', 'correct', SYN_START, reference)[0]['hop2_step2_fact2_exact'] == Fraction(1, 4)
++    run = write_pilot(tmp_path/'bad', 'correct', (2, 2, 2), .25, reference, **INVALID[case])
++    with pytest.raises((ValueError, KeyError, IndexError, TypeError)):
++        succ.validate_pilot(run, 'correct', SYN_START, reference)
++
++
++def test_admission_rejects_a_shared_wrong_specification(tmp_path, monkeypatch):
++    """Both pilots agree with each other on a one-step S1 run: each fails on its own."""
++    reference = syn_reference()
++    monkeypatch.setattr(v3, 'start_provenance', lambda *a, **k: dict(SYN_START))
++    monkeypatch.setattr(succ, 'pilot_reference', lambda: reference)
++    wrong = lambda m: (m['schedule'].update(steps=1), m['train'].update(steps=1), m['config'].update(steps=1))  # noqa: E731
++    good = write_pilot(tmp_path/'c', 'correct', (2, 2, 2), .25, reference, metrics_change=wrong)
++    bad = write_pilot(tmp_path/'p', 'permuted', (2, 1, 1), .0625, reference, metrics_change=wrong)
++    with pytest.raises(ValueError):
++        succ.run_compare(SimpleNamespace(start_run=None, start_sha256=None, ready_run=None,
++                                         correct_run=good, permuted_run=bad), tmp_path, {})
++
++
++def test_pilot_reference_and_real_smokes(tok):
++    """The trusted reference is the released 2,000-step prefix; the ATT-0254-1 smokes are not formal."""
++    reference = succ.pilot_reference()
++    rows = loop.load_t2(tok, 'train')[1]
++    plan = v3.v3_schedule(rows, 'train', steps=succ.PILOT_STEPS)
++    assert (reference['order_sha256'], reference['tokens']) == (plan['order_sha256'], plan['tokens'])
++    assert reference['labels']['correct'] == succ.label_counts(rows, plan, 'correct') == reference['labels']['permuted']
++    assert reference['config']['steps'] == 4 and len(reference['dev']) == 1000
++    start = v3.start_provenance(loop.RUNS/'ATT-0196-1'/'run', 'f70ea08e5f378012975e08bd5bac0083023fef78659174ba1a1d2a9977395417',
++                                ready_run=loop.RUNS/'ATT-0227-1'/'run')
++    for labels in succ.LABELS:
++        with pytest.raises(ValueError):
++            succ.validate_pilot(loop.RUNS/'ATT-0254-1'/f'smoke-{labels}', labels, start, reference)
+diff --git a/src/v3_succ.py b/src/v3_succ.py
+index d2bd8a2..9c4ed87 100644
+--- a/src/v3_succ.py
++++ b/src/v3_succ.py
+@@ -251,26 +251,90 @@ def decide(correct, permuted):
+                      if i and ii else 'the repair route stops (AD-0003 drop condition)')}
+ 
+ 
+-def validate_pilot(run, labels, start):
+-    """A complete formal pilot of the given labels from the same start; returns its summary."""
++def pilot_reference():
++    """Trusted D-0035 reference from the pinned released T2 data: digests, the 2,000-step prefix
++    schedule (order, tokens), the label counts of both arms, the ordered dev identities
++    (episode_id, hop, target) and the expected V3-03 configuration and variant."""
++    from v2_memory import config
++    from v3_eval import load_released_data
++    from v3_loop import T2_DATA, T2_METADATA_SHA256
++    metadata, train_rows = load_released_data(T2_DATA, T2_METADATA_SHA256, 'train')
++    _, dev = load_released_data(T2_DATA, T2_METADATA_SHA256, 'dev')
++    schedule = v3.v3_schedule(train_rows, 'train', steps=PILOT_STEPS)
++    return {'metadata_sha256': T2_METADATA_SHA256, 'train_sha256': metadata['splits']['train']['sha256'],
++            'dev_sha256': metadata['splits']['dev']['sha256'], 'order_sha256': schedule['order_sha256'],
++            'tokens': schedule['tokens'], 'warmup_steps': schedule['warmup_steps'],
++            'labels': {name: label_counts(train_rows, schedule, name) for name in LABELS},
++            'config': json.loads(json.dumps(asdict(v3.arm_config(config('direct_hidden', 'soft_slot', 'F_out'), ARM)))),
++            'variant': asdict(v3.arm_variant(ARM)),
++            'dev': [(r['episode_id'], r['axes']['hop'], r['query']['answer_token_id']) for r in dev]}
++
++
++def _finite_weights(record, steps):
++    weights = record.get('path_weight_last')
++    return (isinstance(weights, list) and len(weights) == steps
++            and all(isinstance(step, list) and len(step) == record['hop']
++                    and all(type(w) is float and math.isfinite(w) for w in step) for step in weights))
++
++
++def validate_pilot(run, labels, start, reference):
++    """One formal D-0035 pilot of the given labels, bound to the readiness-checked start, the
++    trusted reference (configuration, 2,000-step prefix, label counts, released data, dev
++    identities) and its producer manifest. Returns (summary recomputed from the records, metrics)."""
+     from v2r16_train import file_record
+     run = Path(run)
+     manifest = json.loads((run/'manifest.json').read_text())
+     if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
+-            or manifest.get('contract') != v3.CONTRACT or manifest.get('command') != 'succ'
+-            or manifest.get('labels') != labels or manifest.get('smoke_only') is not False
++            or manifest.get('contract') != v3.CONTRACT or manifest.get('experiment') != v3.EXPERIMENT
++            or manifest.get('command') != 'succ' or manifest.get('labels') != labels
++            or manifest.get('arm') != f'{ARM}-succ-{labels}' or manifest.get('smoke_only') is not False
+             or manifest.get('eligible_as_evidence') is not True):
+         raise ValueError(f'{run} is not a complete formal {labels} pilot')
+-    for artifact in manifest['artifacts']:
+-        if file_record(Path(artifact['path'])) != {k: artifact[k] for k in ('sha256', 'bytes')}:
++    for artifact in manifest.get('artifacts', []):
++        if file_record(Path(artifact['path'])) != {k: artifact.get(k) for k in ('sha256', 'bytes')}:
+             raise ValueError(f'artifact changed: {artifact["path"]}')
++    steps = v3.ARMS[ARM]['steps']
++    records_path = run/f'eval-s{steps}'/'dev.normal.jsonl'
++    for path in (run/'metrics.json', records_path):  # exactly one producer binding per consumed path
++        v3._verified_artifact(manifest, path)
+     metrics = json.loads((run/'metrics.json').read_text())
+-    if metrics.get('start') != start:
+-        raise ValueError(f'{run} was not trained from the analysis start')
+-    normal = [json.loads(line) for line in (run/'eval-s4'/'dev.normal.jsonl').read_text().splitlines()]
++    if (metrics.get('experiment') != v3.CONTRACT or metrics.get('command') != 'succ' or metrics.get('labels') != labels
++            or metrics.get('arm') != ARM or metrics.get('coefficient') != COEFFICIENT
++            or metrics.get('decision') != 'D-0035' or metrics.get('smoke_only') is not False):
++        raise ValueError(f'{run}: not a D-0035 {labels} pilot')
++    if json.loads(json.dumps(metrics.get('config'))) != reference['config'] or metrics.get('variant') != reference['variant']:
++        raise ValueError(f'{run}: configuration or variant differs from V3-03')
++    if not start.get('readiness') or metrics.get('start') != json.loads(json.dumps(v3._jsonable(start))):
++        raise ValueError(f'{run} was not trained from the readiness-checked analysis start')
++    schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
++    if (schedule.get('steps') != PILOT_STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
++            or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']
++            or schedule.get('warmup_steps') != reference['warmup_steps']
++            or train.get('steps') != PILOT_STEPS or train.get('tokens') != reference['tokens']):
++        raise ValueError(f'{run}: not the completed 2,000-step prefix schedule')
++    if (metrics.get('successor_labels') != reference['labels'][labels]
++            or metrics.get('successor_loss', {}).get('labels_seen') != reference['labels'][labels]['total']):
++        raise ValueError(f'{run}: successor labels differ from the reference count')
++    data = metrics.get('data', {})
++    if (data.get('metadata_sha256') != reference['metadata_sha256'] or data.get('dev_sha256') != reference['dev_sha256']
++            or data.get('train_sha256') != reference['train_sha256'] or data.get('dev_rows') != len(reference['dev'])):
++        raise ValueError(f'{run}: not the pinned released T2 data')
++    reload = metrics.get('checkpoint_reload', {})
++    if reload.get('full_records_identical') is not True or reload.get('steps') != steps:
++        raise ValueError(f'{run}: reload check missing')
++    normal = [json.loads(line) for line in records_path.read_text().splitlines()]
++    if [(r.get('episode_id'), r.get('hop'), r.get('target')) for r in normal] != [tuple(x) for x in reference['dev']]:
++        raise ValueError(f'{run}: records are not the released dev episodes in order')
++    if any(type(r.get('prediction')) is not int or r.get('correct') is not (r['prediction'] == r['target'])
++           or r.get('steps') != steps or not _finite_weights(r, steps) for r in normal):
++        raise ValueError(f'{run}: inconsistent or malformed per-example records')
+     summary = pilot_summary(normal)
+-    if v3._jsonable(summary) != metrics['pilot']:
++    if v3._jsonable(summary) != metrics.get('pilot'):
+         raise ValueError(f'{run}: recomputed pilot summary differs from its metrics')
++    stored = metrics.get('evaluation', {}).get('normal', {})
++    for hop, counts in summary['hops'].items():
++        if {k: stored.get(hop, {}).get(k) for k in counts} != counts:
++            raise ValueError(f'{run}: stored {hop} summary disagrees with its records')
+     return summary, metrics
+ 
+ 
+@@ -278,8 +342,9 @@ def run_compare(args, output, result):
+     start = v3.start_provenance(args.start_run, args.start_sha256, ready_run=args.ready_run)
+     if start['formal_start'] is not True:
+         raise ValueError('the comparison needs the formal common start')
+-    correct, correct_metrics = validate_pilot(args.correct_run, 'correct', start)
+-    permuted, permuted_metrics = validate_pilot(args.permuted_run, 'permuted', start)
++    reference = pilot_reference()
++    correct, correct_metrics = validate_pilot(args.correct_run, 'correct', start, reference)
++    permuted, permuted_metrics = validate_pilot(args.permuted_run, 'permuted', start, reference)
+     for key in ('schedule', 'config', 'variant', 'data'):
+         if correct_metrics[key] != permuted_metrics[key]:
+             raise ValueError(f'the pilots differ in {key}')
+@@ -287,6 +352,7 @@ def run_compare(args, output, result):
+         raise ValueError('the pilots differ in their label count')
+     result.update(start=start, runs={'correct': str(Path(args.correct_run).resolve()),
+                                      'permuted': str(Path(args.permuted_run).resolve())},
++                  reference={k: v for k, v in reference.items() if k != 'dev'},
+                   summaries={'correct': correct, 'permuted': permuted}, d0035=decide(correct, permuted))
+ 
+ 

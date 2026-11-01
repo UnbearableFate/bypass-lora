@@ -1,0 +1,501 @@
+diff --git a/research/notes/T-0026-implementation.md b/research/notes/T-0026-implementation.md
+index 9f94a8d..643a92c 100644
+--- a/research/notes/T-0026-implementation.md
++++ b/research/notes/T-0026-implementation.md
+@@ -79,5 +79,49 @@ All of these are descriptive; none enters a rule.
+ 
+ `v3_diag.py stage-a` writes the rule.
+ 
++## 4. Rule 4: frozen-transfer diagnostic (`src/v3_transfer.py`, `src/test_v3_transfer.py`; D-0034)
++Stage A gave case A3 with S_M* = V3-02 (ATT-0251-1), so rule 4 applies. The diagnostic trains nothing. It reads the frozen S_M* checkpoint on the T2 calibration rows of hops 2 and 3 (pooled). All reads are scored at S_train, labelled with the chain end, and measured at the answer position (the last valid question token).
++
++### Reads
++- `native`: the arm's own loop. The replay must match the native output within the loop tolerance, and the native logits are scored.
++- `forced_first` (descriptive only): z^(1) is set to q̄ + η·(v[path fact 1]·g)·Ro, using the step-0 Ro if the arm is untied. Step 2 onward queries and reads natively, and the result goes back through the reviewed side-output hook (`_with_increment`). Defined only for S ≥ 2.
++- `bridge`: the question template is re-encoded with the gold bridge entity (`path.entities[1]`) as the subject. Relation and template are unchanged.
++- `wrong_bridge`: the subject is the head of the first same-relation fact that is off the path and whose head is not a path entity. Rows with no such fact are left out of this read; the count is reported per read.
++- `donor_bridge`: the subject is the gold bridge of the nearest earlier evaluated row (cyclic) whose bridge entity appears nowhere in this episode (no fact head or tail, no path entity).
++- Also on the same rows:
++  - the reviewed first-edge and end-edge value oracles (`v3_diag.evaluate_oracles`);
++  - the zero and shuffled memory controls (`v3_train.evaluate_arm`; global donor rule within the hops 2-3 subset).
++
++### D-0034 mapping (`mapping`)
++Every quantity is an exact Fraction, computed from the per-record floats and reported next to its boolean.
++- (a) end-edge oracle EM − max(EM_zero, EM_shuffled) ≥ 10 pp.
++- (b) Holds when all three of these hold:
++  - the bridge read's mean step-1 weight on path fact 2 is ≥ 1/8;
++  - the wrong-bridge mean on that fact is < 1/8;
++  - the donor-bridge mean on that fact is < 1/8.
++- (c) The native read's mean step-2 weight on path fact 2 is < 1/8.
++
++| Criteria | Repair |
++|---|---|
++| (a) fails | none |
++| (a), (b) and (c) hold | successor-slot CE S4 pilot with the permuted-label control |
++| (a) holds, (b) fails | linear-start S4 |
++| (a) and (b) hold, (c) fails | none; describe and go to the conclusion |
++
++### Tests
++- CPU:
++  - `wrong_fact` and `donor_bridge` choices, including the absent-name rule;
++  - every boundary at equality: a 10 pp gap holds (a); a bridge weight of exactly 1/8 holds; a control at exactly 1/8 fails (b); a native weight of exactly 1/8 fails (c);
++  - the summaries.
++- GPU (D5 stand-in):
++  - the rewritten questions contain the new subject;
++  - `native` records equal `evaluate_arm`'s normal records;
++  - `forced_first`'s step-2 weights equal the closed form within 1e-5;
++  - V3-06 (tokenwise) raises.
++- Pre-review check ATT-0252-1 (not evidence):
++  - 95 tests passed;
++  - a 4-rows-per-hop smoke on ATT-0234-1 completed and wrote all reads, oracles, controls and the mapping.
++
+ ## Not yet implemented
+-The rule-4 frozen-transfer diagnostic and V3-05b. Each is needed only if its case arises (A3/A4, or A1 with S_M* = 2), and each will be reviewed before it runs.
++- V3-05b: not needed under A3.
++- The repair arm, if the D-0034 mapping selects one: it will be implemented and reviewed before it runs.
+diff --git a/src/test_v3_transfer.py b/src/test_v3_transfer.py
+new file mode 100644
+index 0000000..7d2650b
+--- /dev/null
++++ b/src/test_v3_transfer.py
+@@ -0,0 +1,122 @@
++"""E-0023 rule 4 frozen-transfer diagnostic and the D-0034 mapping. Core tests run anywhere; model
++tests need a GPU allocation and use the D5 seed-0 adapter as a stand-in start (T2 dev only)."""
++from fractions import Fraction
++
++import pytest
++import torch
++
++import v3_loop as loop
++import v3_train as v3
++import v3_transfer as tr
++from test_v3_train import D5, base, dev, gpu_batch, tok  # noqa: F401
++
++
++def fake_row(i, path_entities=('A', 'B', 'C'), facts=None):
++    facts = facts or [{'head': 'A', 'relation': 'r', 'tail': 'B'}, {'head': 'B', 'relation': 'r', 'tail': 'C'},
++                      {'head': 'D', 'relation': 's', 'tail': 'E'}, {'head': 'B', 'relation': 'r', 'tail': 'X'},
++                      {'head': 'F', 'relation': 'r', 'tail': 'G'}]
++    return {'episode_id': f'e{i}', 'facts': facts, 'query': {'relation': 'r'},
++            'path': {'entities': list(path_entities), 'fact_indices': [0, 1]}}
++
++
++def test_wrong_fact_is_same_relation_off_path_with_a_non_path_head():
++    assert tr.wrong_fact(fake_row(0)) == 4  # fact 3 has a path head (B); fact 2 another relation
++    row = fake_row(0, facts=fake_row(0)['facts'][:4])
++    assert tr.wrong_fact(row) is None
++
++
++def test_donor_bridge_is_the_nearest_earlier_bridge_absent_from_the_episode():
++    rows = [fake_row(0), fake_row(1, ('P', 'Q', 'R')), fake_row(2, ('S', 'F', 'T')), fake_row(3, ('U', 'V', 'W'))]
++    assert tr.donor_bridge(rows, 3) == 'Q'  # row 2's bridge F occurs in row 3's facts; row 1's Q does not
++    assert tr.donor_bridge(rows, 0) == 'V'  # cyclic
++    same = [fake_row(i) for i in range(3)]
++    with pytest.raises(ValueError):
++        tr.donor_bridge(same, 0)
++
++
++def rec(fact2_step1, fact2_step2=0., hop=2, correct=False):
++    w1, w2 = [0.]*16, [0.]*16
++    w1[5], w2[5] = fact2_step1, fact2_step2
++    return {'hop': hop, 'path': [4, 5] if hop == 2 else [4, 5, 6], 'correct': correct, 'nll': 1.,
++            'own_fact': None, 'weights_last': [w1, w2]}
++
++
++def scenario(end=12, zero=0, shuffled=2, n=100, bridge=.125, wrong=.1, donor=.1, native=.1):
++    records = {'native': [rec(0., native)], 'bridge': [rec(bridge)], 'wrong_bridge': [rec(wrong)],
++               'donor_bridge': [rec(donor)], 'forced_first': [rec(0., .9)]}
++    oracles = {'end_edge_value': [{'correct': i < end} for i in range(n)],
++               'first_edge_value': [{'correct': False} for _ in range(n)]}
++    controls = {'zero': [{'correct': i < zero} for i in range(n)], 'shuffled': [{'correct': i < shuffled} for i in range(n)]}
++    return tr.mapping(records, oracles, controls)
++
++
++def test_d0034_boundaries_and_correspondence():
++    # gap exactly 10 pp, bridge exactly 1/8, controls and native below: (a)(b)(c) -> successor CE
++    result = scenario()
++    c = result['criteria']
++    assert c['a_end_value_decodes']['gap_exact'] == '10' and all(v['passed'] for v in c.values())
++    assert result['repair'].startswith('successor-slot CE')
++    assert scenario(end=11)['repair'].startswith('none: (a) fails')
++    assert scenario(shuffled=3)['repair'].startswith('none: (a) fails')  # max(zero, shuffled)
++    assert scenario(bridge=.1249)['repair'].startswith('linear-start')
++    assert scenario(wrong=.125)['repair'].startswith('linear-start')  # a control at 1/8 is not below it
++    assert scenario(donor=.2)['repair'].startswith('linear-start')
++    assert scenario(native=.125)['repair'].startswith('none: (a)(b) hold but (c) fails')
++    assert scenario()['criteria']['b_bridge_addresses_next_edge']['bridge_step1_fact2'] == Fraction(.125)
++
++
++def test_summary_reports_every_step_on_every_path_fact():
++    records = {'native': [rec(.2, .3), rec(.4, .1, hop=3)]}
++    for r in records['native']:
++        r['weights_last'][0][4] = .5
++    summary = tr.summarize_reads(records, 2)['native']
++    assert summary['hops23']['count'] == 2 and len(summary['hops23']['path_weight_last'][0]) == 2
++    assert summary['hop2']['path_weight_last'] == [[.5, .2], [0., .3]]
++    assert summary['hop3']['path_weight_last'][0] == [.5, .4, 0.]
++
++
++# ---- GPU ------------------------------------------------------------------------------------------
++
++def test_rewritten_questions_keep_the_label_and_template(tok, dev):
++    from v2_data import encode
++    rows = [r for r in dev if r['axes']['hop'] > 1]
++    reads = tr.read_rows(tok, rows)
++    for original, bridge, donor in zip(rows, reads['bridge'], reads['donor_bridge']):
++        b = original['path']['entities'][1]
++        assert bridge['question_text'] == original['question_text'].replace(f"from {original['query']['head']},", f'from {b},')
++        assert bridge['question_input_ids'] == encode(tok, bridge['question_text'])
++        assert bridge['query'] == original['query'] and bridge['facts'] == original['facts']
++        name = donor['question_text'].split('from ')[1].split(',')[0]
++        assert name not in {x for f in original['facts'] for x in (f['head'], f['tail'])}
++    for w in reads['wrong_bridge']:
++        assert w['question_text'].startswith(f"Starting from {w['facts'][w['_own_fact']]['head']},")
++
++
++def test_native_read_is_the_arm_forward_and_forced_read_matches_its_closed_form(base, tok, dev):
++    rows = [r for r in dev if r['axes']['hop'] > 1]
++    with v3.arm_model(base, 'V3-02', D5/'adapter') as model:
++        model.eval()
++        records = tr.frozen_reads(model, {'native': rows, 'forced_first': rows}, tok.pad_token_id, 2)
++        arm, _ = v3.evaluate_arm(model, rows, tok.pad_token_id, 2, ('normal',))
++        assert [(r['prediction'], r['nll']) for r in records['native']] == \
++               [(r['prediction'], r['nll']) for r in arm['normal']]
++        # forced: step-2 weights come from z1 = q + eta (v[fact1] g) Ro
++        batch = gpu_batch(tok, rows[:4])
++        side = model.adapters()[14].side
++        with torch.no_grad(), v3.eval_steps(model, 2):
++            snapshot = loop._snapshots(model, batch, 'normal', None)
++            _, seen, _ = v3._capture(model, batch, snapshot)
++            row = torch.arange(4, device='cuda')
++            first = torch.tensor([r['path']['fact_indices'][0] for r in rows[:4]], device='cuda')
++            z1 = seen['q'] + side.reader.eta*((snapshot.values[row, first][:, None]*side.reader.read_gain) @ side.reader.Ro)
++            query = v3.elu_plus_one(v3.rmsnorm_no_affine(z1, side.reader.eps_norm) @ side.reader.Rq)
++            _, weights = v3.slot_read(query, snapshot)
++            last = batch.question_mask.long().sum(-1)-1
++            expected = weights[row, last]
++        got = torch.tensor([r['weights_last'][1] for r in records['forced_first'][:4]], device='cuda')
++        assert torch.allclose(got, expected, atol=1e-5)
++        assert any(a['nll'] != b['nll'] for a, b in zip(records['native'], records['forced_first']))
++        with pytest.raises(ValueError):
++            tr.frozen_batch(model, batch, 1, forced=True)
++    with v3.arm_model(base, 'V3-06', D5/'adapter') as model, pytest.raises(ValueError):
++        tr.frozen_batch(model, gpu_batch(tok, rows[:2]), 4)
+diff --git a/src/v3_transfer.py b/src/v3_transfer.py
+new file mode 100644
+index 0000000..18b2366
+--- /dev/null
++++ b/src/v3_transfer.py
+@@ -0,0 +1,312 @@
++"""E-0023 rule 4: frozen-transfer diagnostic of the S_M* arm (no training). Execute only in an
++allocated GPU job. Rows: T2 calibration hops 2-3; T2 hops 4/6/8 and confirmation are never opened.
++
++Five reads of the frozen arm, all scored at its S_train with the chain end as the label:
++- native: the arm's own loop (equal to its native forward; replay checked within 1e-3);
++- forced_first: z^(1) is set to the state after reading the correct first-edge value
++  (q̄ + η·(v[path fact 1]·g)·Ro); step 2 onward queries and reads natively;
++- bridge: the question's subject is replaced by the gold bridge entity (path.entities[1]); the
++  template and relation are unchanged, so the step-1 read should address path fact 2;
++- wrong_bridge: subject = head of the first same-relation fact that is off the path and whose head
++  is not a path entity (its own fact is reported as ``own_fact``);
++- donor_bridge: subject = the gold bridge of the nearest earlier row (cyclic, evaluated order)
++  whose bridge entity does not occur in this episode;
++- first/end-edge value oracles (v3_diag, reviewed RV-0067) and the zero/shuffled memory controls
++  (v3_train.evaluate_arm, global donor rule) on the same rows.
++Per read and hop: EM, the answer-position (last valid question token) weight of every step on every
++path fact, and the step-1 argmax share on path fact 2.
++
++The rule-4 mapping (D-0034, pooled hops 2-3, answer position, exact fractions):
++(a) end-edge oracle EM - max(EM_zero, EM_shuffled) >= 10 pp; (b) bridge step-1 weight on path
++fact 2 >= 1/8 while the wrong-bridge and donor-bridge means on that fact are both < 1/8;
++(c) native step-2 weight on path fact 2 < 1/8. Not (a): no repair; (a)(b)(c): successor-slot CE S4
++pilot with the permuted-label control; (a) without (b): linear-start S4; (a)(b) without (c): no
++repair. The forced first-edge read is descriptive only.
++"""
++from __future__ import annotations
++
++import argparse
++from collections import Counter
++from fractions import Fraction
++import json
++import os
++from pathlib import Path
++import time
++
++import torch
++import torch.nn.functional as F
++
++import v3_diag as diag
++import v3_train as v3
++
++READS = ('native', 'forced_first', 'bridge', 'wrong_bridge', 'donor_bridge')
++HOPS = (2, 3)
++ADDRESS = Fraction(1, 8)  # D-0034: readiness rule R / rule 5 level
++DECODE_PP = Fraction(10)  # D-0034: H3 margin
++
++
++# ---- rewritten questions -------------------------------------------------------------------------
++
++def _question(tok, row, subject):
++    from v2_data import encode
++    from v3_data import QUESTION_TEMPLATE
++    text = QUESTION_TEMPLATE.format(head=subject, relation=row['query']['relation'])
++    return dict(row, question_text=text, question_input_ids=encode(tok, text))
++
++
++def wrong_fact(row):
++    """First same-relation fact off the path whose head is not a path entity (or None)."""
++    path = set(row['path']['fact_indices'])
++    entities = set(row['path']['entities'])
++    for i, fact in enumerate(row['facts']):
++        if i not in path and fact['relation'] == row['query']['relation'] and fact['head'] not in entities:
++            return i
++    return None
++
++
++def donor_bridge(rows, i):
++    """Gold bridge of the nearest earlier row (cyclic) that does not occur in row i's episode."""
++    row = rows[i]
++    present = {x for f in row['facts'] for x in (f['head'], f['tail'])} | set(row['path']['entities'])
++    for k in range(1, len(rows)):
++        name = rows[(i-k) % len(rows)]['path']['entities'][1]
++        if name not in present:
++            return name
++    raise ValueError('no donor bridge absent from the episode')
++
++
++def read_rows(tok, rows):
++    """{read: rows}; wrong_bridge keeps only rows that have a wrong fact (counted)."""
++    out = {'native': rows, 'forced_first': rows,
++           'bridge': [_question(tok, r, r['path']['entities'][1]) for r in rows],
++           'donor_bridge': [_question(tok, r, donor_bridge(rows, i)) for i, r in enumerate(rows)]}
++    wrong = []
++    for r in rows:
++        i = wrong_fact(r)
++        if i is not None:
++            wrong.append(dict(_question(tok, r, r['facts'][i]['head']), _own_fact=i))
++    out['wrong_bridge'] = wrong
++    return out
++
++
++# ---- frozen reads ---------------------------------------------------------------------------------
++
++@torch.no_grad()
++def frozen_batch(model, batch, steps, forced=False):
++    from v3_loop import RECONSTRUCTION_TOLERANCE, _snapshots, hop_of
++    side = model.adapters()[14].side
++    reader = side.reader
++    variant = v3.side_variant(side)
++    if variant.kernel == 'tokenwise':
++        raise ValueError('the frozen-transfer diagnostic needs a slot-reading arm')
++    snapshot = _snapshots(model, batch, 'normal', None)
++    mask = batch.question_mask
++    row = torch.arange(len(batch.rows), device=mask.device)
++    last = mask.long().sum(-1)-1
++    with v3.eval_steps(model, steps):
++        logits, seen, captured = v3._capture(model, batch, snapshot)
++        qbar, kbar, vbar = seen['q'], seen['k'], seen['v']
++        if not forced:
++            z, trajectory = v3.replay(side, qbar, kbar, vbar, snapshot, steps)
++            native = captured['z']
++            relative = (z-native).norm(dim=-1)/native.norm(dim=-1).clamp_min(1e-6)
++            if not float(relative[mask].max()) <= RECONSTRUCTION_TOLERANCE:
++                raise AssertionError('replay differs from the native output')
++        else:
++            if steps < 2:
++                raise ValueError('forcing the first read needs S >= 2')
++            first = torch.tensor([r['path']['fact_indices'][0] for r in batch.rows], device=mask.device)
++            read = snapshot.values[row, first][:, None].expand_as(qbar) * reader.read_gain
++            Ro = reader.step_matrices(0)[1] if variant.untied_steps else reader.Ro
++            state = qbar + reader.eta * (read @ Ro)
++            z, trajectory = v3.replay(side, qbar, kbar, vbar, snapshot, steps, replace_state=(1, lambda _: state))
++            logits = v3._with_increment(model, batch, snapshot, z)
++    losses = F.cross_entropy(logits, batch.labels, reduction='none').tolist()
++    predictions, labels = logits.argmax(-1).tolist(), batch.labels.tolist()
++    weights = [step['weights'][row, last] for step in trajectory]  # [B, n] per step
++    records = []
++    for i, r in enumerate(batch.rows):
++        records.append({'episode_id': r['episode_id'], 'hop': hop_of(r), 'target': labels[i],
++                        'prediction': predictions[i], 'correct': predictions[i] == labels[i], 'nll': losses[i],
++                        'question_tokens': int(mask[i].sum()), 'path': r['path']['fact_indices'],
++                        'own_fact': r.get('_own_fact'), 'weights_last': [w[i].tolist() for w in weights]})
++    return records
++
++
++@torch.no_grad()
++def frozen_reads(model, rows_by_read, pad_id, steps):
++    from v2_memory import collate
++    from v3_loop import EVAL_BATCH
++    model.eval()
++    device = next(model.parameters()).device
++    out = {}
++    for read, rows in rows_by_read.items():
++        records = []
++        for start in range(0, len(rows), EVAL_BATCH):
++            batch = collate(rows[start:start+EVAL_BATCH], pad_id, device)
++            records.extend(frozen_batch(model, batch, steps, forced=read == 'forced_first'))
++        out[read] = records
++    return out
++
++
++# ---- summaries and the rule-4 mapping ------------------------------------------------------------
++
++def _mean(values):
++    values = list(values)
++    return sum(values)/len(values) if values else None
++
++
++def summarize_reads(records, steps):
++    out = {}
++    for read, group in records.items():
++        out[read] = {}
++        for name, members in (('hops23', group), *((f'hop{h}', [r for r in group if r['hop'] == h]) for h in HOPS)):
++            if not members:
++                continue
++            width = min(r['hop'] for r in members)
++            out[read][name] = {
++                'count': len(members), 'correct_count': sum(r['correct'] for r in members),
++                'em': sum(r['correct'] for r in members)/len(members),
++                'nll': _mean(r['nll'] for r in members),
++                'path_weight_last': [[_mean(r['weights_last'][s][r['path'][j]] for r in members) for j in range(width)]
++                                     for s in range(steps)],
++                'step1_argmax_is_fact2': _mean(max(range(len(r['weights_last'][0])), key=r['weights_last'][0].__getitem__)
++                                               == r['path'][1] for r in members),
++                'own_fact_weight_last': ([_mean(r['weights_last'][s][r['own_fact']] for r in members) for s in range(steps)]
++                                         if members[0]['own_fact'] is not None else None)}
++    return out
++
++
++def _exact_mean(records, step, fact):
++    values = [Fraction(r['weights_last'][step][fact(r)]) for r in records]
++    return sum(values, Fraction(0))/len(values)
++
++
++def _em(records):
++    return Fraction(sum(r['correct'] for r in records), len(records))
++
++
++def mapping(records, oracle_records, control_records):
++    """D-0034 criteria (a)-(c) and the rule-4 correspondence on the pooled hops 2-3 rows."""
++    fact2 = lambda r: r['path'][1]
++    zero, shuffled = _em(control_records['zero']), _em(control_records['shuffled'])
++    end = _em(oracle_records['end_edge_value'])
++    gap = (end - max(zero, shuffled))*100
++    bridge = _exact_mean(records['bridge'], 0, fact2)
++    controls = {r: _exact_mean(records[r], 0, fact2) for r in ('wrong_bridge', 'donor_bridge')}
++    native = _exact_mean(records['native'], 1, fact2)
++    a = gap >= DECODE_PP
++    b = bridge >= ADDRESS and all(c < ADDRESS for c in controls.values())
++    c = native < ADDRESS
++    criteria = {
++        'a_end_value_decodes': {'end_edge_em': end, 'zero_em': zero, 'shuffled_em': shuffled, 'gap_pp': gap,
++                                'gap_exact': str(gap), 'threshold_pp': DECODE_PP, 'passed': a,
++                                'rows': len(oracle_records['end_edge_value'])},
++        'b_bridge_addresses_next_edge': {'bridge_step1_fact2': bridge, 'wrong_bridge_step1_fact2': controls['wrong_bridge'],
++                                         'donor_bridge_step1_fact2': controls['donor_bridge'], 'threshold': ADDRESS,
++                                         'rows': {r: len(records[r]) for r in ('bridge', 'wrong_bridge', 'donor_bridge')},
++                                         'passed': b},
++        'c_native_transition_fails': {'native_step2_fact2': native, 'threshold': ADDRESS, 'passed': c,
++                                      'rows': len(records['native'])},
++    }
++    if not a:
++        repair = 'none: (a) fails, descriptive only'
++    elif not b:
++        repair = 'linear-start S4 (AD-0004)'
++    elif c:
++        repair = 'successor-slot CE S4 pilot with the permuted-successor-label control (AD-0003 proposal 3)'
++    else:
++        repair = 'none: (a)(b) hold but (c) fails; descriptive only, go to the conclusion'
++    return {'decision': 'D-0034', 'criteria': criteria, 'repair': repair}
++
++
++# ---- runner ---------------------------------------------------------------------------------------
++
++def run_transfer(args, output, result):
++    from calibrate import load_base
++    from v2r16_train import checkpoint_records
++    from v3_loop import load_t2
++    start = v3.start_provenance(args.start_run, args.start_sha256, ready_run=args.ready_run)
++    if start['formal_start'] is not True:
++        raise ValueError('the diagnostic needs the formal common start')
++    run = Path(args.arm_run)
++    arm, metrics, _ = v3.validate_arm_run(run, v3.analysis_reference(), start)
++    files = checkpoint_records(run/'adapter')
++    if files != metrics.get('checkpoint_files') or files['adapter.pt']['sha256'] != args.arm_sha256:
++        raise ValueError('arm adapter differs from its metrics or the pinned digest')
++    steps = v3.ARMS[arm]['steps']
++    if steps < 2:
++        raise ValueError('the frozen-transfer diagnostic is defined for S_M* (S >= 2)')
++    result.update(start=start, arm_run={'run': str(run.resolve()), 'arm': arm, 'steps': steps, 'checkpoint_files': files})
++    tokenizer, pad_id = v3._tokenizer()
++    metadata, rows, _ = load_t2(tokenizer, 'calibration')
++    rows = [r for r in rows if r['axes']['hop'] in HOPS]
++    if args.eval_limit:
++        rows = [r for h in HOPS for r in [x for x in rows if x['axes']['hop'] == h][:args.eval_limit]]
++    by_read = read_rows(tokenizer, rows)
++    result['data'] = {'split': 'calibration', 'calibration_sha256': metadata['splits']['calibration']['sha256'],
++                      'rows_by_hop': dict(sorted(Counter(r['axes']['hop'] for r in rows).items())),
++                      'rows_by_read': {k: len(v) for k, v in by_read.items()}}
++    base = load_base()
++    with v3.load_arm(base, run/'adapter') as model:
++        if checkpoint_records(run/'adapter') != files:
++            raise ValueError('arm adapter changed between the digest check and loading')
++        tick = time.monotonic()
++        records = frozen_reads(model, by_read, pad_id, steps)
++        oracle_records = diag.evaluate_oracles(model, rows, pad_id, steps)
++        control_records, _ = v3.evaluate_arm(model, rows, pad_id, steps, ('zero', 'shuffled'))
++        result['seconds'] = time.monotonic()-tick
++    result['reads'] = summarize_reads(records, steps)
++    result['oracles'] = {name: diag.summarize_by_hop(group) for name, group in oracle_records.items()}
++    result['controls'] = {name: diag.summarize_by_hop(group) for name, group in control_records.items()}
++    result['mapping'] = mapping(records, oracle_records, control_records)
++    for name, group in {**records, **oracle_records, **{f'control_{k}': v for k, v in control_records.items()}}.items():
++        v3._write_records(output/f'calibration.{name}.jsonl', group)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--start-run', type=Path, required=True)
++    parser.add_argument('--start-sha256', required=True)
++    parser.add_argument('--ready-run', type=Path, required=True)
++    parser.add_argument('--arm-run', type=Path, required=True)
++    parser.add_argument('--arm-sha256', required=True)
++    parser.add_argument('--eval-limit', type=int, default=0, help='smoke only: first N calibration rows per hop')
++    args = parser.parse_args()
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=True)
++    if any(output.iterdir()):
++        raise ValueError('output must be empty')
++    from calibrate import MODEL, REVISION
++    from v2_train import write_json
++    from v2r16_train import file_record
++    started = time.monotonic()
++    smoke = bool(args.eval_limit)
++    result, passed, failure = {'experiment': v3.CONTRACT, 'command': 'transfer', 'smoke_only': smoke}, False, None
++    try:
++        run_transfer(args, output, result)
++        passed = True
++    except Exception as exc:
++        failure = {'type': type(exc).__name__, 'message': str(exc)}
++        raise
++    finally:
++        wall = time.monotonic()-started
++        result.update(wall_seconds=wall, node_hours=wall/14400)
++        write_json(output/'metrics.json', v3._jsonable(result))
++        artifacts = [{'path': str(p.resolve()), 'role': str(p.relative_to(output)), **file_record(p)}
++                     for p in sorted(output.rglob('*')) if p.is_file() and p.name != 'manifest.json']
++        write_json(output/'manifest.json', v3._jsonable({
++            'status': 'complete' if passed else 'failed', 'experiment': v3.EXPERIMENT, 'contract': v3.CONTRACT,
++            'command': 'transfer', 'arm': (result.get('arm_run') or {}).get('arm'),
++            'spec_digest': os.environ.get('SR_SPEC_DIGEST'), 'model': MODEL, 'revision': REVISION,
++            'eval_limit': args.eval_limit, 'smoke_only': smoke, 'eligible_as_evidence': passed and not smoke,
++            'descriptive_only': True, 'torch': torch.__version__, 'cuda': torch.version.cuda,
++            'metrics': {'wall_seconds': wall, 'node_hours': wall/14400,
++                        **({'repair': result['mapping']['repair']} if 'mapping' in result else {})},
++            'artifacts': artifacts, 'failure': failure, 'validator': {'name': 'v3_transfer', 'passed': passed}}))
++    return 0
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
