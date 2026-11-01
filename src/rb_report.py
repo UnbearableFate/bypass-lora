@@ -93,6 +93,9 @@ def main():
             guard=read(root/'mig-profile.json')
             assert guard['passed'] is True and guard['profile']=='2g.24gb'
             assert guard['uuid'] and guard['uuid']==guard['cuda_visible_devices']
+            allocation=read(root/'allocation.json')
+            assert allocation['ok'] is True and allocation['context']['runtime_execution_allowed'] is True
+            assert allocation['context']['pbs_job_id']==guard['pbs_job_id']==locations[attempt]['job_id']
         main_root=roots['ATT-0189-1']/'benchmark';extra_root=roots['ATT-0191-1']
         primary,extra=read(main_root/'timings.json'),read(extra_root/'timings.json')
         assert verified_timings(main_root,primary,MAIN_PARAMS)==verified_timings(extra_root,extra,EXTRA_PARAMS)
@@ -142,10 +145,10 @@ def main():
         for label,row in latency.items():
             expected=16896 if label in ('RB1-02','RB1-04','RB1-08') else 0
             assert row['adapter_persistent_state']['M_c_bytes']==expected
-        prefix_max=max(r['step_seconds'] for r in rows if r['case']!='RB1-02-reference' and not r['case'].startswith('LoRA28-'))
+        prefix_max=max(r['step_seconds'] for r in rows if r['case'] not in ('RB1-02-reference','RB1-07') and not r['case'].startswith('LoRA28-'))
         family_cases={'RBc-L':'RB1-07','RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-C':'RB1-08'}
         family_costs={f:row_map[c]['estimates']['RBc']['node_h'] for f,c in family_cases.items()}
-        sources=[reference(root/'manifest.json') for root in roots.values()]+[
+        sources=[reference(root/name) for root in roots.values() for name in ('manifest.json','allocation.json','mig-profile.json')]+[
             reference(main_root/'timings.json'),reference(extra_root/'timings.json'),
             reference(main_root/'cost-estimates.json'),reference(main_root/'schedules.json'),
             reference(main_root/'latency-base.json'),reference(args.probe/'checks'/'checks.xml')]
@@ -167,6 +170,7 @@ def main():
             'formal_RB_training_started':False,'confirmation_evaluated':False}
         write(out/'cost-summary.json',summary)
         lines=['# RB0 measured timing and conditional costs','',
+            'Reference scan is a diagnostic comparator and is excluded from the RB1 sum. Node_h uses measured/predicted one-MIG seconds divided by14400.','',
             '| Case | Trainable/stored/with-grad | Step s | Tokens/s | Peak CUDA GiB | RB5 3epochs node_h |',
             '| --- | ---: | ---: | ---: | ---: | ---: |']
         for r in rows:
