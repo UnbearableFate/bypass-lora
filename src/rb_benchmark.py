@@ -111,17 +111,19 @@ def main():
                 measured=timings[arm]
                 evaluation=measured['sample_eval_seconds']*factor
                 estimates[arm]={}
-                for stage,evaluations in [('RBc',2),('RB1',5),('RB5',5)]:
+                for stage,evaluations in [('RBc',1),('RB1',5),('RB5',5)]:
                     # RB1:25/50/75%dev,finaldev,fresh reload. RB5 estimate
                     # assumes the same monitoring;its later contract can refine.
                     rows_ratio=(sum(len(splits['splits'][t]['calibration']) for t in ('piqa','boolq'))/
                                 sum(len(splits['splits'][t]['dev']) for t in ('piqa','boolq'))) if stage=='RBc' else 1.
                     per_pass=evaluation*rows_ratio
-                    seconds=2*measured['load_seconds']+schedule[stage]['plan.steps']*measured['step_seconds']+evaluations*per_pass+measured['save_seconds']
+                    loads=1 if stage=='RBc' else 2
+                    save=0 if stage=='RBc' else measured['save_seconds']
+                    seconds=loads*measured['load_seconds']+schedule[stage]['plan.steps']*measured['step_seconds']+evaluations*per_pass+save
                     estimates[arm][stage]={'estimated_seconds':seconds,'estimated_node_h':seconds/14400,
                         'steps':schedule[stage]['plan.steps'],'eval_count':evaluations,
                         'eval_seconds_per_pass_estimate':per_pass,'eval_row_ratio_to_dev':rows_ratio,
-                        'basis':'direct100-step timing;full/sample dev scaling anchored toR_res S1;RBc additionally scales4096calibration/2000dev rows,not measured calibration lengths;two loads+save;excludes later interventions/bootstrap and queue wait'}
+                        'basis':'direct100-step timing;full/sample dev scaling anchored toR_res S1;RBc scales4096calibration/2000dev rows with one load/eval and no checkpoint;RB1/RB5 two loads+save;excludes later interventions/bootstrap and queue wait'}
         write_json(out/'cost-estimates.json',{'schedules':schedule,'arms':estimates,
             'RB1_training_monitor_reload_node_h':sum(v['RB1']['estimated_node_h'] for v in estimates.values()),
             'needs_profile':any(v['step_seconds']>.4 for v in timings.values() if v['impl']=='prefix' and v['arm']!='RB1-07'),

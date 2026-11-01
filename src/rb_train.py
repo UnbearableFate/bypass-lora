@@ -221,15 +221,16 @@ def run(args):
         write_json(out/'config.json',vars(args))
         budget=200000 if args.stage=='calibration' else None if args.three_epochs else 2000000
         batches=plan_batches(splits,tok,phase,args.seed,[(x['task'],x['id']) for x in excluded],budget)
+        if args.stage=='smoke':
+            batches=batches[:args.smoke_steps or 4]
         metrics.update(plan_metadata(batches))
         metrics['split_manifest.sha256']=file_sha256(args.split_manifest)
         metrics['learning_rate']=args.lr
+        metrics['failed']=False
         metrics.update({'model_revision':REVISION,'tokenizer_revision':REVISION,
             'source.commit':os.environ.get('SR_CODE_COMMIT','unknown'),
             'environment.lock_sha256':file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
             'torch':torch.__version__,'cuda':torch.version.cuda})
-        if args.stage=='smoke':
-            batches=batches[:args.smoke_steps or 4]
         tick=time.monotonic()
         model=make_model(args.arm,phase,args.seed)
         metrics['load.seconds']=time.monotonic()-tick
@@ -241,25 +242,32 @@ def run(args):
             write_json(out/f'dev-step-{step}.json',{'step':step,'metrics':values,'predictions':preds})
         metrics.update(train(model,batches,tok,args.lr,out,monitor if args.stage!='calibration' else None))
         assert metrics['params.with_grad']==PARAMETERS[args.arm]
-        tick=time.monotonic()
-        model.export_adapter(out/'adapter')
-        metrics['save.seconds']=time.monotonic()-tick
-        split_names=('calibration',) if args.stage=='calibration' else ('dev',)
+        if args.stage!='calibration':
+            tick=time.monotonic()
+            model.export_adapter(out/'adapter')
+            metrics['save.seconds']=time.monotonic()-tick
+        else:
+            # RBc selects an LR from NLL and RB1 starts from scratch. Checkpoint
+            # identity is covered by smoke/formal runs, not repeated per LR.
+            metrics['calibration.export_reload_skipped']=True
+        split_names=(('calibration',) if args.stage=='calibration' else
+                     ('calibration','dev') if args.stage=='smoke' else ('dev',))
         tick=time.monotonic()
         values,preds=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
         metrics.update(values)
         metrics['eval.seconds']=time.monotonic()-tick
         write_json(out/'predictions.json',preds)
-        del model
-        gc.collect()
-        torch.cuda.empty_cache()
-        model=make_model(args.arm,phase,args.seed,out/'adapter')
-        values,reloaded=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
-        metrics['reload.identical']=preds==reloaded
-        assert metrics['reload.identical'] and all(metrics[k]==v for k,v in values.items())
-        write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
-            'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
-            for name in ('config.json','adapter.pt')})
+        if args.stage!='calibration':
+            del model
+            gc.collect()
+            torch.cuda.empty_cache()
+            model=make_model(args.arm,phase,args.seed,out/'adapter')
+            values,reloaded=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
+            metrics['reload.identical']=preds==reloaded
+            assert metrics['reload.identical'] and all(metrics[k]==v for k,v in values.items())
+            write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
+                'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
+                for name in ('config.json','adapter.pt')})
         passed=True
     except (TrainingDiverged,EvaluationNonfinite) as exc:
         if isinstance(exc,TrainingDiverged):

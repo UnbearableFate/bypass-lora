@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -64,3 +65,68 @@ def test_T0_rejects_backend_that_would_create_an_unused_temperature():
     from bypass_model import AdapterConfig
     with pytest.raises(ValueError,match='parameter family'):
         AdapterConfig(branch='kernel_tokenwise',backend='centered_cos_slot')
+
+
+@pytest.mark.parametrize('double_writes',[False,True])
+def test_train_accounting_gate_rejects_doubled_writes(tmp_path,monkeypatch,double_writes):
+    import torch
+    import rb_train
+    from bypass_model import BranchModel
+    model=BranchModel.__new__(BranchModel)
+    torch.nn.Module.__init__(model)
+    model.config=adapter_config('RB1-02')
+    def forward(self,*args):
+        return SimpleNamespace(accounting={6:{'base':{'attention':1,'ffn':1},
+            'side':{'valid_tokens':torch.tensor(1),'writes':torch.tensor(2 if double_writes else 1),
+                    'reads':torch.tensor(1)}}},cache=SimpleNamespace(memory={6:None}))
+    monkeypatch.setattr(BranchModel,'forward',forward)
+    def fake_train(current,*args,**kwargs):
+        current(None);current(None)
+        return {'train.input_tokens':2,'train.examples':2}
+    monkeypatch.setattr(rb_train,'v1_train',fake_train)
+    monkeypatch.setattr(torch.cuda,'reset_peak_memory_stats',lambda:None)
+    if double_writes:
+        with pytest.raises(AssertionError):
+            rb_train.train(model,[],None,.001,tmp_path)
+    else:
+        result=rb_train.train(model,[],None,.001,tmp_path)
+        assert result['runtime.accounting']['layers']['6']['writes']==2
+
+
+def test_calibration_entry_evaluates_once_without_export_or_reload(tmp_path,monkeypatch):
+    import torch
+    import rb_train
+    split=tmp_path/'split.json';split.write_text('{}')
+    args=SimpleNamespace(output=tmp_path/'run',stage='calibration',phase='R1',seed=0,
+        arm='RB1-02',lr=.001,lr_lock=None,split_manifest=split,data_dir='fixture',
+        three_epochs=False,eval_limit=None,smoke_steps=None)
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__();self.new=torch.nn.Parameter(torch.zeros(rb_train.PARAMETERS[args.arm]))
+        def adapter_parameters(self):return self.parameters()
+        def export_adapter(self,*args):pytest.fail('calibration must not export')
+    loads=[];evaluations=[]
+    def make(arm,phase,seed):
+        loads.append((arm,phase,seed));return Model()
+    def evaluate(model,splits,tok,limit,split_names):
+        evaluations.append(split_names)
+        return {'calibration.nll':1.2},[{'id':1,'prediction':0}]
+    monkeypatch.setattr(rb_train.AutoTokenizer,'from_pretrained',lambda *a,**k:SimpleNamespace(eos_token_id=0))
+    monkeypatch.setattr(rb_train,'load_data',lambda *a:({},[]))
+    monkeypatch.setattr(rb_train,'plan_batches',lambda *a:[None])
+    monkeypatch.setattr(rb_train,'plan_metadata',lambda *a:{'plan.steps':1,'plan.order_sha256':'b'*64})
+    monkeypatch.setattr(rb_train,'make_model',make)
+    monkeypatch.setattr(rb_train,'train',lambda *a:{'params.with_grad':rb_train.PARAMETERS[args.arm],
+        'train.steps':1,'train.input_tokens':200001})
+    monkeypatch.setattr(rb_train,'evaluate',evaluate)
+    monkeypatch.setattr(torch.cuda,'get_device_name',lambda:'unit fixture')
+    monkeypatch.setenv('SR_SPEC_DIGEST','unit-fixture')
+    rb_train.run(args)
+    value=json.loads((args.output/'manifest.json').read_text())
+    assert value['status']=='complete' and value['validator']['passed'] is True
+    assert value['phase']=='V0' and value['stage']=='calibration'
+    assert loads==[('RB1-02','V0',0)] and evaluations==[('calibration',)]
+    assert value['metrics']['calibration.export_reload_skipped'] is True
+    assert value['metrics']['failed'] is False and value['metrics']['calibration.nll']==1.2
+    assert 'reload.identical' not in value['metrics'] and 'save.seconds' not in value['metrics']
+    assert not (args.output/'adapter').exists() and not (args.output/'checkpoint.json').exists()

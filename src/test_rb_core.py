@@ -4,7 +4,6 @@ Per tensor: ||actual-reference||inf <= 1e-5 + 1e-4*||reference||inf.
 Both the absolute infinity norm and normalized relative error are reported.
 No componentwise ratio or post-result tolerance change is used.
 """
-from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -121,16 +120,18 @@ def test_t0_definition_and_history_independence():
     close(process_kernel_tokenwise(*changed,reader,valid,4)[:,5:], actual[:,5:])
 
 
-def history_inputs():
+def history_inputs(left_padding=True):
     torch.manual_seed(193)
     q,k,v = [torch.randn(2,17,8) for _ in range(3)]
     valid = torch.ones(2,17,dtype=torch.bool)
-    valid[0,:2], valid[1,-3:] = False, False
+    if left_padding:
+        valid[0,:2] = False
+    valid[1,-3:] = False
     return q,k,v,valid,LatentReader(8)
 
 
 def test_history_identities_strict_and_current_weights():
-    q,k,v,valid,reader = history_inputs()
+    q,k,v,valid,reader = history_inputs(left_padding=False)
     cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fixed_query=True,steps=4,fusion='F_out')
     normal = run_history(q,k,v,reader,valid,cfg,{'capture_history':True,'trace_reads':True})
     for options in ({'kind':'iv_window','window':64},
@@ -140,7 +141,7 @@ def test_history_identities_strict_and_current_weights():
     off = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_off'})
     assert torch.count_nonzero(off.outputs) == 0
     strict = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_strict'})
-    assert torch.count_nonzero(strict.outputs[0,:3]) == 0
+    assert torch.count_nonzero(strict.outputs[0,0]) == 0
     assert torch.count_nonzero(strict.outputs[1,0]) == 0
     weights = normal.diagnostics['current_weight']
     assert weights.shape == (2,17,4)
@@ -155,7 +156,7 @@ def test_history_identities_strict_and_current_weights():
 
 @pytest.mark.parametrize('kind',['iv_window1','iv_window8','iv_strict','iv_swap','iv_permute','iv_off'])
 def test_every_intervention_causal_at_feature_boundary(kind):
-    q,k,v,valid,reader = history_inputs()
+    q,k,v,valid,reader = history_inputs(left_padding=kind not in ('iv_swap','iv_permute'))
     cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out',steps=4)
     donor = run_history(q.flip(0),k.flip(0),v.flip(0),reader,valid.flip(0),cfg,{'capture_history':True})
     options = {'kind':kind,'phase':'R1','example_ids':['a','b'],'donor':donor.diagnostics['history']}
@@ -177,12 +178,58 @@ def test_wrong_implementations_are_rejected():
         masses[:,-1:].expand_as(masses),counts[:,-1:].expand_as(counts),valid)
     with pytest.raises(AssertionError):
         close(bad[:,:8],normal.outputs[:,:8])
-    duplicate = replace(normal,accounting={**normal.accounting,'writes':valid.sum()*2})
-    with pytest.raises(AssertionError):
-        assert duplicate.accounting['writes'] == valid.sum()
-    padded = process_prefix(q,k,v,reader,valid=torch.ones_like(valid))
-    with pytest.raises(AssertionError):
-        assert torch.equal(padded.state.counts,valid.sum(1))
+
+
+@pytest.mark.parametrize('broken',['duplicate','ignore_padding'])
+def test_broken_prefix_writes_fail_the_reference_gate(broken):
+    import bypass_core
+    q,k,v,valid,reader = history_inputs()
+    reference = process_sequence(q,k,v,reader,valid=valid,steps=4)
+    def gate():
+        result = process_prefix(q,k,v,reader,valid=valid,steps=4)
+        # State comparisons are essential: doubling M and c together can leave
+        # normalized reads almost unchanged while corrupting the saved state.
+        close(result.state.M,reference.state.M,name='M')
+        close(result.state.c,reference.state.c,name='c')
+        assert torch.equal(result.state.counts,reference.state.counts),'counts'
+        close(result.outputs,reference.outputs,name='outputs')
+    gate()
+    original = bypass_core.kernel_prefix_states
+    def bad_states(k,v,reader,valid,write=None,state=None):
+        if broken=='ignore_padding':
+            return original(k,v,reader,torch.ones_like(valid),write,state)
+        keys,values,matrices,masses,counts,_ = original(k,v,reader,valid,write,state)
+        initial = state or MemoryState.empty(k.shape[0],reader.rank,device=k.device)
+        matrices = initial.M[:,None]+2*(matrices-initial.M[:,None])
+        masses = initial.c[:,None]+2*(masses-initial.c[:,None])
+        counts = initial.counts[:,None]+2*(counts-initial.counts[:,None])
+        final = MemoryState(matrices[:,-1],masses[:,-1],counts[:,-1],'kernel_matrix',reader.rank)
+        return 2*keys,values,matrices,masses,counts,final
+    with patch('bypass_core.kernel_prefix_states',side_effect=bad_states):
+        with pytest.raises(AssertionError,match='M|c|counts'):
+            gate()
+
+
+@pytest.mark.parametrize('kind',['iv_swap','iv_permute'])
+@pytest.mark.parametrize('mask_kind',['left_padding','gap'])
+def test_swap_permute_reject_nonprefix_recipient_masks(kind,mask_kind):
+    q,k,v,valid,reader = history_inputs(left_padding=False)
+    cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out')
+    donor = run_history(q,k,v,reader,valid,cfg,{'capture_history':True}).diagnostics['history']
+    valid[0,0 if mask_kind=='left_padding' else 3] = False
+    with pytest.raises(ValueError,match='recipient.*contiguous from position 0'):
+        run_history(q,k,v,reader,valid,cfg,{'kind':kind,'donor':donor,
+            'phase':'R1','example_ids':['a','b']})
+
+
+@pytest.mark.parametrize('mask_kind',['left_padding','gap'])
+def test_swap_rejects_nonprefix_donor_masks(mask_kind):
+    q,k,v,valid,reader = history_inputs(left_padding=False)
+    cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out')
+    donor = run_history(q,k,v,reader,valid,cfg,{'capture_history':True}).diagnostics['history']
+    donor['valid'][0,0 if mask_kind=='left_padding' else 3] = False
+    with pytest.raises(ValueError,match='donor.*contiguous from position 0'):
+        run_history(q,k,v,reader,valid,cfg,{'kind':'iv_swap','donor':donor})
 
 
 def test_donor_mapping_is_within_task_derangement():

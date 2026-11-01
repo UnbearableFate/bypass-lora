@@ -11,6 +11,12 @@ from v1_data import derive_seed
 KINDS = ("iv_off", "iv_window1", "iv_window8", "iv_window", "iv_strict", "iv_swap", "iv_permute")
 
 
+def require_prefix_valid(valid, label):
+    expected = torch.arange(valid.shape[1], device=valid.device)[None] < valid.long().sum(1)[:, None]
+    if not torch.equal(valid.bool(), expected):
+        raise ValueError(label+' requires valid tokens contiguous from position 0')
+
+
 def donor_indices(rows, phase):
     """Uniform rejection-sampled derangement separately within each task."""
     result = list(range(len(rows)))
@@ -33,12 +39,15 @@ def run_history(q, k, v, reader, valid, config, options):
     """Full-sequence diagnostic path. Interventions never accept cached state.
 
     The donor contains projected positive keys and raw values from a normal
-    forward of that donor, at this same adapter layer. Histories use physical
-    sequence positions; invalid writes contribute zero.
+    forward of that donor, at this same adapter layer. Swap and permutation
+    require unpadded or right-padded rows, so physical and logical valid-token
+    positions agree. Other diagnostics retain general mask support.
     """
     kind = options.get('kind')
     if kind is not None and kind not in KINDS:
         raise ValueError('unknown F-line history intervention')
+    if kind in ('iv_swap', 'iv_permute'):
+        require_prefix_valid(valid, kind+' recipient')
     keys, values, matrices, masses, counts, final = kernel_prefix_states(k, v, reader, valid)
     normal_m, normal_c, normal_n = matrices, masses, counts
     zero_m = torch.zeros_like(matrices[:, :1])
@@ -64,6 +73,7 @@ def run_history(q, k, v, reader, valid, config, options):
         if dk.ndim != 3 or dk.shape != dv.shape or dk.shape[0] != q.shape[0] or dk.shape[2] != q.shape[2] or dm.shape != dk.shape[:2]:
             raise ValueError('donor history shape mismatch')
         dm = dm.to(q.device)
+        require_prefix_valid(dm, 'iv_swap donor')
         dk = torch.where(dm[..., None], dk.to(q.device), torch.zeros_like(dk, device=q.device))
         dv = torch.where(dm[..., None], dv.to(q.device), torch.zeros_like(dv, device=q.device))
         index = torch.arange(q.shape[1], device=q.device).clamp_max(dk.shape[1])

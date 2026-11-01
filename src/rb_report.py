@@ -122,10 +122,13 @@ def main():
             job='ATT-0189-1' if label in primary else 'ATT-0191-1'
             evaluation=value['sample_eval_seconds']*scale
             estimates={}
-            for stage,passes in (('RBc',2),('RB1',5),('RB5',5)):
+            for stage,passes in (('RBc',1),('RB1',5),('RB5',5)):
                 per_pass=evaluation*(2.048 if stage=='RBc' else 1)
-                seconds=2*value['load_seconds']+schedule[stage]['plan.steps']*value['step_seconds']+passes*per_pass+value['save_seconds']
+                loads=1 if stage=='RBc' else 2
+                save=0 if stage=='RBc' else value['save_seconds']
+                seconds=loads*value['load_seconds']+schedule[stage]['plan.steps']*value['step_seconds']+passes*per_pass+save
                 estimates[stage]={'seconds':seconds,'node_h':seconds/14400,'eval_passes':passes,
+                                  'model_loads':loads,'checkpoint_exports':int(stage!='RBc'),
                                   'estimated_eval_seconds_per_pass':per_pass}
             rows.append({'case':label,'attempt':job,'step_seconds':value['step_seconds'],
                 'tokens_per_second':value['tokens_per_second'],'peak_cuda_bytes':value['peak_cuda_bytes'],
@@ -161,7 +164,7 @@ def main():
             'RBc_16candidate_node_h':sum(family_costs.values())*4,
             'actual_T0022_through_timing_MIG_seconds':1755,'actual_T0022_through_timing_node_h':1755/14400,
             'timing_sample_rule':'20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches',
-            'estimate_rule':'two loads+plannedsteps*measuredstep+evalpasses*scaleddev+save;RBc2passes4096calibration/2000dev;RB1/RB5fivepasses',
+            'estimate_rule':'RBc one load+plannedsteps*measuredstep+one4096calibration pass,no export/reload;RB1/RB5 two loads+steps+five scaleddev passes+save',
             'limits':['Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.',
                 'Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.',
                 'RB5 matrix/monitoring remains conditional;S2 unmeasured layouts need labeled interpolation;S1concatT0 and mixed-rankLoRA are not measured here.',
@@ -180,6 +183,7 @@ def main():
         for i in range(1,10):
             label=f'RB1-{i:02}';lines.append(f'| {label} | {row_map[label]["estimates"]["RB1"]["node_h"]:.6f} |')
         lines += ['',f'RB1 core total: {rb1:.6f} node_h. Frozen interventions,analysis and planning overhead are additional.',
+            '', 'RBc candidates use one load and one calibration pass,with no export or fresh reload (RV-0060 fix).',
             '', '| RBc family | Estimated node_h/candidate |','| --- | ---: |']
         for family,cost in family_costs.items():lines.append(f'| {family} | {cost:.6f} |')
         lines += ['',f'RBc12-16candidate estimate: {sum(family_costs.values())*3:.6f}-{sum(family_costs.values())*4:.6f} node_h.',
