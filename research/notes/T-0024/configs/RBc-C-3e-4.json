@@ -1,0 +1,20 @@
+{
+  "experiment": "E-0020@1",
+  "stage": "calibration",
+  "phase": "V0",
+  "family": "RBc-C",
+  "arm": "RB1-08",
+  "seed": 0,
+  "learning_rate": 0.0003,
+  "token_budget": 200000,
+  "stop": "first complete optimizer step reaching >=200000 non-padding input tokens",
+  "data_dir": "/work/xg24i002/x10041/bypass-lora/data/v1",
+  "split_manifest": "research/artifacts/T-0022/rb-confirmation.json",
+  "split_manifest_sha256": "34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc",
+  "initialization": "derive_seed(20261101,\"residual_la_v21\",\"V0\",\"init\",0)",
+  "training_order": "derive_seed(20261101,\"residual_la_v21\",\"V0\",\"train\",0)",
+  "evaluation": "full calibration only: 2048 examples per task; one pass",
+  "checkpoint_export_reload": false,
+  "profile_policy": "record-only per D-0018/D-0019",
+  "review": "RV-0060/RV-0062; reviewed path unchanged"
+}
