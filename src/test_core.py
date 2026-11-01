@@ -44,7 +44,8 @@ def test_kernel_matrix_equals_slot_reference_outputs_and_qkv_gradients(
             if slots > 1 and index == slots // 2:
                 reset_rows = torch.tensor([False, True, False])
                 state = state.reset(reset_rows)
-            state = state.write(k[:, index], v[:, index], write_mask[:, index])
+            state = state.write(elu_plus_one(rmsnorm_no_affine(k[:, index])),
+                                v[:, index], write_mask[:, index])
         out = reader(q, state, steps=steps)
         loss = (out * probe).sum()
         grad = torch.autograd.grad(loss, (q, k, v))
