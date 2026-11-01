@@ -1,0 +1,99 @@
+{
+  "experiment": "E-0020@1",
+  "study_id": "residual_la_v21",
+  "split_manifest_sha256": "34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc",
+  "locked_lrs": {
+    "RBc-T": 0.003,
+    "RBc-L": 0.0003,
+    "RBc-R": 0.003,
+    "RBc-C": 0.001
+  },
+  "boundary_minimum": {
+    "RBc-T": true,
+    "RBc-L": false,
+    "RBc-R": false,
+    "RBc-C": false
+  },
+  "inputs": [
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0210-1/manifest.json",
+      "sha256": "7182093b1711b1aad163da1f5fce81c926852cb3704a62b8027aff866a5eae3f",
+      "bytes": 3549
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0211-1/manifest.json",
+      "sha256": "713baff6ef9d9b1d1e99cdeacaf5ab1d3c43ff2372c781264746900f2041da20",
+      "bytes": 3550
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0212-1/manifest.json",
+      "sha256": "1cd38ed99b14ba5c3d995a0a0b9a22221372a40f1397e0f5cf995d5de074b907",
+      "bytes": 3548
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0213-1/manifest.json",
+      "sha256": "499ca5dbef7d07b08d6616d141d38021c0d90a7f7ab2d5988ccd4045a0cedb0a",
+      "bytes": 4185
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0214-1/manifest.json",
+      "sha256": "baa37e67b04a1f6638b8cbd5db94c33247622f1c2ed4ff0294a8b0bf7e5a8500",
+      "bytes": 4183
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0215-1/manifest.json",
+      "sha256": "c162105d1e00e8fbca31936b6244bfce7ec145c35278e85ebc3cb83be4bf5ed8",
+      "bytes": 4180
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0216-1/manifest.json",
+      "sha256": "5b95dfe161b7b5b696dcc1c5332b58aa662e77ad6fda533cb479cc5edaf0fdf5",
+      "bytes": 5302
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0217-1/manifest.json",
+      "sha256": "cc531344e7d3eb60ce3fcc069a51ee75440f8e7000da5e3493ed28367130c785",
+      "bytes": 5304
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0218-1/manifest.json",
+      "sha256": "be2dd427936386f6a5ddc549164d86fc70c1d5965dfe61a3591cc3303cfa1011",
+      "bytes": 5304
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0219-1/manifest.json",
+      "sha256": "7ddc59c6d7792cd9ddd547bc912345837e3ac7de7dede9b786ea2dfb46c780d0",
+      "bytes": 5309
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0220-1/manifest.json",
+      "sha256": "08215f68697d1e035fcf7cf0d430da3dd80b616554795672558ac7a5cdfe0395",
+      "bytes": 5308
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0221-1/manifest.json",
+      "sha256": "6125c3564c652c89d27ae07ca9e118e4718154dc1a8b47f9a277bfec7914d2cd",
+      "bytes": 5300
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0223-1/manifest.json",
+      "sha256": "47f020278540fe7a3721f57732645edb49e957819a28fa6b76076c4be3450893",
+      "bytes": 3551
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0224-1/manifest.json",
+      "sha256": "06504e76f2b9c8d645310b1f8c4ca7442c49ccd361ae538ff8586f93d08a724b",
+      "bytes": 4182
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0225-1/manifest.json",
+      "sha256": "832b83611de9a33804ccca619d78e06fd7ebf37dcd40de112f0bd3d4df552ae1",
+      "bytes": 5300
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0226-1/manifest.json",
+      "sha256": "0d0434440baeb707fbe5cf8de675e12e28ac5f3eb662ae5ca5851b4580fceeea",
+      "bytes": 5304
+    }
+  ]
+}
