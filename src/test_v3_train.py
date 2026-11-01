@@ -508,10 +508,10 @@ def test_t2_hop1_training_rows_and_schedules(tok):
     assert len(reference['dev']) == 1000 and [sum(h == x for _, h, _ in reference['dev']) for x in (1, 2, 3)] == [334, 333, 333]
 
 
-def write_ready(tmp_path, start, **changes):
+def write_ready(tmp_path, start_run, **changes):
     run = tmp_path/'ready'
     run.mkdir(parents=True)
-    start_manifest = json.loads((start/'manifest.json').read_text())
+    start_manifest = json.loads((start_run/'manifest.json').read_text())
     manifest = {'status': 'complete', 'validator': {'passed': True}, 'contract': 'E-0023@1', 'command': 'ready',
                 'eligible_as_evidence': True, 'smoke_only': False,
                 'start': {'checkpoint_files': start_manifest['checkpoint_files']},
