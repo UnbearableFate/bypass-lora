@@ -1,0 +1,2537 @@
+diff --git a/src/bypass_core.py b/src/bypass_core.py
+index 04d1c8c..e19deac 100644
+--- a/src/bypass_core.py
++++ b/src/bypass_core.py
+@@ -392,18 +392,24 @@ def kernel_prefix_states(kbar, vbar, reader, valid, write=None, state=None):
+ 
+ def read_kernel_prefix(qbar, reader, matrices, masses, counts, active, *, steps=1,
+                        update="accumulate", readout="increment", fixed_query=False,
+-                       current_keys=None):
++                       current_keys=None, observe_read=None):
+     """Batch all causal states through the single, unchanged LatentReader loop."""
+     batch, length, rank = qbar.shape
+     state = MemoryState(matrices.reshape(-1, rank, rank), masses.reshape(-1, rank),
+                         counts.reshape(-1), "kernel_matrix", rank)
+     weights = []
+-    if current_keys is not None:
++    if current_keys is not None or observe_read is not None:
+         class ObservedState:
++            step = 0
++
+             def read(self, query, eps, temperature):
+-                weight = (query * current_keys.reshape(-1, rank)).sum(-1) / (
+-                    (query * state.c).sum(-1) + eps)
+-                weights.append(torch.where(active.reshape(-1), weight, torch.zeros_like(weight)))
++                self.step += 1
++                if current_keys is not None:
++                    weight = (query * current_keys.reshape(-1, rank)).sum(-1) / (
++                        (query * state.c).sum(-1) + eps)
++                    weights.append(torch.where(active.reshape(-1), weight, torch.zeros_like(weight)))
++                if observe_read is not None:
++                    observe_read(query.reshape(batch, length, rank), self.step)
+                 return state.read(query, eps, temperature)
+         memory = ObservedState()
+     else:
+diff --git a/src/rb1_analysis.py b/src/rb1_analysis.py
+new file mode 100644
+index 0000000..f78f9bd
+--- /dev/null
++++ b/src/rb1_analysis.py
+@@ -0,0 +1,349 @@
++"""Artifact-bound E-0021 RB1 screening analysis. Run only in PBS.
++
++Input JSON: training_runs={RB1-01: /absolute/run, ... RB1-09: /absolute/run},
++base_run=/absolute/ATT-0024-1. Final mode additionally needs intervention_runs
++for RB1-01/02/08/09 and selected S_F*; latency_run; observations=[JSON exports].
++Selection mode has no scientific status action and exists to dispatch the
++pre-registered frozen intervention grid after all nine training runs finish.
++"""
++import argparse
++import json
++import math
++import os
++from pathlib import Path
++
++from rb1_artifacts import (finite_tree, read, reference, validate_formal_run,
++                           verified_latency)
++from rb1_rules import (ARM_IDS, TASKS, analyze_counts, counts_from_rows,
++                       paired_interval)
++from v1_analysis import _read_run
++from v5_train import write_json
++
++
++MODES = ('iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute')
++
++
++def validate_rows(rows, label, paired=None):
++    if not isinstance(rows, list):
++        raise ValueError(f'{label}: predictions must be a list')
++    rows = [row for row in rows if row.get('split') == 'dev']
++    identities = []
++    for row in rows:
++        if row.get('task') not in TASKS or type(row.get('id')) is not int:
++            raise ValueError(f'{label}: unexpected task/id')
++        for key in ('gold', 'prediction'):
++            if type(row.get(key)) is not int or row[key] not in (0, 1):
++                raise ValueError(f'{label}: {key} must be binary')
++        scores = row.get('scores')
++        if not isinstance(scores, list) or len(scores) != 2 or any(
++                type(x) not in (float, int) or not math.isfinite(x) for x in scores):
++            raise ValueError(f'{label}: two finite candidate scores required')
++        tokens, total = row.get('gold_loss_tokens'), row.get('gold_nll_sum')
++        if type(tokens) is not int or tokens <= 0 or type(total) not in (int, float) or not math.isfinite(total) or total < 0:
++            raise ValueError(f'{label}: invalid gold answer NLL/token count')
++        if row['prediction'] != (0 if scores[0] >= scores[1] else 1):
++            raise ValueError(f'{label}: prediction does not follow the V1 tie rule')
++        gold_score = -total/(tokens if row['task'] == 'piqa' else 1)
++        if not math.isclose(scores[row['gold']], gold_score, rel_tol=1e-12, abs_tol=1e-12):
++            raise ValueError(f'{label}: gold score does not match V1 likelihood')
++        identities.append((row['task'], row['id'], row['gold'], tokens))
++    if len({(t, i) for t, i, _, _ in identities}) != len(identities):
++        raise ValueError(f'{label}: duplicate dev identity')
++    if any(sum(row['task'] == task for row in rows) != 1000 for task in TASKS):
++        raise ValueError(f'{label}: full 1000-row dev per task required')
++    if paired is not None and identities != [(r['task'], r['id'], r['gold'], r['gold_loss_tokens']) for r in paired]:
++        raise ValueError(f'{label}: paired dev membership/order/gold/token counts differ')
++    return rows
++
++
++def summarize_rows(rows):
++    result = {}
++    for task in TASKS:
++        subset = [row for row in rows if row['task'] == task]
++        nll = sum(row['gold_nll_sum'] for row in subset)/sum(row['gold_loss_tokens'] for row in subset)
++        result[task] = {'accuracy': sum(row['prediction'] == row['gold'] for row in subset)/len(subset),
++                        'nll': nll, 'examples': len(subset),
++                        'loss_tokens': sum(row['gold_loss_tokens'] for row in subset)}
++    result['macro_accuracy'] = sum(result[t]['accuracy'] for t in TASKS)/2
++    result['macro_nll'] = sum(result[t]['nll'] for t in TASKS)/2
++    return result
++
++
++def check_metrics(rows, metrics, label):
++    summaries = summarize_rows(rows)
++    for task in TASKS:
++        for field in ('accuracy', 'nll', 'examples', 'loss_tokens'):
++            observed = metrics.get(f'dev.{task}.{field}')
++            if observed is None or not math.isclose(observed, summaries[task][field], rel_tol=1e-12, abs_tol=1e-12):
++                raise ValueError(f'{label}: recorded dev {task}/{field} differs from predictions')
++    return summaries
++
++
++def validate_read_summary(records, arm, mode):
++    if arm == 'RB1-01' or mode == 'iv_off':
++        if records:
++            raise ValueError(f'{arm}/{mode}: disabled/T0 read has no KernelMatrix distribution')
++        return
++    steps = (1, 2) if arm == 'RB1-03' else (1, 4) if arm == 'RB1-04' else (1,)
++    expected = {(task, layer, step, scope) for task in TASKS for layer in (6, 13, 20, 27)
++                for step in steps for scope in ('all_valid_input', 'answer_prediction')}
++    found = set()
++    for record in records:
++        key = (record['task'], record['layer'], record['step'], record['scope'])
++        if key in found or key not in expected:
++            raise ValueError(f'{arm}/{mode}: duplicate/unexpected read diagnostic stratum')
++        found.add(key)
++        if type(record.get('count')) is not int or record['count'] <= 0 or not 0 <= record.get('empty_reads', -1) <= record['count']:
++            raise ValueError(f'{arm}/{mode}: invalid read diagnostic denominator')
++        means = record.get('means', {})
++        if set(means) != {'current_weight', 'n_eff', 'entropy', 'relative_n_eff', 'readable_positions'}:
++            raise ValueError(f'{arm}/{mode}: missing normalized read metrics')
++        finite_tree(means)
++        if any(value < 0 for value in means.values()) or any(means[k] > 1.00001 for k in ('current_weight', 'relative_n_eff')):
++            raise ValueError(f'{arm}/{mode}: invalid normalized read metric range')
++        if mode == 'iv_strict' and means['current_weight'] != 0:
++            raise ValueError(f'{arm}/{mode}: strict read cannot include current-token weight')
++    if found != expected:
++        raise ValueError(f'{arm}/{mode}: incomplete task/layer/first-last read diagnostic grid')
++
++
++def measured_cost(paths):
++    refs, entries = [], {}
++    for path in paths:
++        refs.append(reference(path))
++        for item in read(path):
++            usage = item.get('usage')
++            if not usage:
++                continue
++            if item.get('execution_state') != 'ended' or usage.get('basis') != 'measured':
++                raise ValueError('cost requires terminal measured scheduler usage')
++            key = usage['accounting_ref']
++            record = {'attempt': item['attempt_id'], 'accounting_ref': key,
++                      'quantity': usage['quantity'], 'unit': usage['unit'],
++                      'source_ref': usage['source_ref']}
++            if record['quantity'] < 0 or not math.isfinite(record['quantity']):
++                raise ValueError('invalid measured usage quantity')
++            if record['unit'] != 'mig_instance_hours':
++                raise ValueError('RB1 expects measured MIG instance hours')
++            record['node_h'] = record['quantity']*.25
++            if key in entries and entries[key] != record:
++                raise ValueError('conflicting duplicate cost accounting reference')
++            entries[key] = record
++    return {'sources': refs, 'rows': list(entries.values()),
++            'node_h': sum(r['node_h'] for r in entries.values()),
++            'conversion': 'node_h = measured MIG instance hours * 0.25; includes supplied attempts only'}
++
++
++def analyze(spec, stage='final'):
++    if set(spec.get('training_runs', {})) != set(ARM_IDS):
++        raise ValueError('all nine registered training arms are required')
++    base_root = Path(spec['base_run'])
++    base_rows, base_manifest = _read_run(base_root, 'Base', 'base')
++    rows = {'Base': validate_rows(base_rows, 'Base')}
++    sources = {'Base': {name: reference(base_root/name) for name in
++                       ('manifest.json', 'config.json', 'predictions.json', 'split-map.json', 'data-metadata.json')}}
++    training, performance, curves, runtime = {}, {}, {}, {}
++    common = None
++    for arm in ARM_IDS:
++        root = Path(spec['training_runs'][arm])
++        manifest, refs, _ = validate_formal_run(root, arm)
++        metrics = manifest['metrics']
++        plan = {k: metrics.get(k) for k in ('plan.steps', 'plan.examples', 'plan.input_tokens',
++                'plan.order_sha256', 'split_manifest.sha256', 'lr_lock.sha256', 'source.commit',
++                'environment.lock_sha256', 'model_revision', 'tokenizer_revision')}
++        if not isinstance(plan['plan.order_sha256'], str) or len(plan['plan.order_sha256']) != 64:
++            raise ValueError(f'{arm}: missing recorded paired training order digest')
++        if common is not None and common != plan:
++            raise ValueError(f'{arm}: training sample budget/order/split/LR-lock differs')
++        common = plan
++        training[arm] = manifest
++        rows[arm] = validate_rows(read(root/'predictions.json'), arm, rows['Base'])
++        refs['predictions'] = reference(root/'predictions.json')
++        performance[arm] = check_metrics(rows[arm], metrics, arm)
++        curves[arm] = []
++        for fraction in (.25, .5, .75):
++            step = math.ceil(metrics['plan.steps']*fraction)
++            path = root/f'dev-step-{step}.json'
++            value = read(path)
++            if value.get('step') != step:
++                raise ValueError(f'{arm}: learning-curve step mismatch')
++            curve_rows = validate_rows(value['predictions'], f'{arm}@{step}', rows['Base'])
++            curves[arm].append({'fraction': fraction, 'step': step,
++                                'metrics': check_metrics(curve_rows, value['metrics'], f'{arm}@{step}'),
++                                'source': reference(path)})
++        sources[arm] = refs
++        accounting = metrics.get('runtime.accounting')
++        if not isinstance(accounting, dict):
++            raise ValueError(f'{arm}: missing original/side operation accounting')
++        if arm != 'RB1-07':
++            if set(accounting.get('layers', {})) != {'6', '13', '20', '27'}:
++                raise ValueError(f'{arm}: accounting must cover all four adapted layers')
++            depth = 2 if arm == 'RB1-03' else 4 if arm in ('RB1-04', 'RB1-05', 'RB1-06') else 1
++            expected = 0 if arm == 'RB1-01' else metrics['train.input_tokens']
++            for counts in accounting['layers'].values():
++                if (counts['writes'] != expected or counts['reads'] != expected*depth or
++                    counts['valid_tokens'] != metrics['train.input_tokens'] or
++                    counts['attention'] != metrics['train.examples'] or counts['ffn'] != metrics['train.examples']):
++                    raise ValueError(f'{arm}: invalid per-layer write/read/original call counts')
++        runtime[arm] = {k: v for k, v in metrics.items() if k.startswith(('train.', 'plan.', 'params.', 'runtime.', 'intermediate.'))
++                        or k in ('learning_rate', 'model_revision', 'tokenizer_revision', 'source.commit', 'environment.lock_sha256')}
++        runtime[arm].update(warmup_steps=math.ceil(metrics['plan.steps']*.05), clip=1.0,
++                            optimizer='AdamW betas(0.9,0.999) eps1e-8 weight_decay0.01;cosine after5%warmup',
++                            training_objective='per-example mean answer CE;effective batch2,microbatch1,dropout0')
++        if arm != 'RB1-07':
++            depth = 2 if arm == 'RB1-03' else 4 if arm in ('RB1-04', 'RB1-05', 'RB1-06') else 1
++            fusion = 196608 if arm == 'RB1-08' else 98304 if arm == 'RB1-09' else 32768
++            runtime[arm]['analytic_side_dense_MAC_per_token_per_layer'] = {
++                'projection': 131072, 'fusion': fusion,
++                'loop_query_and_output': depth*2*32**2,
++                'kernel_read_and_denominator': 0 if arm == 'RB1-01' else depth*(32**2+32),
++                'kernel_write_outer_product': 0 if arm == 'RB1-01' else 32**2,
++                'excludes': 'normalization/ELU/SiLU/additions;backbone;prefix-scan additions;diagnostic tracing'}
++    performance['Base'] = check_metrics(rows['Base'], base_manifest['metrics'], 'Base')
++    counts = {label: counts_from_rows(value) for label, value in rows.items()}
++    preliminary = analyze_counts(counts)
++    s_star = preliminary['selection']['S_F_star']
++    intervention_tables, read_tables = {}, {}
++    if stage == 'final':
++        arms = {'RB1-01', 'RB1-02', 'RB1-08', 'RB1-09', s_star}
++        if set(spec.get('intervention_runs', {})) != arms:
++            raise ValueError('final analysis requires exactly T0 plus the registered four intervention targets')
++        for arm in sorted(arms):
++            root = Path(spec['intervention_runs'][arm])
++            manifest, provenance, conditions = (read(root/name) for name in
++                                               ('manifest.json', 'provenance.json', 'conditions.json'))
++            if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True or
++                manifest.get('contract') != 'E-0021@1' or manifest.get('arm') != arm or
++                manifest.get('stage') != 'intervention' or manifest.get('seed') != 0):
++                raise ValueError(f'{arm}: incomplete or wrong intervention run')
++            if provenance.get('training_manifest') != {k: sources[arm]['manifest'][k] for k in ('path', 'sha256')}:
++                raise ValueError(f'{arm}: intervention checkpoint is not the supplied training run')
++            modes = ('iv_swap',) if arm == 'RB1-01' else MODES
++            if set(conditions) != {'normal', 'Base_same_allocation', *modes}:
++                raise ValueError(f'{arm}: incomplete intervention condition grid')
++            for mode, condition in conditions.items():
++                label = f'{arm}/{mode}'
++                condition_rows = validate_rows(condition['predictions'], label, rows['Base'])
++                performance[label] = check_metrics(condition_rows, condition['metrics'], label)
++                if mode != 'Base_same_allocation':
++                    validate_read_summary(condition.get('read_diagnostics', []), arm, mode)
++                    rows[label] = condition_rows
++                    counts[label] = counts_from_rows(condition_rows)
++                    read_tables[label] = condition.get('read_diagnostics', [])
++                if mode not in ('iv_off', 'Base_same_allocation') and arm != 'RB1-01' and not condition.get('read_diagnostics'):
++                    raise ValueError(f'{label}: missing first/last read diagnostics')
++            if arm == 'RB1-01':
++                if conditions['iv_swap']['predictions'] != conditions['normal']['predictions']:
++                    raise ValueError('T0 swap no-op check failed')
++            elif conditions['iv_off']['predictions'] != conditions['Base_same_allocation']['predictions']:
++                raise ValueError(f'{arm}: iv_off independent same-allocation Base check failed')
++            sources[f'{arm}/interventions'] = {name: reference(root/name) for name in
++                                              ('manifest.json', 'conditions.json', 'provenance.json')}
++    nll = {label: {task: (sum(r['gold_nll_sum'] for r in value if r['task'] == task),
++                         sum(r['gold_loss_tokens'] for r in value if r['task'] == task)) for task in TASKS}
++           for label, value in rows.items()}
++    arrays = {label: {task: [int(r['prediction'] == r['gold']) for r in value if r['task'] == task]
++                     for task in TASKS} for label, value in rows.items()}
++    report = analyze_counts(counts, nll, bootstrap_rows=arrays if stage == 'final' else None)
++    if stage == 'final':
++        comparisons = report['bootstrap']['comparisons']
++        for arm in sorted(spec['intervention_runs']):
++            modes = ('iv_swap',) if arm == 'RB1-01' else MODES
++            intervention_tables[arm] = {mode: {metric: paired_interval(comparisons, f'{arm}/{mode}', f'{arm}/normal', metric)
++                                               for metric in ('macro_accuracy', 'piqa_accuracy', 'boolq_accuracy')}
++                                        for mode in modes}
++        root = Path(spec['latency_run'])
++        manifest, latency, guard = (read(root/name) for name in ('manifest.json', 'latency.json', 'mig-profile.json'))
++        if manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True or manifest.get('contract') != 'E-0021@1':
++            raise ValueError('incomplete RB1 latency run')
++        if guard.get('passed') is not True or guard.get('profile') != '2g.24gb':
++            raise ValueError('comparative latency was not measured on required 2g profile')
++        expected = {'RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07', 'RB1-07-merged'}
++        if set(latency['measurements']) not in (expected, expected | {'Base'}):
++            raise ValueError('latency grid differs from E-0021')
++        for label, value in latency['measurements'].items():
++            verified_latency(value)
++            expected_state = 16896 if label in ('RB1-02', 'RB1-04', 'RB1-08') else 0
++            if value['adapter_persistent_state']['M_c_bytes'] != expected_state:
++                raise ValueError(f'{label}: persistent M+c bytes differ from registered layout')
++            if label in ARM_IDS and latency['loaded_refs'][label]['artifact_inventory']['manifest'] != sources[label]['manifest']:
++                raise ValueError(f'{label}: latency checkpoint differs from training input')
++        report['latency'] = latency
++        sources['latency'] = {name: reference(root/name) for name in ('manifest.json', 'latency.json', 'mig-profile.json')}
++        report['cost'] = measured_cost(spec['observations'])
++        required_cost = {Path(path).name for path in spec['training_runs'].values()} | {
++            Path(path).name for path in spec['intervention_runs'].values()} | {Path(spec['latency_run']).name}
++        if not required_cost <= {row['attempt'] for row in report['cost']['rows']}:
++            raise ValueError('measured usage is missing for a required training/intervention/latency attempt')
++    report.update(contract='E-0021@1', stage=stage, sources=sources, common_training=common,
++                  performance=performance, learning_curves=curves, training_runtime=runtime,
++                  interventions=intervention_tables, read_diagnostics=read_tables,
++                  decision_authority='Screening facts and pre-registered gates only; coordinator conclusion review precedes any hypothesis status or release.')
++    finite_tree(report)
++    return report
++
++
++def markdown(report):
++    lines = ['# E-0021 RB1 screening analysis', '', report['decision_authority'], '',
++             '| Arm | PIQA accuracy % | BoolQ accuracy % | Macro accuracy % | PIQA NLL | BoolQ NLL |',
++             '| --- | ---: | ---: | ---: | ---: | ---: |']
++    for label in ('Base', *ARM_IDS):
++        row = report['performance'][label]
++        lines.append(f'| {label} | {row["piqa"]["accuracy"]*100:.3f} | {row["boolq"]["accuracy"]*100:.3f} | {row["macro_accuracy"]*100:.3f} | {row["piqa"]["nll"]:.6f} | {row["boolq"]["nll"]:.6f} |')
++    lines.extend(['', f'S_F*: {report["selection"]["S_F_star"]}; C*_RB: {report["selection"]["C_star_RB"]}.',
++                  f'Progression rule: {report["progression"]}.', '', '## Rules 1-11', ''])
++    for name, rule in report['rules'].items():
++        lines.append(f'- {name}: `{json.dumps(rule, ensure_ascii=False, sort_keys=True)}`')
++    if report['stage'] == 'final':
++        lines.extend(['', '## Frozen side-history interventions', '',
++                      '| Arm | Intervention | PIQA difference pp | BoolQ difference pp | Macro difference pp [95% descriptive interval] |',
++                      '| --- | --- | ---: | ---: | ---: |'])
++        for arm, modes in report['interventions'].items():
++            for mode, results in modes.items():
++                macro = results['macro_accuracy']; lo, hi = macro['ci95']
++                lines.append(f'| {arm} | {mode} | {results["piqa_accuracy"]["difference"]*100:.3f} | {results["boolq_accuracy"]["difference"]*100:.3f} | {macro["difference"]*100:.3f} [{lo*100:.3f}, {hi*100:.3f}] |')
++        lines.extend(['', 'Differences use each intervention run\'s own normal condition. iv_off and Base are independently checked in the same allocation; T0 swap is a no-op.', '',
++                      '## Training and persistent side state', '',
++                      '| Arm | Stored / trainable / with gradient | Steps | Input / loss / padded tokens | Train seconds | Peak CUDA GiB | M+c bytes |',
++                      '| --- | --- | ---: | --- | ---: | ---: | ---: |'])
++        for arm, value in report['training_runtime'].items():
++            lines.append(f'| {arm} | {value["params.stored"]} / {value["params.trainable"]} / {value["params.with_grad"]} | {value["train.steps"]} | {value["train.input_tokens"]} / {value.get("train.loss_tokens")} / {value.get("train.padded_tokens")} | {value.get("train.seconds", 0):.3f} | {value.get("train.peak_cuda_bytes", 0)/2**30:.3f} | {value["runtime.accounting"]["state_M_c_bytes"]} |')
++        lines.extend(['', '## Comparative latency', '',
++                      '| Arm | Prefill512 tokens/s | Decode128 p50 ms | p95 ms | Peak CUDA GiB | M+c bytes |',
++                      '| --- | ---: | ---: | ---: | ---: | ---: |'])
++        for arm, value in report['latency']['measurements'].items():
++            lines.append(f'| {arm} | {value["prefill_tokens_per_second"]:.3f} | {value["decode_p50_ms"]:.3f} | {value["decode_p95_ms"]:.3f} | {value["peak_cuda_bytes"]/2**30:.3f} | {value["adapter_persistent_state"]["M_c_bytes"]} |')
++        lines.extend(['', '## Measured cost', '', '| Attempt | MIG instance hours | node hours |', '| --- | ---: | ---: |'])
++        for row in report['cost']['rows']:
++            lines.append(f'| {row["attempt"]} | {row["quantity"]:.6f} | {row["node_h"]:.6f} |')
++        lines.extend(['', f'Supplied measured usage: {report["cost"]["node_h"]:.6f} node hours. The current analysis job is accounted after it ends.', ''])
++    lines.extend(['', 'Single-seed dev screening; paired task-stratified 95% intervals are descriptive. Selection uses these same dev outcomes; intervals do not account for selection or trained-seed uncertainty. Point-estimate gates are inclusive; C* near-best rule is strictly <1 pp. T0 is S1 only; no same-depth T0 or parameter-efficiency claim.', '',
++                  'Intervention differences, read diagnostics, learning curves, parameter/state/operation counts, raw latency and measured cost provenance are retained in analysis.json.', ''])
++    return '\n'.join(lines)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--input', type=Path, required=True)
++    parser.add_argument('--stage', choices=('select', 'final'), default='final')
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, metrics, artifacts = False, {}, []
++    try:
++        report = analyze(read(args.input), args.stage)
++        report['input'] = reference(args.input)
++        write_json(out/'analysis.json', report)
++        (out/'analysis.md').write_text(markdown(report))
++        metrics = {'stage': args.stage, 'selection': report['selection'], 'screening_directions': report['screening_directions'],
++                   'bootstrap_repeats': 10000 if args.stage == 'final' else 0}
++        artifacts = [{'path': str(out/name), 'role': name} for name in ('analysis.json', 'analysis.md')]
++        passed = True
++    finally:
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0021@1',
++            'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': metrics, 'artifacts': artifacts,
++            'validator': {'name': 'rb1_screening_analysis', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/rb1_artifacts.py b/src/rb1_artifacts.py
+new file mode 100644
+index 0000000..fc18683
+--- /dev/null
++++ b/src/rb1_artifacts.py
+@@ -0,0 +1,239 @@
++"""Strict artifact validation shared by the RB1 measurement and analysis tools."""
++import hashlib
++import json
++import math
++import re
++import statistics
++from pathlib import Path
++
++from rb_train import FAMILIES, PARAMETERS
++
++
++CONTRACT = 'E-0021@1'
++LOCK_CONTRACT = 'E-0020@1'
++TOKEN_BUDGET = 2_000_000
++
++
++def read(path):
++    return json.loads(Path(path).read_text())
++
++
++def reference(path):
++    path = Path(path).resolve()
++    data = path.read_bytes()
++    if not data:
++        raise ValueError(f'empty artifact: {path}')
++    return {'path': str(path), 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
++
++
++def finite_tree(value, path='value'):
++    if isinstance(value, bool) or value is None or isinstance(value, (str, int)):
++        return
++    if isinstance(value, float):
++        if not math.isfinite(value):
++            raise ValueError(f'non-finite value at {path}')
++        return
++    if isinstance(value, dict):
++        for key, child in value.items():
++            finite_tree(child, f'{path}.{key}')
++        return
++    if isinstance(value, (list, tuple)):
++        for index, child in enumerate(value):
++            finite_tree(child, f'{path}[{index}]')
++        return
++    raise TypeError(f'unsupported value at {path}: {type(value).__name__}')
++
++
++def _require_int(value, name, minimum=0):
++    if type(value) is not int or value < minimum:
++        raise ValueError(f'{name} must be an integer >= {minimum}')
++
++
++def _require_finite(value, name, *, positive=False, nonnegative=False):
++    if type(value) not in (int, float) or not math.isfinite(value):
++        raise ValueError(f'{name} must be finite')
++    if positive and value <= 0:
++        raise ValueError(f'{name} must be positive')
++    if nonnegative and value < 0:
++        raise ValueError(f'{name} must be nonnegative')
++
++
++def validate_formal_run(run_dir, arm):
++    """Validate a final RB1 producer run; return manifest, refs, adapter path."""
++    if arm not in PARAMETERS:
++        raise ValueError(f'unknown RB1 arm {arm}')
++    root = Path(run_dir).resolve()
++    required = ('manifest.json', 'config.json', 'checkpoint.json', 'steps.jsonl')
++    missing = [name for name in required if not (root / name).is_file()]
++    if missing:
++        raise ValueError(f'{arm}: missing formal-run files: {", ".join(missing)}')
++    manifest = read(root / 'manifest.json')
++    config = read(root / 'config.json')
++    checkpoint = read(root / 'checkpoint.json')
++    expected = {'arm': arm, 'phase': 'R1', 'seed': 0, 'stage': 'train'}
++    if manifest.get('status') != 'complete' or manifest.get('contract') != CONTRACT:
++        raise ValueError(f'{arm}: requires a complete {CONTRACT} formal training manifest')
++    if any(manifest.get(key) != value for key, value in expected.items()):
++        raise ValueError(f'{arm}: manifest arm/phase/seed/stage mismatch')
++    if manifest.get('family') != FAMILIES[arm] or manifest.get('validator', {}).get('passed') is not True:
++        raise ValueError(f'{arm}: family/validator does not match formal training')
++    if any(config.get(key) != value for key, value in expected.items()):
++        raise ValueError(f'{arm}: config.json arm/phase/seed/stage mismatch')
++    if config.get('eval_limit') is not None or config.get('smoke_steps') is not None:
++        raise ValueError(f'{arm}: partial evaluation/smoke budget is not a formal run')
++    if config.get('three_epochs') is not False:
++        raise ValueError(f'{arm}: explicit three-epoch override is not a formal first-stop run')
++
++    metrics = manifest.get('metrics')
++    if not isinstance(metrics, dict):
++        raise ValueError(f'{arm}: manifest metrics are missing')
++    if metrics.get('failed') is not False or metrics.get('reload.identical') is not True:
++        raise ValueError(f'{arm}: failed or non-identical reload training artifact')
++    from calibrate import REVISION
++    if metrics.get('model_revision') != REVISION or metrics.get('tokenizer_revision') != REVISION:
++        raise ValueError(f'{arm}: model/tokenizer revision differs from pinned Base')
++    if metrics.get('environment.lock_sha256') != reference(Path(__file__).resolve().parents[1]/'uv.lock')['sha256']:
++        raise ValueError(f'{arm}: training environment lock differs from analysis environment')
++    for key, length in (('source.commit', 40), ('plan.order_sha256', 64)):
++        if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
++            raise ValueError(f'{arm}: missing or invalid {key}')
++    expected_params = PARAMETERS[arm]
++    for key in ('params.stored', 'params.trainable', 'params.with_grad'):
++        if metrics.get(key) != expected_params:
++            raise ValueError(f'{arm}: {key} differs from registered arm parameter count')
++
++    learning_rate = config.get('lr')
++    _require_finite(learning_rate, f'{arm} config.lr', positive=True)
++    if metrics.get('learning_rate') != learning_rate:
++        raise ValueError(f'{arm}: manifest learning rate differs from run config')
++    lock_value = config.get('lr_lock')
++    split_value = config.get('split_manifest')
++    if not isinstance(lock_value, str) or not lock_value or not isinstance(split_value, str) or not split_value:
++        raise ValueError(f'{arm}: formal LR lock and split manifest paths are required')
++    lock_path, split_path = Path(lock_value).resolve(), Path(split_value).resolve()
++    if not lock_path.is_file() or not split_path.is_file():
++        raise ValueError(f'{arm}: LR lock or split manifest file is missing')
++    lock = read(lock_path)
++    lock_hash = reference(lock_path)['sha256']
++    split_hash = reference(split_path)['sha256']
++    if lock.get('experiment') != LOCK_CONTRACT or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:
++        raise ValueError(f'{arm}: LR lock family/value mismatch')
++    if lock.get('split_manifest_sha256') != split_hash:
++        raise ValueError(f'{arm}: LR lock split hash differs from actual split manifest')
++    if metrics.get('lr_lock.sha256') != lock_hash:
++        raise ValueError(f'{arm}: actual LR lock hash differs from training manifest')
++    if metrics.get('split_manifest.sha256') != split_hash:
++        raise ValueError(f'{arm}: actual split manifest hash differs from training manifest')
++
++    count_keys = (('plan.steps', 'train.steps'),
++                  ('plan.input_tokens', 'train.input_tokens'),
++                  ('plan.examples', 'train.examples'))
++    for plan_key, train_key in count_keys:
++        _require_int(metrics.get(plan_key), f'{arm} {plan_key}', minimum=1)
++        _require_int(metrics.get(train_key), f'{arm} {train_key}', minimum=1)
++        if metrics[plan_key] != metrics[train_key]:
++            raise ValueError(f'{arm}: {plan_key} differs from {train_key}')
++
++    actual_tokens, token_before_last, max_lr, row_count = 0, 0, 0., 0
++    from v1_run import lr_factor
++    with (root / 'steps.jsonl').open() as handle:
++        for index, line in enumerate(handle, 1):
++            row_count = index
++            try:
++                row = json.loads(line)
++            except json.JSONDecodeError as exc:
++                raise ValueError(f'{arm}: invalid steps.jsonl row {index}') from exc
++            if not isinstance(row, dict) or type(row.get('step')) is not int or row['step'] != index:
++                raise ValueError(f'{arm}: steps.jsonl step sequence is not contiguous')
++            for key in ('example_mean_nll', 'preclip_norm', 'lr', 'seconds'):
++                _require_finite(row.get(key), f'{arm} step {index} {key}',
++                                positive=key == 'seconds',
++                                nonnegative=key in ('example_mean_nll', 'preclip_norm', 'lr'))
++            _require_int(row.get('input_tokens'), f'{arm} step {index} input_tokens', minimum=1)
++            if row['input_tokens'] > 1024:
++                raise ValueError(f'{arm}: step exceeds batch2/max_length512 token bound')
++            if not math.isclose(row['lr'], learning_rate*lr_factor(index-1, metrics['train.steps']), rel_tol=1e-12, abs_tol=1e-15):
++                raise ValueError(f'{arm}: step LR differs from registered warmup/cosine schedule')
++            token_before_last = actual_tokens
++            actual_tokens += row['input_tokens']
++            max_lr = max(max_lr, row['lr'])
++    if row_count != metrics['train.steps']:
++        raise ValueError(f'{arm}: steps.jsonl row count differs from train.steps')
++    if actual_tokens != metrics['train.input_tokens'] or actual_tokens != metrics['plan.input_tokens']:
++        raise ValueError(f'{arm}: step token sum differs from plan/train input tokens')
++    if max_lr > learning_rate or max_lr <= 0:
++        raise ValueError(f'{arm}: recorded step rates do not match positive locked LR scale')
++    if actual_tokens >= TOKEN_BUDGET:
++        if token_before_last >= TOKEN_BUDGET:
++            raise ValueError(f'{arm}: training continued after reaching the 2M-token stop')
++        if metrics['train.examples'] != 2*row_count:
++            raise ValueError(f'{arm}: token-threshold stop requires a complete batch2 step')
++    elif (metrics.get('train.last_epoch') != 2 or
++          metrics.get('plan.epoch_end_steps', {}).get('3') != row_count):
++        raise ValueError(f'{arm}: below-budget run did not complete all three epochs')
++
++    if not isinstance(checkpoint, dict) or set(checkpoint) != {'config.json', 'adapter.pt'}:
++        raise ValueError(f'{arm}: checkpoint.json must bind config.json and adapter.pt')
++    paths = {}
++    for name, record in checkpoint.items():
++        if not isinstance(record, dict) or set(('path', 'sha256', 'bytes')) - set(record):
++            raise ValueError(f'{arm}: malformed checkpoint inventory entry for {name}')
++        path = Path(record['path']).resolve()
++        if not path.is_file() or path.name != name or root not in path.parents:
++            raise ValueError(f'{arm}: checkpoint path escapes or is missing from formal run')
++        ref = reference(path)
++        if record['sha256'] != ref['sha256'] or record['bytes'] != ref['bytes']:
++            raise ValueError(f'{arm}: checkpoint inventory hash/size mismatch for {name}')
++        paths[name] = path
++    if paths['config.json'].parent != paths['adapter.pt'].parent:
++        raise ValueError(f'{arm}: config and adapter checkpoint files are split')
++    adapter_dir = paths['adapter.pt'].parent
++    model_config = read(adapter_dir / 'config.json')
++    if arm == 'RB1-07':
++        from v1_lora import LoRAConfig
++        expected_config = json.loads(json.dumps(LoRAConfig(layers=(6, 13, 20, 27), rank=7,
++                                                            alpha=7).__dict__))
++    else:
++        from rb_train import adapter_config
++        expected_config = json.loads(json.dumps(adapter_config(arm).__dict__))
++    if model_config != expected_config:
++        raise ValueError(f'{arm}: adapter config differs from registered arm')
++
++    inventory = {
++        'manifest': reference(root / 'manifest.json'),
++        'run_config': reference(root / 'config.json'),
++        'checkpoint_json': reference(root / 'checkpoint.json'),
++        'steps': reference(root / 'steps.jsonl'),
++        'lr_lock': reference(lock_path), 'split_manifest': reference(split_path),
++        'adapter_config': reference(paths['config.json']),
++        'adapter_weights': reference(paths['adapter.pt']),
++    }
++    finite_tree(metrics, f'{arm}.manifest.metrics')
++    return manifest, inventory, adapter_dir
++
++
++def verified_latency(row):
++    """Validate all raw timing samples and their reported summaries."""
++    if row.get('batch') != 1 or row.get('prefill_length') != 512 or row.get('prefill_passes') != 5:
++        raise ValueError('latency must use batch1, prefill512, five measured passes')
++    if row.get('decode_tokens') != 128 or len(row.get('decode_samples_ms', [])) != 128:
++        raise ValueError('latency must contain 128 decode samples')
++    if len(row.get('prefill_seconds', [])) != 5:
++        raise ValueError('latency must contain five prefill samples')
++    raw = row['decode_samples_ms'] + row['prefill_seconds']
++    for index, value in enumerate(raw):
++        _require_finite(value, f'latency raw sample {index}', positive=True)
++    ordered = sorted(row['decode_samples_ms'])
++    if row.get('decode_p50_ms') != statistics.median(ordered):
++        raise ValueError('decode p50 does not match raw samples')
++    if row.get('decode_p95_ms') != ordered[int(.95 * (len(ordered) - 1))]:
++        raise ValueError('decode p95 does not match raw samples')
++    expected_rate = 512 / statistics.mean(row['prefill_seconds'])
++    if not math.isclose(row.get('prefill_tokens_per_second', math.nan), expected_rate, rel_tol=1e-12):
++        raise ValueError('prefill throughput does not match raw samples')
++    state = row.get('adapter_persistent_state', {}).get('M_c_bytes')
++    if state not in (0, 16896):
++        raise ValueError('unexpected persistent adapter state byte count')
++    if row.get('peak_cuda_bytes', 0) <= 0:
++        raise ValueError('peak CUDA allocation must be positive')
++    return row
+diff --git a/src/rb1_check.py b/src/rb1_check.py
+new file mode 100644
+index 0000000..954b50c
+--- /dev/null
++++ b/src/rb1_check.py
+@@ -0,0 +1,45 @@
++"""PBS phase-one checks; only synthetic examples/outcomes, no RB1 result input."""
++import argparse
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    files = ['src/test_core.py', 'src/test_rb_core.py', 'src/test_rb_data.py', 'src/test_rb_train.py',
++             'src/test_rb_read_diagnostics.py', 'src/test_rb1_rules.py', 'src/test_rb1_artifacts.py',
++             'src/test_rb1_latency.py', 'src/test_rb1_analysis.py', 'src/test_rb1_intervene.py']
++    start = time.monotonic(); passed = False; metrics = {}
++    try:
++        with (out/'checks.log').open('w') as log:
++            result = subprocess.run([sys.executable, '-m', 'pytest', *files, '-q', '-p', 'no:cacheprovider',
++                '-o', 'junit_family=legacy', '--junitxml='+str(out/'checks.xml')], stdout=log, stderr=subprocess.STDOUT)
++        root = ET.parse(out/'checks.xml').getroot()
++        cases = list(root.iter('testcase'))
++        metrics = {'checks.exit_code': result.returncode, 'checks.cases': len(cases),
++                   'checks.failed': sum(c.find('failure') is not None or c.find('error') is not None for c in cases),
++                   'checks.skipped': sum(c.find('skipped') is not None for c in cases),
++                   'scope': 'synthetic exact-rule/full-artifact analysis;normalized read slots;actual shared loop;real model synthetic-text V1 identity,all four-layer interventions,Base/off and T0 no-op',
++                   'formal_RB1_results_read': False, 'confirmation_evaluated': False}
++        passed = result.returncode == 0 and bool(cases) and metrics['checks.failed'] == metrics['checks.skipped'] == 0
++        if not passed:
++            raise RuntimeError('RB1 phase-one PBS checks did not pass; see checks.log/checks.xml')
++    finally:
++        metrics['elapsed_s'] = time.monotonic()-start
++        (out/'manifest.json').write_text(json.dumps({'status': 'complete' if passed else 'partial',
++            'contract': 'E-0021@1', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'source_commit': os.environ['SR_CODE_COMMIT'], 'metrics': metrics,
++            'artifacts': [{'path': str(p), 'role': p.name} for p in (out/'checks.xml', out/'checks.log') if p.is_file()],
++            'validator': {'name': 'rb1_phase_one_checks', 'passed': passed}}, indent=2)+'\n')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/rb1_intervene.py b/src/rb1_intervene.py
+new file mode 100644
+index 0000000..be3edad
+--- /dev/null
++++ b/src/rb1_intervene.py
+@@ -0,0 +1,180 @@
++"""RB1 frozen-history dev evaluation using the unchanged V1 scoring function.
++
++The proxy only supplies side-history options to BranchModel.forward. Candidate
++encoding, answer masking, PIQA normalization, BoolQ scoring, ties and NLL remain
++v1_run.evaluate/token_losses. Donors are normal same-checkpoint forwards, paired
++by candidate index, with a fixed within-task derangement of examples.
++"""
++import argparse
++from contextlib import contextmanager
++import json
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION
++from rb_history import donor_indices
++from rb_read_diagnostics import ReadSummary
++from rb_train import make_model
++from v1_data import encode_candidates
++from v1_run import batch_tensors, evaluate, prepare
++from v5_train import file_sha256, write_json
++
++
++MODES = ('iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute')
++INTERVENTION_ARMS = ('RB1-01', 'RB1-02', 'RB1-03', 'RB1-04', 'RB1-08', 'RB1-09')
++
++
++class HistoryView:
++    def __init__(self, model, rows, tokenizer, kind=None, trace_reads=True):
++        self.model, self.rows, self.tok, self.kind = model, rows, tokenizer, kind
++        self.trace_reads = trace_reads and kind != 'iv_off'
++        self.donors = donor_indices(rows, 'R1') if kind == 'iv_swap' else None
++        self.calls = 0
++        self.summary = ReadSummary()
++
++    def eval(self):
++        self.model.eval()
++        return self
++
++    @torch.no_grad()
++    def __call__(self, input_ids, attention_mask, use_cache=False):
++        if use_cache or input_ids.shape[0] != 1:
++            raise ValueError('RB1 interventions require uncached batch-one V1 scoring')
++        row_index, candidate_index = divmod(self.calls, 2)
++        if row_index >= len(self.rows):
++            raise ValueError('more candidate forwards than registered dev rows')
++        row = self.rows[row_index]
++        encoded = encode_candidates(self.tok, row)
++        if len(encoded) != 2 or input_ids[0].tolist() != encoded[candidate_index]['input_ids']:
++            raise ValueError('V1 candidate order/encoding changed during intervention evaluation')
++        options = None if self.kind is None else {'kind': self.kind}
++        if self.kind == 'iv_swap' and self.model.config.branch != 'kernel_tokenwise':
++            donor_row = self.rows[self.donors[row_index]]
++            donor_encoded = encode_candidates(self.tok, donor_row)[candidate_index]
++            donor_batch = batch_tensors([donor_encoded], self.tok.pad_token_id)
++            normal_donor = self.model(input_ids=donor_batch['input_ids'],
++                attention_mask=donor_batch['attention_mask'], use_cache=False, capture_history=True)
++            options['donor'] = {layer: value['history'] for layer, value in normal_donor.diagnostics.items()}
++            del normal_donor
++        elif self.kind == 'iv_permute':
++            options.update(phase='R1', example_ids=[f'{row["task"]}:{row["id"]}'])
++        output = self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=False,
++                            intervention=options, trace_reads=self.trace_reads)
++        gold = int(row['label']) if row['task'] == 'piqa' else (0 if row['label'] else 1)
++        if self.trace_reads and candidate_index == gold:
++            labels = torch.tensor([encoded[candidate_index]['labels']], device=input_ids.device)
++            self.summary.add(row['task'], output.diagnostics, attention_mask, labels)
++        self.calls += 1
++        return output
++
++
++@contextmanager
++def original_backbone(model):
++    """Temporarily remove wrappers for an independent same-allocation Base check."""
++    adapted = model.adapters()
++    for index, layer in adapted.items():
++        model.model.model.layers[index] = layer.original
++    try:
++        yield model.model
++    finally:
++        for index, layer in adapted.items():
++            model.model.model.layers[index] = layer
++
++
++@torch.no_grad()
++def evaluate_history(model, splits, tokenizer, kind=None, limit=None, trace_reads=True):
++    rows = [row for task in ('piqa', 'boolq')
++            for row in splits['splits'][task]['dev'][:limit]]
++    view = HistoryView(model, rows, tokenizer, kind, trace_reads)
++    metrics, predictions = evaluate(view, splits, tokenizer, limit, split_names=('dev',))
++    if view.calls != 2*len(rows):
++        raise ValueError('not all registered candidate forwards completed')
++    return metrics, predictions, view.summary.finish()
++
++
++def outcome_arrays(predictions):
++    return {task: [int(row['prediction'] == row['gold']) for row in predictions if row['task'] == task]
++            for task in ('piqa', 'boolq')}
++
++
++def run(args):
++    from rb1_artifacts import validate_formal_run
++    from rb1_rules import paired_bootstrap
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    passed, values, artifacts = False, {}, []
++    start = time.monotonic()
++    try:
++        if args.arm not in INTERVENTION_ARMS:
++            raise ValueError('arm is outside the registered frozen-intervention grid')
++        _, inventory, adapter = validate_formal_run(args.training_run, args.arm)
++        tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++        tokenizer.pad_token_id = tokenizer.eos_token_id
++        splits = prepare(args.data_dir)
++        model = make_model(args.arm, phase='R1', seed=0, checkpoint=adapter).eval()
++        with original_backbone(model) as backbone:
++            base_metrics, base_predictions = evaluate(backbone, splits, tokenizer, split_names=('dev',))
++        normal_metrics, normal_predictions, normal_reads = evaluate_history(model, splits, tokenizer)
++        conditions = {'normal': {'metrics': normal_metrics, 'predictions': normal_predictions,
++                                  'read_diagnostics': normal_reads},
++                      'Base_same_allocation': {'metrics': base_metrics, 'predictions': base_predictions}}
++        modes = ('iv_swap',) if args.arm == 'RB1-01' else MODES
++        for kind in modes:
++            tick = time.monotonic()
++            metrics, predictions, reads = evaluate_history(model, splits, tokenizer, kind)
++            conditions[kind] = {'metrics': metrics, 'predictions': predictions,
++                                'read_diagnostics': reads, 'elapsed_s': time.monotonic()-tick}
++            # These comparisons share the allocation, model weights and V1 scorer.
++            if kind == 'iv_off' and predictions != base_predictions:
++                raise ValueError('iv_off differs from independent same-allocation Base scoring')
++            if args.arm == 'RB1-01' and predictions != normal_predictions:
++                raise ValueError('T0 iv_swap is not a no-op')
++            write_json(out/'conditions.json', conditions)
++        bootstrap = paired_bootstrap({kind: outcome_arrays(value['predictions'])
++                                      for kind, value in conditions.items()})
++        write_json(out/'conditions.json', conditions)
++        write_json(out/'bootstrap.json', {'repeats': 10000, 'seed': 20261101,
++                                         'scope': 'descriptive paired task-stratified dev intervals',
++                                         'comparisons': bootstrap})
++        provenance = {'formal_run': inventory,
++                      'training_manifest': {'path': str((Path(args.training_run)/'manifest.json').resolve()),
++                       'sha256': file_sha256(Path(args.training_run)/'manifest.json')},
++                      'checkpoint_inventory': {'path': str((Path(args.training_run)/'checkpoint.json').resolve()),
++                       'sha256': file_sha256(Path(args.training_run)/'checkpoint.json')},
++                      'source_commit': os.environ['SR_CODE_COMMIT'], 'model_revision': REVISION,
++                      'tokenizer_revision': REVISION,
++                      'environment_lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
++                      'diagnostic_scope': 'gold-candidate tokens; actual first/last LatentReader queries; normalized positive-key probabilities',
++                      'donor_rule': 'R1 within-task derangement; normal donor same candidate index; donor past clamped to recipient position',
++                      'hardware': torch.cuda.get_device_name(), 'seed': 0}
++        write_json(out/'provenance.json', provenance)
++        values.update(arm=args.arm, conditions=list(conditions), dev_rows=len(normal_predictions),
++                      iv_off_identical_to_Base=args.arm != 'RB1-01',
++                      T0_swap_noop=args.arm == 'RB1-01')
++        artifacts = [{'path': str(out/name), 'role': name} for name in
++                     ('conditions.json', 'bootstrap.json', 'provenance.json')]
++        passed = True
++    finally:
++        values['elapsed_s'] = time.monotonic()-start
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
++            'contract': 'E-0021@1', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'arm': args.arm, 'phase': 'R1', 'seed': 0, 'stage': 'intervention',
++            'metrics': values, 'artifacts': artifacts,
++            'validator': {'name': 'rb1_frozen_history', 'passed': passed}})
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--arm', choices=INTERVENTION_ARMS, required=True)
++    parser.add_argument('--training-run', type=Path, required=True)
++    parser.add_argument('--data-dir', required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    run(parser.parse_args())
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/rb1_latency.py b/src/rb1_latency.py
+new file mode 100644
+index 0000000..79b007f
+--- /dev/null
++++ b/src/rb1_latency.py
+@@ -0,0 +1,143 @@
++"""E-0021 RB1 latency driver for validated formal checkpoints."""
++import argparse
++import gc
++import json
++import math
++import os
++from pathlib import Path
++import time
++
++import torch
++
++from calibrate import MODEL, REVISION
++from mig_profile_guard import main as profile_guard
++from rb_latency import measure
++from rb1_artifacts import (finite_tree, reference, validate_formal_run,
++                           verified_latency)
++from rb_train import make_model
++from v1_lora import LoRAModel
++from v5_latency import merge_lora
++from v5_train import write_json
++
++
++TIMED_ARMS = ('RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07')
++CONTRACT = 'E-0021@1'
++
++
++def validate_formal_checkpoint(run_dir, arm):
++    """Compatibility name retained for existing latency caller/tests."""
++    return validate_formal_run(run_dir, arm)[2]
++
++
++def validate_checkpoint_map(checkpoints):
++    """Validate each requested formal run before any model is loaded."""
++    if not isinstance(checkpoints, dict) or not set(TIMED_ARMS) <= set(checkpoints):
++        raise ValueError(f'checkpoint map must contain {", ".join(TIMED_ARMS)}')
++    if set(checkpoints) - set(TIMED_ARMS):
++        raise ValueError('checkpoint map contains an unrequested arm')
++    return {arm: validate_formal_checkpoint(checkpoints[arm], arm) for arm in TIMED_ARMS}
++
++
++def json_safe(value):
++    """Retain diagnostic raw values while keeping partial artifacts valid JSON."""
++    if isinstance(value, float) and not math.isfinite(value):
++        return repr(value)
++    if isinstance(value, dict):
++        return {key: json_safe(child) for key, child in value.items()}
++    if isinstance(value, (list, tuple)):
++        return [json_safe(child) for child in value]
++    return value
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--checkpoints', type=Path, required=True,
++                        help='JSON object mapping each requested arm to its formal run directory')
++    parser.add_argument('--include-base', action='store_true', help='also time frozen Base')
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args(argv)
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    passed, measurements, spec_digest = False, {}, None
++    start = time.monotonic()
++    try:
++        checkpoint_runs = json.loads(args.checkpoints.read_text())
++        if not isinstance(checkpoint_runs, dict) or not set(TIMED_ARMS) <= set(checkpoint_runs) or set(checkpoint_runs) - set(TIMED_ARMS):
++            raise ValueError(f'checkpoint map must name exactly the requested arms: {", ".join(TIMED_ARMS)}')
++        source_commit = os.environ.get('SR_CODE_COMMIT')
++        if not source_commit:
++            raise ValueError('SR_CODE_COMMIT must bind timing output to the submitted source snapshot')
++        spec_digest = os.environ.get('SR_SPEC_DIGEST')
++        if not spec_digest:
++            raise ValueError('SR_SPEC_DIGEST must bind timing output to E-0021')
++        formal = {arm: validate_formal_run(checkpoint_runs[arm], arm) for arm in TIMED_ARMS}
++        manifests = {arm: value[0] for arm, value in formal.items()}
++        inventories = {arm: value[1] for arm, value in formal.items()}
++        adapter_dirs = {arm: value[2] for arm, value in formal.items()}
++        # The live profile check is intentionally before make_model/load_base.
++        if profile_guard(['--output', str(out)]) != 0:
++            raise RuntimeError('MIG profile guard rejected allocation; requires 2g.24gb')
++        refs = {}
++        arms = (*TIMED_ARMS, 'Base') if args.include_base else TIMED_ARMS
++        for arm in arms:
++            model = make_model(arm, phase='R1', seed=0,
++                               checkpoint=None if arm == 'Base' else adapter_dirs[arm])
++            metrics = measure(model)
++            measurements[arm] = metrics
++            verified_latency(metrics)
++            refs[arm] = {'run_dir': None if arm == 'Base' else str(Path(checkpoint_runs[arm]).resolve()),
++                         'adapter_dir': None if arm == 'Base' else str(adapter_dirs[arm]),
++                         'artifact_inventory': None if arm == 'Base' else inventories[arm]}
++            finite_tree(metrics, f'{arm}.metrics')
++            if arm == 'RB1-07':
++                merged = merge_lora(model)
++                model._targets.clear()
++                del model
++                gc.collect()
++                torch.cuda.empty_cache()
++                merged_metrics = measure(merged)
++                measurements['RB1-07-merged'] = merged_metrics
++                verified_latency(merged_metrics)
++                finite_tree(merged_metrics, 'RB1-07-merged.metrics')
++                refs['RB1-07-merged'] = {'derived_from': 'RB1-07',
++                                         'merge_implementation': 'v5_latency.merge_lora'}
++                del merged
++            else:
++                del model
++            gc.collect()
++            torch.cuda.empty_cache()
++        metadata = {
++            'contract': CONTRACT, 'arms': list(arms), 'measurements': measurements,
++            'loaded_refs': refs,
++            'training_manifests': manifests,
++            'environment': {'source_commit': source_commit,
++                            'environment_lock_sha256': reference(Path(__file__).resolve().parents[1]/'uv.lock')['sha256'],
++                            'model': MODEL, 'model_revision': REVISION,
++                            'tokenizer_revision': REVISION,
++                            'torch': torch.__version__, 'cuda': torch.version.cuda,
++                            'hardware': torch.cuda.get_device_name()},
++            'measurement_contract': {'batch': 1, 'prefill_length': 512, 'prefill_passes': 5,
++                                     'prefill_warmup_passes': 4, 'decode_tokens': 128,
++                                     'decode_p50_p95': True,
++                                     'merged_state_note': 'RB1-07 adapter state bytes exclude backbone KV'}
++        }
++        finite_tree(metadata, 'latency')
++        write_json(out/'latency.json', metadata)
++        passed = True
++    finally:
++        if not passed:
++            # Preserve whatever raw timing samples were collected for diagnosis.
++            write_json(out/'latency.json', json_safe({'contract': CONTRACT, 'measurements': measurements,
++                                             'status': 'partial'})
++                       )
++        elapsed = time.monotonic() - start
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
++                   'contract': CONTRACT, 'spec_digest': spec_digest or os.environ.get('SR_SPEC_DIGEST'),
++                   'metrics': {'arms': list(measurements), 'elapsed_s': elapsed,
++                               'hardware': torch.cuda.get_device_name() if torch.cuda.is_available() else None},
++                   'artifacts': [{'path': str(out/'latency.json'), 'role': 'latency'}],
++                   'validator': {'name': 'rb1_latency', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/rb1_rules.py b/src/rb1_rules.py
+new file mode 100644
+index 0000000..5946439
+--- /dev/null
++++ b/src/rb1_rules.py
+@@ -0,0 +1,402 @@
++"""Pure numerical analysis for the E-0021 RB1 screening rules.
++
++The module deliberately does not load artifacts or assign hypothesis status. The
++caller supplies exact correctness counts, task NLL aggregates, and (optionally)
++paired row outcomes for descriptive bootstrap intervals.
++
++``counts`` has shape ``{label: {task: (correct, total)}}``. Required labels are
++``Base`` and ``RB1-01`` through ``RB1-09``; optional extra labels such as
++``RB1-02/normal`` and ``RB1-02/iv_swap`` represent intervention conditions.
++``nll`` has the same
++shape, with each task value either ``(nll_sum, loss_tokens)`` or a scalar mean
++NLL. Counts determine all accuracy decisions through :class:`Fraction`.
++
++Bootstrap rows have shape ``{label: {task: sequence_of_0_or_1}}``. The same
++task-stratified indices are used for every label in each replicate.
++"""
++from __future__ import annotations
++
++from fractions import Fraction
++from typing import Mapping, Sequence
++
++import numpy as np
++
++
++ARM_IDS = tuple(f'RB1-{i:02d}' for i in range(1, 10))
++TASKS = ('piqa', 'boolq')
++PARAMS = {
++    'RB1-08': 1_318_912,  # C_dual
++    'RB1-09': 925_696,    # C_up
++}
++BOOTSTRAP_REPEATS = 10_000
++BOOTSTRAP_SEED = 20261101
++ONE_PP = Fraction(1, 100)
++HALF_PP = Fraction(1, 200)
++
++
++class RulesError(ValueError):
++    """Input metrics cannot support the requested paired analysis."""
++
++
++def counts_from_rows(rows: Sequence[Mapping]) -> dict[str, dict[str, tuple[int, int]]]:
++    """Convert prediction rows to exact ``(correct, total)`` counts by task."""
++    result: dict[str, dict[str, list[int]]] = {}
++    for row in rows:
++        task = row.get('task')
++        if task not in TASKS:
++            raise RulesError(f'unexpected or missing task {task!r}')
++        if 'gold' not in row or 'prediction' not in row:
++            raise RulesError('prediction rows require gold and prediction')
++        bucket = result.setdefault(task, [0, 0])
++        bucket[0] += int(row['gold'] == row['prediction'])
++        bucket[1] += 1
++    if set(result) != set(TASKS):
++        raise RulesError(f'rows must include both tasks {TASKS}')
++    return {task: (result[task][0], result[task][1]) for task in TASKS}
++
++
++def _fractional_counts(counts: Mapping, label: str) -> dict[str, tuple[int, int]]:
++    try:
++        per_task = counts[label]
++    except KeyError as exc:
++        raise RulesError(f'missing counts for {label}') from exc
++    result = {}
++    for task in TASKS:
++        try:
++            correct, total = per_task[task]
++        except (KeyError, TypeError, ValueError) as exc:
++            raise RulesError(f'{label}: {task} count must be (correct, total)') from exc
++        if (not isinstance(correct, (int, np.integer)) or
++                not isinstance(total, (int, np.integer)) or total <= 0 or
++                correct < 0 or correct > total):
++            raise RulesError(f'{label}: invalid {task} count {(correct, total)!r}')
++        result[task] = (int(correct), int(total))
++    return result
++
++
++def _task_accuracy(counts: Mapping[str, tuple[int, int]], task: str) -> Fraction:
++    correct, total = counts[task]
++    return Fraction(correct, total)
++
++
++def _macro(counts: Mapping[str, tuple[int, int]]) -> Fraction:
++    return sum((_task_accuracy(counts, task) for task in TASKS), Fraction()) / len(TASKS)
++
++
++def _task_nll(nll: Mapping | None, label: str, task: str) -> float | None:
++    if nll is None or label not in nll or task not in nll[label]:
++        return None
++    value = nll[label][task]
++    if isinstance(value, (tuple, list)):
++        total, tokens = value
++        if tokens <= 0:
++            raise RulesError(f'{label}: {task} NLL loss-token count must be positive')
++        score = float(total) / int(tokens)
++    else:
++        score = float(value)
++    if not np.isfinite(score):
++        raise RulesError(f'{label}: {task} NLL must be finite')
++    return score
++
++
++def _macro_nll(nll: Mapping | None, label: str) -> float | None:
++    values = [_task_nll(nll, label, task) for task in TASKS]
++    return None if any(value is None for value in values) else sum(values) / len(values)
++
++
++def _json_fraction(value: Fraction) -> dict[str, int | float]:
++    return {'numerator': value.numerator, 'denominator': value.denominator,
++            'value': float(value), 'percentage_points': float(value * 100)}
++
++
++def paired_interval(comparisons: Mapping[str, Mapping], left: str, right: str,
++                    metric: str = 'macro_accuracy') -> Mapping:
++    """Return a requested paired comparison, reversing sign and CI if needed."""
++    direct = comparisons.get(f'{left} - {right}')
++    if direct is not None:
++        return direct[metric]
++    reverse = comparisons.get(f'{right} - {left}')
++    if reverse is None:
++        raise RulesError(f'no paired comparison for {left} and {right}')
++    result = reverse[metric]
++    low, high = result['ci95']
++    return {'difference': -result['difference'], 'ci95': [-high, -low]}
++
++
++def paired_bootstrap(rows: Mapping[str, Mapping[str, Sequence[int]]], *,
++                     repeats: int = BOOTSTRAP_REPEATS,
++                     seed: int = BOOTSTRAP_SEED,
++                     chunk_size: int = 128) -> dict:
++    """Bootstrap every supplied label using shared task-stratified row draws."""
++    if repeats <= 0 or chunk_size <= 0:
++        raise RulesError('bootstrap repeats and chunk_size must be positive')
++    labels = list(rows)
++    arrays: dict[str, dict[str, np.ndarray]] = {}
++    sizes = None
++    for label in labels:
++        if label not in rows:
++            raise RulesError(f'bootstrap rows missing {label}')
++        arrays[label] = {}
++        current = {}
++        for task in TASKS:
++            try:
++                values = np.asarray(rows[label][task], dtype=np.float64)
++            except (KeyError, TypeError, ValueError) as exc:
++                raise RulesError(f'{label}: bootstrap rows missing valid {task} outcomes') from exc
++            if values.ndim != 1 or len(values) == 0 or not np.isin(values, (0, 1)).all():
++                raise RulesError(f'{label}: {task} bootstrap outcomes must be a nonempty 0/1 vector')
++            arrays[label][task] = values
++            current[task] = len(values)
++        if sizes is None:
++            sizes = current
++        elif current != sizes:
++            raise RulesError(f'{label}: bootstrap task row sizes differ')
++
++    pairs = [(left, right) for i, left in enumerate(labels) for right in labels[i + 1:]]
++    samples = {pair: {metric: np.empty(repeats, dtype=np.float64)
++                      for metric in ('macro_accuracy', 'piqa_accuracy', 'boolq_accuracy')}
++               for pair in pairs}
++    rng = np.random.default_rng(seed)
++    start = 0
++    while start < repeats:
++        end = min(repeats, start + chunk_size)
++        n = end - start
++        draws = {task: rng.integers(0, sizes[task], size=(n, sizes[task])) for task in TASKS}
++        scores = {}
++        for label in labels:
++            task_scores = {task: arrays[label][task][draws[task]].mean(axis=1) for task in TASKS}
++            scores[label] = {
++                'piqa_accuracy': task_scores['piqa'],
++                'boolq_accuracy': task_scores['boolq'],
++                'macro_accuracy': (task_scores['piqa'] + task_scores['boolq']) / 2,
++            }
++        for left, right in pairs:
++            for metric in samples[(left, right)]:
++                samples[(left, right)][metric][start:end] = scores[left][metric] - scores[right][metric]
++        start = end
++    output = {}
++    for left, right in pairs:
++        output[f'{left} - {right}'] = {
++            metric: {'ci95': [float(x) for x in np.quantile(values, [.025, .975])],
++                     'difference': float(
++                         (arrays[left]['piqa'].mean() - arrays[right]['piqa'].mean() +
++                          arrays[left]['boolq'].mean() - arrays[right]['boolq'].mean()) / 2
++                         if metric == 'macro_accuracy' else
++                         arrays[left][metric.removesuffix('_accuracy')].mean() -
++                         arrays[right][metric.removesuffix('_accuracy')].mean())}
++            for metric, values in samples[(left, right)].items()
++        }
++    return output
++
++
++def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
++                   nll: Mapping | None = None, *,
++                   bootstrap_rows: Mapping[str, Mapping[str, Sequence[int]]] | None = None,
++                   bootstrap_repeats: int = BOOTSTRAP_REPEATS,
++                   bootstrap_seed: int = BOOTSTRAP_SEED,
++                   chunk_size: int = 128,
++                   gradient_started: bool | None = None) -> dict:
++    """Apply E-0021 rules to exact counts and optionally compute paired intervals.
++
++    Missing intervention outcomes leave GH unassessed (``None``). They never
++    turn a progression gate into a hypothesis direction. ``gradient_started``
++    is included as context for Rule 9, not used to alter its trigger.
++    """
++    labels = ('Base', *ARM_IDS)
++    count_data = {label: _fractional_counts(counts, label) for label in labels}
++    valid_modes = {'normal', 'iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute'}
++    for label in sorted(set(counts) - set(labels)):
++        try:
++            arm, mode = label.split('/', 1)
++        except (AttributeError, ValueError) as exc:
++            raise RulesError(f'invalid extra count label {label!r}') from exc
++        if arm not in ARM_IDS or mode not in valid_modes or (arm == 'RB1-01' and mode not in ('normal', 'iv_swap')):
++            raise RulesError(f'invalid intervention count label {label!r}')
++        count_data[label] = _fractional_counts(counts, label)
++
++    score = {label: _macro(data) for label, data in count_data.items()}
++    base = score['Base']
++    # G0 is a progression gate and is checked before further branch decisions.
++    g0 = score['RB1-07'] >= base + ONE_PP
++    g0_margin = score['RB1-07'] - base
++    rb2_effective = score['RB1-02'] >= base + ONE_PP
++    gr_margin = score['RB1-02'] - score['RB1-07']
++    gr = rb2_effective and gr_margin >= -ONE_PP
++
++    history_margin = score['RB1-02'] - score['RB1-01']
++    history_reference = 'RB1-02/normal' if 'RB1-02/normal' in score else 'RB1-02'
++    history_drops = {
++        mode: score[history_reference] - score[f'RB1-02/{mode}']
++        for mode in ('iv_swap', 'iv_permute') if f'RB1-02/{mode}' in score
++    }
++    gh_assessed = all(mode in history_drops for mode in ('iv_swap', 'iv_permute'))
++    gh = (history_margin >= ONE_PP and all(v >= ONE_PP for v in history_drops.values())) if gh_assessed else None
++
++    # Select S2 on a strict sub-0.5 pp tie; otherwise choose the higher score.
++    s2_s4_delta = score['RB1-03'] - score['RB1-04']
++    s_star = 'RB1-03' if abs(s2_s4_delta) < HALF_PP or s2_s4_delta > 0 else 'RB1-04'
++    loop_margin = score[s_star] - score['RB1-02']
++    query_margin = score['RB1-04'] - score['RB1-05']
++    gl_point = loop_margin >= ONE_PP
++    gl = gl_point and (s_star != 'RB1-04' or query_margin >= ONE_PP)
++
++    concat_ids = ('RB1-08', 'RB1-09')
++    effective_concat = [arm for arm in concat_ids if score[arm] >= base + ONE_PP]
++    concat_best = max((score[arm] for arm in concat_ids))
++    near_best = [arm for arm in effective_concat if concat_best - score[arm] < ONE_PP]
++    c_star = (min(near_best, key=lambda arm: (PARAMS[arm], -score[arm], _macro_nll(nll, arm)))
++              if near_best else None)
++    gc_margin = concat_best - score['RB1-02']
++    gc_raw = gc_margin >= ONE_PP
++    # A GC progression/release needs a selected, effective concat arm. The
++    # raw contrast remains available for Rule 11 even when C*_RB is absent.
++    gc = gc_raw and c_star is not None
++
++    training_within_base = all(
++        base - ONE_PP <= score[arm] < base + ONE_PP for arm in ARM_IDS)
++    rb1_t0_effective = score['RB1-01'] >= base + ONE_PP
++    rule9_gate_condition = g0 and not gr and not gc
++    rule9 = rule9_gate_condition
++    rule9_trigger = {
++        'triggered': rule9,
++        'gate_condition_met': rule9_gate_condition,
++        't0_effective': rb1_t0_effective if rule9 else None,
++        'gradient_started': gradient_started if rule9 else None,
++        'next_check': (
++            'inspect_T0_positive_control_and_gradient_start'
++            if rule9 and (not rb1_t0_effective or gradient_started is False)
++            else 'await_implementation_and_gradient_check'
++            if rule9 and gradient_started is None
++            else 'at_most_one_probe_if_checks_pass' if rule9 else None
++        ),
++        'probe_budget': 'at most one capacity or feature probe' if rule9 else None,
++    }
++
++    if not g0:
++        progression = 'stop_at_implementation_and_learnability_check'
++    elif gr or gc:
++        progression = 'draft_RB5_and_review_conclusion'
++    elif rule9:
++        progression = 'check_T0_and_gradient_then_at_most_one_probe'
++    else:
++        progression = 'no_additional_gate_triggered'
++
++    # Rule 11 directions are independent of progression and stay screening-only.
++    task_main_deltas = {task: _task_accuracy(count_data['RB1-02'], task) -
++                        _task_accuracy(count_data['RB1-07'], task) for task in TASKS}
++    main_support = (score['RB1-02'] >= base + ONE_PP and
++                    gr_margin >= ONE_PP and all(delta >= -ONE_PP for delta in task_main_deltas.values()))
++    main_challenge = (score['RB1-02'] < base + ONE_PP or gr_margin <= 0)
++    gh_direction = _direction(gh, history_margin)
++    gl_direction = _direction(gl, loop_margin)
++    gc_direction = _direction(gc_raw, gc_margin)
++    directions = {
++        'main_utility': _direction(main_support, score['RB1-02'] - score['RB1-07'], main_challenge),
++        'history': gh_direction,
++        'loop': gl_direction,
++        'concat': gc_direction,
++    }
++
++    rb5_gate_condition = g0 and (gr or gc)
++    rb5_released = rb5_gate_condition
++    rb5_matrix = None
++    if rb5_released:
++        rb5_matrix = ['RB5-01', 'RB5-05', 'RB5-08']
++        if gl:
++            rb5_matrix.append('RB5-02')
++        if gc:
++            rb5_matrix.extend(['RB5-03', 'RB5-06', 'RB5-07', 'RB5-09'])
++            if gl:
++                rb5_matrix.append('RB5-04')
++    rules = {
++        '1_G0_positive_control': {'passed': g0, 'margin': _json_fraction(g0_margin),
++                                  'threshold': 'RB1-07 >= Base + 1 pp'},
++        '2_effective_threshold': {arm: score[arm] >= base + ONE_PP for arm in ARM_IDS},
++        '3_GR_residual_single_read': {'passed': gr, 'RB1-02_vs_Base': _json_fraction(score['RB1-02'] - base),
++                                      'RB1-02_vs_RB1-07': _json_fraction(gr_margin)},
++        '4_GH_side_history': {'passed': gh, 'assessed': gh_assessed,
++                              'normal_reference': history_reference,
++                              'RB1-02_vs_RB1-01': _json_fraction(history_margin),
++                              'drop_vs_normal': {m: _json_fraction(v) for m, v in history_drops.items()}},
++        '5_GL_loop': {'passed': gl, 'selected': s_star,
++                      'S2_minus_S4': _json_fraction(s2_s4_delta),
++                      'selected_minus_RB1-02': _json_fraction(loop_margin),
++                      'S4_minus_fixed_query': _json_fraction(query_margin),
++                      'fixed_query_gate_required': s_star == 'RB1-04',
++                      'secondary_descriptive_contrasts': {
++                          'RB1-06_minus_RB1-02': _json_fraction(score['RB1-06'] - score['RB1-02']),
++                          'RB1-04_minus_RB1-06': _json_fraction(score['RB1-04'] - score['RB1-06']),
++                      }},
++        '6_GC_concat': {'passed': gc_raw, 'best_concat_minus_RB1-02': _json_fraction(gc_margin),
++                        'raw_gate_met': gc_raw, 'resolved_gate_met': gc,
++                        'effective_concat_arms': effective_concat, 'C_star_RB': c_star,
++                        'near_best_effective': near_best},
++        '7_RB5_release': {'passed': bool(rb5_released),
++                          'gate_condition_met': bool(rb5_gate_condition),
++                          'matrix': rb5_matrix,
++                          'loop_depth': 1 if not gl else (2 if s_star == 'RB1-03' else 4)},
++        '8_C_S1_S4_pilot': {'gate_condition_met': bool(g0 and not gl and gc_raw),
++                            'triggered': bool(g0 and not gl and gc and c_star),
++                            'blocked_without_C_star': bool(g0 and not gl and gc_raw and c_star is None),
++                            'pilot_result': None, 'condition': 'C*_RB+KernelMatrix C-S4 minus C-S1 >= 1 pp'},
++        '9_no_residual_or_concat_signal': rule9_trigger,
++        '10_all_arms_within_Base_plus_minus_1pp': {'passed': training_within_base,
++                                                   'interval': 'Base - 1 pp <= arm < Base + 1 pp (D-0032)',
++                                                   'outcome': 'condition_met_no_gate_override'
++                                                   if training_within_base else None},
++        '11_screening_directions': directions,
++    }
++    metrics = {label: {task + '_accuracy': _json_fraction(_task_accuracy(data, task))
++                       for task in TASKS} | {'macro_accuracy': _json_fraction(_macro(data)),
++                                             'macro_nll': _macro_nll(nll, label)}
++               for label, data in count_data.items()}
++    report = {
++        'experiment': 'E-0021', 'metrics': metrics, 'rules': rules,
++        'progression': progression,
++        'raw_gates': {'G0': g0, 'GR': gr, 'GH': gh, 'GL': gl, 'GC': gc_raw},
++        'resolved_gates': {'G0': g0, 'GR': gr, 'GL': gl, 'GC': gc},
++        'resolved_actions': {'progression': progression, 'RB5_matrix': rb5_matrix,
++                             'C_S1_S4_pilot': bool(g0 and not gl and gc and c_star)},
++        'selection': {'S_F_star': s_star, 'C_star_RB': c_star,
++                      'effective_concat_arms': effective_concat,
++                      'near_best_effective_concat_arms': near_best},
++        'screening_directions': directions,
++        'notes': ['Single-seed screening; intervals are descriptive, not confirmatory.',
++                  'D-0032: Rule 10 uses Base - 1 pp <= arm < Base + 1 pp and never overrides G0/GR/GC/GL.',
++                  'Rule 11 reports screening directions only and does not change hypothesis status.',
++                  'No same-depth T0 comparison is made; E-0021 only tests T0 at S1.'],
++    }
++    if bootstrap_rows is not None:
++        bootstrap_labels = list(count_data)
++        for label in bootstrap_labels:
++            if label not in bootstrap_rows:
++                raise RulesError(f'bootstrap rows missing {label}')
++            for task in TASKS:
++                try:
++                    observed = np.asarray(bootstrap_rows[label][task], dtype=np.float64)
++                except (KeyError, TypeError, ValueError) as exc:
++                    raise RulesError(f'{label}: bootstrap rows missing valid {task} outcomes') from exc
++                correct, total = count_data[label][task]
++                if len(observed) != total or int(observed.sum()) != correct:
++                    raise RulesError(f'{label}: {task} bootstrap row count/sum differs from supplied counts')
++        report['bootstrap'] = {
++            'method': 'paired task-stratified row resampling',
++            'repeats': bootstrap_repeats, 'seed': bootstrap_seed,
++            'interval': 'percentile 95%', 'chunk_size': chunk_size,
++            'difference_sign': 'left condition minus right condition',
++            'comparisons': paired_bootstrap(bootstrap_rows,
++                                            repeats=bootstrap_repeats,
++                                            seed=bootstrap_seed,
++                                            chunk_size=chunk_size),
++        }
++    return report
++
++
++def _direction(support: bool | None, primary_delta: Fraction,
++               challenge: bool | None = None) -> str:
++    if support is True:
++        return 'supports'
++    if challenge is True or (challenge is None and primary_delta <= 0):
++        return 'challenges'
++    return 'descriptive'
++
+diff --git a/src/rb_history.py b/src/rb_history.py
+index d01e98b..a070292 100644
+--- a/src/rb_history.py
++++ b/src/rb_history.py
+@@ -106,9 +106,22 @@ def run_history(q, k, v, reader, valid, config, options):
+         matrices, masses, counts = prior_m, prior_c, prior_n
+     elif config.mode != 'inclusive':
+         raise ValueError('history interventions other than strict require an inclusive model')
++    read_metrics = []
++    observe_read = None
++    if options.get('trace_reads') and kind != 'iv_off':
++        from rb_read_diagnostics import prefix_read_metrics
++
++        def observe_read(query, step):
++            if step in (1, config.steps):
++                metrics = prefix_read_metrics(query, keys, valid,
++                    kind='iv_strict' if kind is None and config.mode == 'strict' else kind,
++                    donor=options.get('donor'), window=options.get('window'))
++                read_metrics.append({'step': step, **metrics})
++
+     outputs, weights = read_kernel_prefix(q, reader, matrices, masses, counts, valid,
+         steps=config.steps, update=config.update, readout=config.readout,
+-        fixed_query=config.fixed_query, current_keys=keys if options.get('trace_reads') else None)
++        fixed_query=config.fixed_query, current_keys=keys if options.get('trace_reads') else None,
++        observe_read=observe_read)
+     if kind == 'iv_off':
+         outputs = torch.zeros_like(outputs)
+     diagnostics = {}
+@@ -117,6 +130,8 @@ def run_history(q, k, v, reader, valid, config, options):
+                                   'valid': valid.detach().clone()}
+     if weights is not None:
+         diagnostics['current_weight'] = weights
++    if read_metrics:
++        diagnostics['read_metrics'] = read_metrics
+     return SequenceResult(outputs, final,
+         {'valid_tokens': valid.sum().detach(), 'writes': valid.sum().detach(),
+          'reads': valid.sum().detach()*config.steps, 'reader_steps': config.steps}, diagnostics)
+diff --git a/src/rb_read_diagnostics.py b/src/rb_read_diagnostics.py
+new file mode 100644
+index 0000000..40d8e94
+--- /dev/null
++++ b/src/rb_read_diagnostics.py
+@@ -0,0 +1,108 @@
++"""Offline RB read distributions; the actual shared LatentReader is observed.
++
++These diagnostics never substitute a read or change its epsilon denominator.
++As in v2_memory.read_metrics, probability is renormalized to sum to one before
++computing entropy and effective item count. Empty reads have all-zero metrics.
++"""
++import torch
++
++
++@torch.no_grad()
++def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=None,
++                        chunk_size=64):
++    batch, length, rank = query.shape
++    if keys.shape != query.shape or valid.shape != (batch, length):
++        raise ValueError('read diagnostic feature/mask shape mismatch')
++    if chunk_size < 1:
++        raise ValueError('read diagnostic chunk size must be positive')
++    if kind not in (None, 'iv_window', 'iv_window1', 'iv_window8', 'iv_strict',
++                    'iv_swap', 'iv_permute'):
++        raise ValueError('no read distribution is defined for this intervention')
++    if kind and kind.startswith('iv_window'):
++        window = window if kind == 'iv_window' else int(kind[9:])
++        if type(window) is not int or window < 1:
++            raise ValueError('history window must be positive')
++    query = query.detach().float()
++    keys = keys.detach().float()
++    valid = valid.bool()
++    if kind == 'iv_swap':
++        if donor is None:
++            raise ValueError('swap diagnostics require donor keys and valid mask')
++        history = donor['keys'].detach().to(query.device).float()
++        history_valid = donor['valid'].to(query.device).bool()
++        if history.shape[:2] != history_valid.shape or history.shape[0] != batch or history.shape[2] != rank:
++            raise ValueError('swap diagnostic donor shape mismatch')
++    else:
++        history, history_valid = keys, valid
++    positions = torch.arange(history.shape[1], device=query.device)
++    pieces = {name: [] for name in ('current_weight', 'n_eff', 'entropy',
++                                   'relative_n_eff', 'readable_positions')}
++    for start in range(0, length, chunk_size):
++        end = min(length, start+chunk_size)
++        current = torch.arange(start, end, device=query.device)
++        eligible = history_valid[:, None] & (positions[None, None] <= current[None, :, None])
++        if kind in ('iv_strict', 'iv_swap'):
++            eligible = eligible & (positions[None, None] < current[None, :, None])
++        if kind and kind.startswith('iv_window'):
++            eligible = eligible & (positions[None, None] > current[None, :, None]-window)
++        scores = torch.einsum('btr,bnr->btn', query[:, start:end], history)
++        scores = torch.where(eligible, scores, torch.zeros_like(scores))
++        if kind == 'iv_swap':
++            # Donor past plus recipient current; no donor future, even when the
++            # donor is longer. A short donor contributes its entire valid past.
++            own = (query[:, start:end]*keys[:, start:end]).sum(-1)
++            own = torch.where(valid[:, start:end], own, torch.zeros_like(own))
++            scores = torch.cat((scores, own[..., None]), -1)
++            readable = eligible.sum(-1) + valid[:, start:end].long()
++            own_score = own
++        else:
++            own_score = (query[:, start:end]*keys[:, start:end]).sum(-1)
++            own_score = torch.where(valid[:, start:end] & (kind != 'iv_strict'), own_score,
++                                    torch.zeros_like(own_score))
++            readable = eligible.sum(-1)
++        total = scores.sum(-1)
++        probability = scores / total[..., None].clamp_min(1e-30)
++        active = valid[:, start:end] & (readable > 0)
++        neff = torch.where(active, 1/probability.square().sum(-1).clamp_min(1e-30), 0)
++        entropy = -(probability*probability.clamp_min(1e-30).log()).sum(-1)
++        values = {'current_weight': own_score/total.clamp_min(1e-30),
++                  'n_eff': neff, 'entropy': entropy,
++                  'relative_n_eff': neff/readable.clamp_min(1),
++                  'readable_positions': readable.float()}
++        for name, value in values.items():
++            pieces[name].append(torch.where(active, value, torch.zeros_like(value)))
++    return {name: torch.cat(value, 1) for name, value in pieces.items()}
++
++
++class ReadSummary:
++    """Token-weighted means, per task/layer/read step and query-position scope.
++
++    Only the gold candidate is aggregated, after scoring both candidates with
++    identical model information. Answer scope refers to positions predicting
++    answer tokens, including the final prompt position predicting its first token.
++    """
++    def __init__(self):
++        self.totals = {}
++
++    def add(self, task, diagnostics, attention_mask, labels):
++        valid = attention_mask.bool()
++        answer = torch.zeros_like(valid)
++        answer[:, :-1] = labels[:, 1:] != -100
++        for layer, diagnostic in (diagnostics or {}).items():
++            for record in diagnostic.get('read_metrics', []):
++                for scope, mask in (('all_valid_input', valid), ('answer_prediction', valid & answer)):
++                    key = (task, layer, record['step'], scope)
++                    total = self.totals.setdefault(key, {'count': 0, 'empty_reads': 0, 'sums': {}})
++                    count = int(mask.sum())
++                    total['count'] += count
++                    total['empty_reads'] += int((mask & (record['readable_positions'] == 0)).sum())
++                    for name, value in record.items():
++                        if name != 'step':
++                            total['sums'][name] = total['sums'].get(name, 0.) + float(value[mask].double().sum())
++
++    def finish(self):
++        return [{'task': task, 'layer': layer, 'step': step, 'scope': scope,
++                 'count': value['count'], 'empty_reads': value['empty_reads'],
++                 'means': {name: total/value['count'] if value['count'] else None
++                           for name, total in value['sums'].items()}}
++                for (task, layer, step, scope), value in sorted(self.totals.items())]
+diff --git a/src/test_rb1_analysis.py b/src/test_rb1_analysis.py
+new file mode 100644
+index 0000000..7ba0071
+--- /dev/null
++++ b/src/test_rb1_analysis.py
+@@ -0,0 +1,158 @@
++"""Synthetic full-grid analysis and pairing/provenance failure paths."""
++import copy
++import json
++
++import pytest
++
++import rb1_analysis as analysis
++from rb1_artifacts import read, reference
++from rb1_rules import ARM_IDS, TASKS
++from test_rb1_latency import _formal_run
++
++
++def predictions(correct):
++    return [{'task': task, 'split': 'dev', 'id': i, 'gold': 0,
++             'prediction': int(i >= correct), 'gold_nll_sum': 2., 'gold_loss_tokens': 1,
++             'scores': [-2., -3. if i < correct else -1.]} for task in TASKS for i in range(1000)]
++
++
++def metrics(rows):
++    result = {}
++    for task, value in analysis.summarize_rows(rows).items():
++        if isinstance(value, dict):
++            result.update({f'dev.{task}.{k}': v for k, v in value.items()})
++    result['dev.nll'] = 2.
++    return result
++
++
++def write(path, value):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(value))
++
++
++@pytest.fixture
++def full_grid(tmp_path, monkeypatch):
++    base = tmp_path/'Base'
++    base.mkdir()
++    base_rows = predictions(500)
++    for name in ('manifest.json', 'config.json', 'predictions.json', 'split-map.json', 'data-metadata.json'):
++        write(base/name, {'fixture': name})
++    monkeypatch.setattr(analysis, '_read_run', lambda *args: (base_rows, {'metrics': metrics(base_rows)}))
++    lock = tmp_path/'lock.json'
++    split = tmp_path/'split.json'
++    write(split, {'fixture': 'split'})
++    write(lock, {'experiment': 'E-0020@1', 'locked_lrs': {f: .001 for f in ('RBc-R', 'RBc-T', 'RBc-L', 'RBc-C')},
++                 'split_manifest_sha256': reference(split)['sha256']})
++    successes = dict(zip(ARM_IDS, (580, 600, 605, 620, 602, 610, 610, 640, 635)))
++    roots, manifests = {}, {}
++    for arm in ARM_IDS:
++        root = _formal_run(tmp_path/'training', arm)
++        roots[arm] = str(root)
++        config = read(root/'config.json')
++        config.update(lr_lock=str(lock), split_manifest=str(split))
++        write(root/'config.json', config)
++        manifest = read(root/'manifest.json')
++        m = manifest['metrics']
++        m.update({'lr_lock.sha256': reference(lock)['sha256'],
++                  'split_manifest.sha256': reference(split)['sha256'], 'plan.order_sha256': 'a'*64})
++        layers = {str(i): {'writes': 0 if arm == 'RB1-01' else m['train.input_tokens'],
++                           'reads': 0 if arm == 'RB1-01' else m['train.input_tokens']*(2 if arm == 'RB1-03' else 4 if arm in ('RB1-04', 'RB1-05', 'RB1-06') else 1),
++                           'valid_tokens': m['train.input_tokens'], 'attention': m['train.examples'],
++                           'ffn': m['train.examples']} for i in (6, 13, 20, 27)}
++        m['runtime.accounting'] = {'layers': {} if arm == 'RB1-07' else layers,
++                                    'states': {}, 'state_M_c_bytes': 0 if arm in ('RB1-01', 'RB1-07') else 16896}
++        rows = predictions(successes[arm])
++        m.update(metrics(rows))
++        write(root/'predictions.json', rows)
++        for step in (489, 977, 1466):
++            write(root/f'dev-step-{step}.json', {'step': step, 'metrics': metrics(rows), 'predictions': rows})
++        write(root/'manifest.json', manifest)
++        manifests[arm] = reference(root/'manifest.json')
++    interventions = {}
++    for arm in ('RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-09'):
++        root = tmp_path/('IV-'+arm)
++        interventions[arm] = str(root)
++        normal = predictions(successes[arm])
++        def condition(rows, mode='normal'):
++            steps = (1, 4) if arm == 'RB1-04' else (1,)
++            records = [] if arm == 'RB1-01' or mode in ('iv_off', 'Base_same_allocation') else [
++                {'task': task, 'layer': layer, 'step': step, 'scope': scope,
++                 'count': 1000, 'empty_reads': 0,
++                 'means': {'current_weight': 0. if mode == 'iv_strict' else 1.,
++                           'n_eff': 1., 'entropy': 0., 'relative_n_eff': 1., 'readable_positions': 1.}}
++                for task in TASKS for layer in (6, 13, 20, 27) for step in steps
++                for scope in ('all_valid_input', 'answer_prediction')]
++            return {'predictions': rows, 'metrics': metrics(rows), 'read_diagnostics': records}
++        conditions = {'normal': condition(normal), 'Base_same_allocation': condition(base_rows)}
++        for mode in (('iv_swap',) if arm == 'RB1-01' else analysis.MODES):
++            conditions[mode] = condition(normal if arm == 'RB1-01' else base_rows if mode == 'iv_off' else predictions(successes[arm]-20), mode)
++        write(root/'conditions.json', conditions)
++        write(root/'provenance.json', {'training_manifest': {k: manifests[arm][k] for k in ('path', 'sha256')}})
++        write(root/'manifest.json', {'status': 'complete', 'validator': {'passed': True}, 'contract': 'E-0021@1',
++                                     'arm': arm, 'stage': 'intervention', 'seed': 0})
++    latency_root = tmp_path/'Latency'
++    samples = [1.] * 128
++    timed = ('RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07', 'RB1-07-merged')
++    measurements = {arm: {'batch': 1, 'prefill_length': 512, 'prefill_passes': 5, 'decode_tokens': 128,
++                           'prefill_seconds': [1.]*5, 'prefill_tokens_per_second': 512.,
++                           'decode_samples_ms': samples, 'decode_p50_ms': 1., 'decode_p95_ms': 1.,
++                           'peak_cuda_bytes': 10, 'adapter_persistent_state': {'M_c_bytes': 16896 if arm in ('RB1-02', 'RB1-04', 'RB1-08') else 0}}
++                    for arm in timed}
++    write(latency_root/'manifest.json', {'status': 'complete', 'validator': {'passed': True}, 'contract': 'E-0021@1'})
++    write(latency_root/'mig-profile.json', {'passed': True, 'profile': '2g.24gb'})
++    write(latency_root/'latency.json', {'measurements': measurements, 'loaded_refs': {
++        arm: {'artifact_inventory': {'manifest': manifests[arm]}} for arm in timed if arm in ARM_IDS}})
++    costs = tmp_path/'costs.json'
++    attempts = [root.split('/')[-1] for root in [*roots.values(), *interventions.values(), str(latency_root)]]
++    write(costs, [{'attempt_id': attempt, 'execution_state': 'ended', 'usage': {
++        'basis': 'measured', 'accounting_ref': f'fixture:{attempt}', 'quantity': .01,
++        'unit': 'mig_instance_hours', 'source_ref': 'synthetic scheduler fixture'}} for attempt in attempts])
++    return {'training_runs': roots, 'base_run': str(base), 'intervention_runs': interventions,
++            'latency_run': str(latency_root), 'observations': [str(costs)]}
++
++
++def test_full_synthetic_grid_has_exact_rules_interventions_and_locked_bootstrap(full_grid):
++    report = analysis.analyze(full_grid)
++    assert report['selection']['S_F_star'] == 'RB1-04'
++    assert report['selection']['C_star_RB'] == 'RB1-09'
++    assert report['bootstrap']['repeats'] == 10000
++    assert report['bootstrap']['seed'] == 20261101
++    assert report['rules']['4_GH_side_history']['passed'] is True
++    assert report['rules']['4_GH_side_history']['normal_reference'] == 'RB1-02/normal'
++    assert report['interventions']['RB1-02']['iv_swap']['macro_accuracy']['difference'] == pytest.approx(-.02)
++    assert len(report['training_runtime']) == 9
++    assert report['cost']['node_h'] == pytest.approx(15*.01*.25)
++    assert 'Single-seed dev screening' in analysis.markdown(report)
++
++
++@pytest.mark.parametrize('failure,match', [('duplicate', 'duplicate'), ('order', 'paired'),
++                                        ('gold', 'gold score'), ('score', 'tie rule'), ('partial', '1000-row')])
++def test_prediction_boundary_rejects_invalid_pairing(failure, match):
++    paired = predictions(600)
++    rows = copy.deepcopy(paired)
++    if failure == 'duplicate':
++        rows[1] = rows[0]
++    elif failure == 'order':
++        rows[0], rows[1] = rows[1], rows[0]
++    elif failure == 'gold':
++        rows[0]['gold'] = 1
++    elif failure == 'score':
++        rows[0]['prediction'] = 1
++    else:
++        rows.pop()
++    with pytest.raises(ValueError, match=match):
++        analysis.validate_rows(rows, 'fixture', paired)
++
++
++def test_final_rejects_wrong_checkpoint_provenance_and_incomplete_interventions(full_grid):
++    del full_grid['intervention_runs']['RB1-04']
++    with pytest.raises(ValueError, match='four intervention targets'):
++        analysis.analyze(full_grid)
++
++
++def test_cost_is_deduplicated_by_scheduler_accounting_ref(full_grid):
++    paths = full_grid['observations']
++    once = analysis.measured_cost(paths)
++    twice = analysis.measured_cost(paths+paths)
++    assert once['node_h'] == twice['node_h']
++    assert len(once['rows']) == len(twice['rows'])
+diff --git a/src/test_rb1_artifacts.py b/src/test_rb1_artifacts.py
+new file mode 100644
+index 0000000..1ba9a1d
+--- /dev/null
++++ b/src/test_rb1_artifacts.py
+@@ -0,0 +1,126 @@
++"""Formal-budget and provenance checks for RB1 producer artifacts."""
++import json
++
++import pytest
++
++from rb1_artifacts import validate_formal_run, verified_latency
++from test_rb1_latency import _formal_run
++from v1_run import lr_factor
++
++
++def _rewrite(run, name, change):
++    path = run / name
++    value = json.loads(path.read_text())
++    change(value)
++    path.write_text(json.dumps(value))
++    return value
++
++
++def test_formal_run_returns_manifest_reference_inventory_and_adapter(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    manifest, refs, adapter = validate_formal_run(run, 'RB1-01')
++    assert manifest['metrics']['train.input_tokens'] == 2_000_000
++    assert refs['manifest']['sha256'] and refs['lr_lock']['sha256']
++    assert refs['adapter_weights']['bytes'] > 0
++    assert adapter == run / 'adapter'
++
++
++@pytest.mark.parametrize('key,value', [
++    ('params.stored', 1), ('params.trainable', 1), ('params.with_grad', 1),
++])
++def test_rejects_wrong_parameter_accounting(tmp_path, key, value):
++    run = _formal_run(tmp_path, 'RB1-01')
++    _rewrite(run, 'manifest.json', lambda data: data['metrics'].__setitem__(key, value))
++    with pytest.raises(ValueError, match=key):
++        validate_formal_run(run, 'RB1-01')
++
++
++def test_rejects_lock_family_split_or_learning_rate_mismatch(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    lock = run / 'lock.json'
++    value = json.loads(lock.read_text())
++    value['locked_lrs']['RBc-T'] = .003
++    lock.write_text(json.dumps(value))
++    with pytest.raises(ValueError, match='LR lock family/value'):
++        validate_formal_run(run, 'RB1-01')
++
++
++def test_rejects_actual_split_file_change(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    (run / 'split.json').write_text('{"split":"changed"}')
++    with pytest.raises(ValueError, match='LR lock split hash'):
++        validate_formal_run(run, 'RB1-01')
++
++
++def test_rejects_crossing_two_million_before_final_step(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    steps_path = run / 'steps.jsonl'
++    rows = [json.loads(line) for line in steps_path.read_text().splitlines()]
++    rows.append({'step': 1955, 'example_mean_nll': 2.4, 'preclip_norm': .4,
++                 'lr': .001 * lr_factor(1954, 1955), 'seconds': 1., 'input_tokens': 1})
++    for index, row in enumerate(rows, 1):
++        row['lr'] = .001 * lr_factor(index - 1, 1955)
++    steps_path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
++    _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(
++        **{'plan.steps': 1955, 'train.steps': 1955, 'plan.examples': 3910,
++           'train.examples': 3910, 'plan.input_tokens': 2_000_001,
++           'train.input_tokens': 2_000_001}))
++    with pytest.raises(ValueError, match='continued after reaching'):
++        validate_formal_run(run, 'RB1-01')
++
++
++def test_accepts_natural_three_epoch_stop_below_two_million(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    config_path = run / 'config.json'
++    config = json.loads(config_path.read_text())
++    config['three_epochs'] = False
++    config_path.write_text(json.dumps(config))
++    rows = []
++    for step in range(1, 4):
++        rows.append({'step': step, 'example_mean_nll': 2.4, 'preclip_norm': .2,
++                     'lr': .001 * lr_factor(step - 1, 3), 'seconds': 1., 'input_tokens': 100})
++    (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
++    _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(
++        **{'plan.steps': 3, 'train.steps': 3, 'plan.input_tokens': 300,
++           'train.input_tokens': 300, 'plan.examples': 6, 'train.examples': 6,
++           'train.last_epoch': 2, 'plan.epoch_end_steps': {'3': 3}}))
++    manifest, _, _ = validate_formal_run(run, 'RB1-01')
++    assert manifest['metrics']['train.input_tokens'] == 300
++
++
++@pytest.mark.parametrize('bad_value,match', [(1025, 'token bound'), (0.5, 'step LR')])
++def test_rejects_step_token_overflow_or_wrong_locked_lr(tmp_path, bad_value, match):
++    run = _formal_run(tmp_path, 'RB1-01')
++    path = run / 'steps.jsonl'
++    rows = [json.loads(line) for line in path.read_text().splitlines()]
++    if match == 'token bound':
++        rows[0]['input_tokens'] = bad_value
++    else:
++        rows[0]['lr'] = bad_value
++    path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
++    with pytest.raises(ValueError, match=match):
++        validate_formal_run(run, 'RB1-01')
++
++
++def test_rejects_three_epoch_override_even_with_formal_stage(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    config_path = run / 'config.json'
++    config = json.loads(config_path.read_text())
++    config['three_epochs'] = True
++    config_path.write_text(json.dumps(config))
++    with pytest.raises(ValueError, match='three-epoch override'):
++        validate_formal_run(run, 'RB1-01')
++
++
++def test_latency_requires_full_raw_samples_and_matching_summary():
++    import statistics
++    samples = list(map(float, range(1, 129)))
++    prefill = [1.] * 5
++    row = {'batch': 1, 'prefill_length': 512, 'prefill_passes': 5, 'decode_tokens': 128,
++           'decode_samples_ms': samples, 'prefill_seconds': prefill,
++           'decode_p50_ms': statistics.median(samples), 'decode_p95_ms': samples[120],
++           'prefill_tokens_per_second': 512., 'peak_cuda_bytes': 100,
++           'adapter_persistent_state': {'M_c_bytes': 16896}}
++    assert verified_latency(row) is row
++    with pytest.raises(ValueError, match='128 decode samples'):
++        verified_latency({**row, 'decode_samples_ms': samples[:2]})
+diff --git a/src/test_rb1_intervene.py b/src/test_rb1_intervene.py
+new file mode 100644
+index 0000000..09f5384
+--- /dev/null
++++ b/src/test_rb1_intervene.py
+@@ -0,0 +1,65 @@
++"""Same-allocation model checks of V1 scoring and frozen history diagnostics."""
++import pytest
++import torch
++from transformers import AutoTokenizer
++
++from calibrate import load_base, MODEL, REVISION
++from rb1_intervene import evaluate_history, original_backbone, MODES
++from rb_train import adapter_config
++from test_rb_model import attached
++from test_model import nonzero_exits
++from v1_run import evaluate
++
++
++@pytest.fixture(scope='module')
++def fixture_data():
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tok.pad_token_id = tok.eos_token_id
++    rows = {'piqa': [{'task': 'piqa', 'id': i, 'goal': f'Move object {i} onto the table.',
++                       'solutions': ['Lift the object.', 'Drop the table.'], 'label': i % 2} for i in range(2)],
++            'boolq': [{'task': 'boolq', 'id': i, 'passage': f'A red object {i} is on the table.',
++                       'question': 'Is there an object on the table?', 'label': i == 0} for i in range(2)]}
++    return tok, {'splits': {task: {'dev': value} for task, value in rows.items()}}
++
++
++@pytest.fixture(scope='module')
++def rbbase():
++    return load_base()
++
++
++@pytest.mark.parametrize('arm', ['RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-09'])
++def test_v1_scorer_identity_off_base_and_native_first_last_reads(rbbase, fixture_data, arm):
++    tok, splits = fixture_data
++    with attached(rbbase, adapter_config(arm)) as model, torch.no_grad():
++        model.eval()
++        nonzero_exits(model)
++        direct_metrics, direct = evaluate(model, splits, tok, split_names=('dev',))
++        normal_metrics, normal, diagnostics = evaluate_history(model, splits, tok)
++        assert direct == normal and direct_metrics == normal_metrics
++        if arm != 'RB1-01':
++            assert {row['layer'] for row in diagnostics} == {6, 13, 20, 27}
++            assert {row['step'] for row in diagnostics} == ({1, 4} if arm == 'RB1-04' else {1})
++            assert all(0 <= row['means']['relative_n_eff'] <= 1.000001 for row in diagnostics)
++        with original_backbone(model) as base:
++            base_metrics, base_rows = evaluate(base, splits, tok, split_names=('dev',))
++        off_metrics, off, _ = evaluate_history(model, splits, tok, 'iv_off')
++        assert off == base_rows and off_metrics == base_metrics
++        # All wrappers and their state protocol are restored even after Base scoring.
++        assert set(model.adapters()) == {6, 13, 20, 27}
++        for kind in (('iv_swap',) if arm == 'RB1-01' else MODES[1:]):
++            metrics, changed, reads = evaluate_history(model, splits, tok, kind)
++            assert len(changed) == 4
++            assert all(torch.isfinite(torch.tensor(row['scores'])).all() for row in changed)
++            if arm == 'RB1-01':
++                assert changed == normal and metrics == normal_metrics
++            else:
++                assert reads and {row['step'] for row in reads} == ({1, 4} if arm == 'RB1-04' else {1})
++
++
++def test_original_backbone_restores_wrappers_on_failure(rbbase):
++    with attached(rbbase, adapter_config('RB1-02')) as model:
++        adapted = model.adapters()
++        with pytest.raises(RuntimeError, match='synthetic failure'):
++            with original_backbone(model):
++                raise RuntimeError('synthetic failure')
++        assert all(model.model.model.layers[i] is layer for i, layer in adapted.items())
+diff --git a/src/test_rb1_latency.py b/src/test_rb1_latency.py
+new file mode 100644
+index 0000000..dfef7d1
+--- /dev/null
++++ b/src/test_rb1_latency.py
+@@ -0,0 +1,179 @@
++"""Synthetic artifact-boundary tests for the E-0021 latency driver."""
++from dataclasses import asdict
++import hashlib
++import json
++from pathlib import Path
++
++import pytest
++
++import rb1_latency as latency
++from rb_train import FAMILIES, PARAMETERS, adapter_config
++from v1_lora import LoRAConfig
++from v1_run import lr_factor
++from calibrate import REVISION
++
++
++def _digest(path):
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def _formal_run(root, arm):
++    run = root / arm
++    adapter = run / 'adapter'
++    adapter.mkdir(parents=True)
++    split = run / 'split.json'
++    split.write_text('{"split":"fixture"}')
++    lock = run / 'lock.json'
++    split_hash = _digest(split)
++    lock.write_text(json.dumps({'experiment': 'E-0020@1',
++        'locked_lrs': {FAMILIES[arm]: .001}, 'split_manifest_sha256': split_hash}))
++    training_config = {'arm': arm, 'phase': 'R1', 'seed': 0, 'stage': 'train',
++                       'lr': .001, 'lr_lock': str(lock), 'split_manifest': str(split),
++                       'eval_limit': None, 'smoke_steps': None, 'three_epochs': False}
++    (run / 'config.json').write_text(json.dumps(training_config))
++    model_config = (LoRAConfig(layers=(6, 13, 20, 27), rank=7, alpha=7)
++                    if arm == 'RB1-07' else adapter_config(arm))
++    (adapter / 'config.json').write_text(json.dumps(asdict(model_config)))
++    (adapter / 'adapter.pt').write_bytes((arm + '-weights').encode())
++    checkpoint = {}
++    for name in ('config.json', 'adapter.pt'):
++        path = adapter / name
++        checkpoint[name] = {'path': str(path), 'sha256': _digest(path), 'bytes': path.stat().st_size}
++    (run / 'checkpoint.json').write_text(json.dumps(checkpoint))
++    steps = [{'step': index, 'example_mean_nll': 2.4, 'preclip_norm': .4,
++              'lr': .001 * lr_factor(index - 1, 1954), 'seconds': 1.,
++              'input_tokens': 1024 if index < 1954 else 128}
++             for index in range(1, 1955)]
++    (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in steps))
++    params = PARAMETERS[arm]
++    metrics = {'failed': False, 'reload.identical': True, 'params.stored': params,
++        'model_revision': REVISION, 'tokenizer_revision': REVISION,
++        'environment.lock_sha256': _digest(Path(__file__).resolve().parents[1]/'uv.lock'),
++        'source.commit': 'c'*40, 'plan.order_sha256': 'a'*64,
++        'params.trainable': params, 'params.with_grad': params,
++        'learning_rate': .001, 'lr_lock.sha256': _digest(lock),
++        'split_manifest.sha256': split_hash, 'plan.steps': 1954, 'train.steps': 1954,
++        'plan.input_tokens': 2_000_000, 'train.input_tokens': 2_000_000,
++        'plan.examples': 3908, 'train.examples': 3908, 'train.last_epoch': 0}
++    (run / 'manifest.json').write_text(json.dumps({
++        'status': 'complete', 'contract': latency.CONTRACT, 'arm': arm, 'family': FAMILIES[arm],
++        'phase': 'R1', 'seed': 0, 'stage': 'train',
++        'metrics': metrics,
++        'validator': {'passed': True}}))
++    return run
++
++
++def test_formal_checkpoint_binding_and_seed_swap_rejection(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-01')
++    assert latency.validate_formal_checkpoint(run, 'RB1-01') == run / 'adapter'
++    with pytest.raises(ValueError, match='manifest arm'):
++        latency.validate_formal_checkpoint(run, 'RB1-02')
++
++
++@pytest.mark.parametrize('change,match', [
++    ({'stage': 'smoke'}, 'manifest arm/phase/seed/stage'),
++    ({'seed': 1}, 'manifest arm/phase/seed/stage'),
++    ({'phase': 'RB5'}, 'manifest arm/phase/seed/stage'),
++])
++def test_rejects_smoke_or_wrong_provenance(tmp_path, change, match):
++    run = _formal_run(tmp_path, 'RB1-01')
++    manifest_path = run / 'manifest.json'
++    manifest = json.loads(manifest_path.read_text())
++    manifest.update(change)
++    manifest_path.write_text(json.dumps(manifest))
++    with pytest.raises(ValueError, match=match):
++        latency.validate_formal_checkpoint(run, 'RB1-01')
++
++
++def test_rejects_swapped_or_modified_checkpoint_bytes(tmp_path):
++    run_a = _formal_run(tmp_path, 'RB1-01')
++    run_b = _formal_run(tmp_path, 'RB1-02')
++    cp_a = json.loads((run_a / 'checkpoint.json').read_text())
++    cp_b = json.loads((run_b / 'checkpoint.json').read_text())
++    cp_a['adapter.pt'] = cp_b['adapter.pt']
++    (run_a / 'checkpoint.json').write_text(json.dumps(cp_a))
++    with pytest.raises(ValueError, match='checkpoint path escapes'):
++        latency.validate_formal_checkpoint(run_a, 'RB1-01')
++    (run_a / 'checkpoint.json').write_text(json.dumps({
++        **cp_a, 'adapter.pt': {**cp_a['adapter.pt'], 'path': str(run_a/'adapter'/'adapter.pt')}}))
++    (run_a / 'adapter' / 'adapter.pt').write_bytes(b'changed')
++    with pytest.raises(ValueError, match='hash/size mismatch'):
++        latency.validate_formal_checkpoint(run_a, 'RB1-01')
++
++
++def test_checkpoint_map_requires_all_timing_arms():
++    with pytest.raises(ValueError, match='must contain'):
++        latency.validate_checkpoint_map({'RB1-01': '/unused'})
++
++
++def test_cli_guards_before_model_load_and_writes_complete_metrics(tmp_path, monkeypatch):
++    runs = {arm: _formal_run(tmp_path, arm) for arm in latency.TIMED_ARMS}
++    mapping = tmp_path / 'checkpoints.json'
++    mapping.write_text(json.dumps({arm: str(run) for arm, run in runs.items()}))
++    output = tmp_path / 'timing'
++    events = []
++
++    class FakeLora:
++        def __init__(self):
++            self._targets = {}
++
++    monkeypatch.setattr(latency, 'LoRAModel', FakeLora)
++    monkeypatch.setattr(latency, 'profile_guard', lambda argv: events.append('guard') or 0)
++    monkeypatch.setattr(latency, 'make_model', lambda arm, **kwargs:
++                        events.append('load:' + arm) or FakeLora())
++    monkeypatch.setattr(latency, 'measure', lambda model: {
++        'prefill_seconds': [1.] * 5, 'prefill_tokens_per_second': 512.,
++        'decode_p50_ms': 64.5, 'decode_p95_ms': 121., 'decode_samples_ms': list(map(float, range(1, 129))),
++        'batch': 1, 'prefill_length': 512, 'prefill_passes': 5, 'decode_tokens': 128,
++        'peak_cuda_bytes': 100, 'adapter_persistent_state': {'M_c_bytes': 0}})
++    monkeypatch.setattr(latency, 'merge_lora', lambda model: events.append('merge') or object())
++    monkeypatch.setattr(latency.torch.cuda, 'empty_cache', lambda: None)
++    monkeypatch.setattr(latency.torch.cuda, 'get_device_name', lambda: 'mock-MIG')
++    monkeypatch.setattr(latency.torch.cuda, 'is_available', lambda: True)
++    monkeypatch.setenv('SR_SPEC_DIGEST', 'fixture-spec')
++    monkeypatch.setenv('SR_CODE_COMMIT', 'fixture-commit')
++    latency.main(['--checkpoints', str(mapping), '--include-base', '--output', str(output)])
++    assert events[0] == 'guard'
++    assert (output / 'manifest.json').is_file()
++    manifest = json.loads((output / 'manifest.json').read_text())
++    result = json.loads((output / 'latency.json').read_text())
++    assert manifest['status'] == 'complete' and manifest['validator']['passed']
++    assert set(result['measurements']) == {*latency.TIMED_ARMS, 'RB1-07-merged', 'Base'}
++    assert result['measurements']['RB1-07']['decode_samples_ms'] == list(map(float, range(1, 129)))
++    assert result['loaded_refs']['RB1-01']['artifact_inventory']['adapter_weights']['sha256']
++
++
++def test_nonfinite_measurement_never_marks_manifest_complete(tmp_path, monkeypatch):
++    runs = {arm: _formal_run(tmp_path, arm) for arm in latency.TIMED_ARMS}
++    mapping = tmp_path / 'checkpoints.json'
++    mapping.write_text(json.dumps({arm: str(run) for arm, run in runs.items()}))
++    monkeypatch.setattr(latency, 'profile_guard', lambda argv: 0)
++    monkeypatch.setattr(latency, 'make_model', lambda arm, **kwargs: object())
++    monkeypatch.setattr(latency, 'measure', lambda model: {
++        'batch': 1, 'prefill_length': 512, 'prefill_passes': 5, 'decode_tokens': 128,
++        'prefill_seconds': [1.] * 5, 'prefill_tokens_per_second': 512.,
++        'decode_samples_ms': [float('nan')] + list(map(float, range(1, 128))),
++        'decode_p50_ms': 64., 'decode_p95_ms': 120., 'peak_cuda_bytes': 100,
++        'adapter_persistent_state': {'M_c_bytes': 0}})
++    monkeypatch.setattr(latency.torch.cuda, 'empty_cache', lambda: None)
++    monkeypatch.setenv('SR_CODE_COMMIT', 'fixture-commit')
++    monkeypatch.setenv('SR_SPEC_DIGEST', 'fixture-spec')
++    output = tmp_path / 'invalid-timing'
++    with pytest.raises(ValueError, match='must be finite'):
++        latency.main(['--checkpoints', str(mapping), '--output', str(output)])
++    manifest = json.loads((output / 'manifest.json').read_text())
++    assert manifest['status'] == 'partial' and not manifest['validator']['passed']
++
++
++def test_mig_guard_fails_before_any_model_load(tmp_path, monkeypatch):
++    runs = {arm: _formal_run(tmp_path, arm) for arm in latency.TIMED_ARMS}
++    mapping = tmp_path / 'checkpoints.json'
++    mapping.write_text(json.dumps({arm: str(run) for arm, run in runs.items()}))
++    events = []
++    monkeypatch.setattr(latency, 'profile_guard', lambda argv: events.append('guard') or 3)
++    monkeypatch.setattr(latency, 'make_model', lambda *a, **k: pytest.fail('model loaded despite failed guard'))
++    monkeypatch.setenv('SR_CODE_COMMIT', 'fixture-commit')
++    monkeypatch.setenv('SR_SPEC_DIGEST', 'fixture-spec')
++    with pytest.raises(RuntimeError, match='MIG profile guard'):
++        latency.main(['--checkpoints', str(mapping), '--output', str(tmp_path/'guard-fail')])
++    assert events == ['guard']
+diff --git a/src/test_rb1_rules.py b/src/test_rb1_rules.py
+new file mode 100644
+index 0000000..52519de
+--- /dev/null
++++ b/src/test_rb1_rules.py
+@@ -0,0 +1,265 @@
++"""Synthetic tests for E-0021 exact screening rules and paired bootstrap."""
++import rb1_rules
++import pytest
++
++
++def _counts(default=(500, 1000), **changes):
++    result = {label: {task: default for task in rb1_rules.TASKS}
++              for label in ('Base', *rb1_rules.ARM_IDS)}
++    for label, values in changes.items():
++        result[label] = {task: values.get(task, default) for task in rb1_rules.TASKS}
++    return result
++
++
++def _report(counts, nll=None, **kwargs):
++    return rb1_rules.analyze_counts(counts, nll, **kwargs)
++
++
++def test_macro_accuracy_uses_exact_task_stratified_fractions():
++    rows = [
++        {'task': 'piqa', 'gold': 0, 'prediction': 0},
++        {'task': 'piqa', 'gold': 0, 'prediction': 1},
++        {'task': 'boolq', 'gold': 1, 'prediction': 1},
++    ]
++    got = rb1_rules.counts_from_rows(rows)
++    assert got == {'piqa': (1, 2), 'boolq': (1, 1)}
++
++
++def test_exact_rule10_upper_boundary_is_excluded_and_gates_still_release():
++    # The exact Base+1pp upper boundary is outside Rule 10's strict upper bound.
++    counts = _counts(**{
++        'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++        'RB1-02': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++        'RB1-08': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['1_G0_positive_control']['passed'] is True
++    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is False
++    assert report['progression'] == 'draft_RB5_and_review_conclusion'
++    assert report['rules']['7_RB5_release']['passed'] is True
++    assert report['rules']['7_RB5_release']['gate_condition_met'] is True
++
++
++def test_s_f_star_prefers_s2_when_difference_is_strictly_below_half_pp():
++    counts = {label: {task: (500, 1000) for task in rb1_rules.TASKS}
++              for label in ('Base', *rb1_rules.ARM_IDS)}
++    # A 0.5 percentage point difference on one task is a 0.25 pp macro gap.
++    counts['RB1-03']['piqa'] = (500, 1000)
++    counts['RB1-03']['boolq'] = (500, 1000)
++    counts['RB1-04']['piqa'] = (505, 1000)
++    report = _report(counts)
++    assert report['rules']['5_GL_loop']['S2_minus_S4'] == {
++        'numerator': -1, 'denominator': 400, 'value': -0.0025,
++        'percentage_points': -0.25,
++    }
++    assert report['selection']['S_F_star'] == 'RB1-03'
++
++
++def test_exact_half_pp_depth_difference_chooses_higher_macro_s4():
++    counts = {label: {task: (500, 1000) for task in rb1_rules.TASKS}
++              for label in ('Base', *rb1_rules.ARM_IDS)}
++    counts['RB1-03']['piqa'] = (490, 1000)
++    counts['RB1-04']['piqa'] = (500, 1000)
++    report = _report(counts)
++    assert report['rules']['5_GL_loop']['S2_minus_S4']['percentage_points'] == -0.5
++    assert report['selection']['S_F_star'] == 'RB1-04'
++
++
++def test_s4_positive_loop_contrast_does_not_support_gl_without_fixed_query_gate():
++    counts = _counts(**{
++        'RB1-03': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++        'RB1-04': {'piqa': (540, 1000), 'boolq': (500, 1000)},
++        'RB1-05': {'piqa': (530, 1000), 'boolq': (500, 1000)},
++        'RB1-02': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['5_GL_loop']['selected'] == 'RB1-04'
++    assert report['rules']['5_GL_loop']['selected_minus_RB1-02']['percentage_points'] == 2
++    assert report['rules']['5_GL_loop']['S4_minus_fixed_query']['percentage_points'] == 0.5
++    assert report['rules']['5_GL_loop']['passed'] is False
++    assert report['screening_directions']['loop'] == 'descriptive'
++
++
++def test_c_star_strict_near_best_boundary_excludes_exactly_one_pp_behind():
++    counts = _counts(**{
++        'RB1-08': {'piqa': (540, 1000), 'boolq': (500, 1000)},
++        'RB1-09': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++    })
++    # C_up is exactly one macro pp behind C_dual and must be excluded.
++    counts['RB1-09']['piqa'] = (520, 1000)
++    report = _report(counts)
++    assert report['selection']['effective_concat_arms'] == ['RB1-08', 'RB1-09']
++    assert report['selection']['near_best_effective_concat_arms'] == ['RB1-08']
++    assert report['selection']['C_star_RB'] == 'RB1-08'
++
++
++def test_c_star_prefers_lower_parameter_c_up_when_both_are_near_best():
++    counts = _counts(**{
++        'RB1-08': {'piqa': (530, 1000), 'boolq': (500, 1000)},
++        'RB1-09': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['selection']['near_best_effective_concat_arms'] == ['RB1-08', 'RB1-09']
++    assert report['selection']['C_star_RB'] == 'RB1-09'
++
++
++def test_raw_gc_without_effective_concat_does_not_release_or_trigger_pilot():
++    counts = _counts(**{
++        'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++        'RB1-02': {'piqa': (460, 1000), 'boolq': (500, 1000)},
++        'RB1-08': {'piqa': (480, 1000), 'boolq': (500, 1000)},
++        'RB1-09': {'piqa': (480, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['6_GC_concat']['raw_gate_met'] is True
++    assert report['rules']['6_GC_concat']['resolved_gate_met'] is False
++    assert report['selection']['C_star_RB'] is None
++    assert report['rules']['7_RB5_release']['passed'] is False
++    assert report['rules']['8_C_S1_S4_pilot']['triggered'] is False
++    assert report['rules']['9_no_residual_or_concat_signal']['triggered'] is True
++    assert report['raw_gates']['GC'] is True
++    assert report['resolved_gates']['GC'] is False
++    assert report['screening_directions']['concat'] == 'supports'
++
++
++def test_rule10_includes_base_minus_one_but_excludes_base_plus_one():
++    counts = _counts(**{
++        'RB1-01': {'piqa': (480, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is True
++
++    counts['RB1-02'] = {'piqa': (520, 1000), 'boolq': (500, 1000)}
++    report = _report(counts)
++    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is False
++
++
++def test_missing_intervention_data_is_pending_and_does_not_challenge_history():
++    counts = _counts(**{
++        'RB1-02': {'piqa': (510, 1000), 'boolq': (500, 1000)},
++        'RB1-01': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['4_GH_side_history']['passed'] is None
++    assert report['rules']['4_GH_side_history']['assessed'] is False
++    assert report['screening_directions']['history'] == 'descriptive'
++
++
++def test_history_gate_includes_exact_one_point_boundaries():
++    counts = _counts(**{
++        'RB1-02': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++        'RB1-01': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++        'RB1-02/iv_swap': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++        'RB1-02/iv_permute': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['4_GH_side_history']['passed'] is True
++    assert report['screening_directions']['history'] == 'supports'
++
++
++def test_history_drops_use_same_arm_normal_when_it_differs_from_training_run():
++    counts = _counts(**{
++        'RB1-02': {'piqa': (540, 1000), 'boolq': (500, 1000)},
++        'RB1-01': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++        'RB1-02/normal': {'piqa': (530, 1000), 'boolq': (500, 1000)},
++        'RB1-02/iv_swap': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++        'RB1-02/iv_permute': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    gh = report['rules']['4_GH_side_history']
++    assert gh['normal_reference'] == 'RB1-02/normal'
++    assert gh['RB1-02_vs_RB1-01']['percentage_points'] == 2
++    assert gh['drop_vs_normal']['iv_swap']['percentage_points'] == 0.5
++    assert gh['passed'] is False
++
++
++def test_main_support_requires_each_task_difference_not_only_macro():
++    counts = _counts(**{
++        'RB1-02': {'piqa': (650, 1000), 'boolq': (370, 1000)},
++        'RB1-07': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++        'Base': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['11_screening_directions']['main_utility'] == 'descriptive'
++    assert report['rules']['11_screening_directions']['main_utility'] == report['screening_directions']['main_utility']
++
++
++def test_gr_tolerates_minus_one_but_main_hypothesis_needs_plus_one():
++    counts = _counts(**{
++        'RB1-07': {'piqa': (540, 1000), 'boolq': (500, 1000)},
++        'RB1-02': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['rules']['3_GR_residual_single_read']['RB1-02_vs_RB1-07']['percentage_points'] == -1
++    assert report['rules']['3_GR_residual_single_read']['passed'] is True
++    assert report['screening_directions']['main_utility'] == 'challenges'
++
++    counts['RB1-02'] = {'piqa': (560, 1000), 'boolq': (500, 1000)}
++    report = _report(counts)
++    assert report['rules']['3_GR_residual_single_read']['RB1-02_vs_RB1-07']['percentage_points'] == 1
++    assert report['screening_directions']['main_utility'] == 'supports'
++
++
++def test_secondary_loop_contrasts_are_descriptive_and_t0_depth_is_not_claimed():
++    report = _report(_counts())
++    secondary = report['rules']['5_GL_loop']['secondary_descriptive_contrasts']
++    assert secondary['RB1-06_minus_RB1-02']['value'] == 0
++    assert secondary['RB1-04_minus_RB1-06']['value'] == 0
++    assert any('same-depth T0' in note for note in report['notes'])
++
++
++def test_bootstrap_uses_shared_task_indices_and_reports_paired_intervals():
++    counts = _counts(default=(2, 4))
++    rows = {
++        label: {'piqa': [0, 1, 1, 0], 'boolq': [1, 1, 0, 0]}
++        for label in ('Base', *rb1_rules.ARM_IDS)
++    }
++    report = _report(counts, bootstrap_rows=rows, bootstrap_repeats=30,
++                     bootstrap_seed=20261101, chunk_size=7)
++    paired = rb1_rules.paired_interval(report['bootstrap']['comparisons'], 'RB1-01', 'Base')
++    assert paired['difference'] == 0
++    assert paired['ci95'] == [0, 0]
++
++
++def test_count_data_includes_supplied_loop_intervention_for_bootstrap():
++    counts = _counts(default=(2, 4), **{
++        'RB1-03/iv_window1': {'piqa': (2, 4), 'boolq': (2, 4)},
++    })
++    rows = {
++        label: {'piqa': [0, 1, 1, 0], 'boolq': [1, 1, 0, 0]}
++        for label in counts
++    }
++    report = _report(counts, bootstrap_rows=rows, bootstrap_repeats=4)
++    assert 'RB1-03/iv_window1' in report['metrics']
++    paired = rb1_rules.paired_interval(
++        report['bootstrap']['comparisons'], 'RB1-03/iv_window1', 'RB1-04')
++    assert paired['difference'] == 0
++
++
++def test_rule9_triggers_when_arm_is_at_exact_rule10_upper_boundary():
++    counts = _counts(**{
++        'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    rule9 = report['rules']['9_no_residual_or_concat_signal']
++    assert rule9['gate_condition_met'] is True
++    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is False
++    assert rule9['triggered'] is True
++    assert report['progression'] == 'check_T0_and_gradient_then_at_most_one_probe'
++
++
++def test_negative_counts_and_bootstrap_count_row_mismatch_raise():
++    bad = _counts()
++    bad['RB1-02']['piqa'] = (-1, 1000)
++    with pytest.raises(rb1_rules.RulesError, match='invalid'):
++        _report(bad)
++
++    counts = _counts(default=(2, 4))
++    rows = {
++        label: {'piqa': [0, 1, 1, 0], 'boolq': [1, 1, 0, 0]}
++        for label in counts
++    }
++    rows['RB1-02']['piqa'] = [1, 1, 1, 0]
++    with pytest.raises(rb1_rules.RulesError, match='differs from supplied counts'):
++        _report(counts, bootstrap_rows=rows, bootstrap_repeats=2)
++
+diff --git a/src/test_rb_read_diagnostics.py b/src/test_rb_read_diagnostics.py
+new file mode 100644
+index 0000000..34544d2
+--- /dev/null
++++ b/src/test_rb_read_diagnostics.py
+@@ -0,0 +1,129 @@
++"""Explicit causal-slot checks for normalized RB read diagnostics."""
++from dataclasses import replace
++import importlib.util
++from pathlib import Path
++import sys
++
++import pytest
++import torch
++
++from bypass_core import LatentReader, kernel_prefix_states, read_kernel_prefix, process_prefix
++from bypass_model import AdapterConfig
++from rb_history import run_history
++from rb_read_diagnostics import prefix_read_metrics, ReadSummary
++
++
++def test_uniform_reads_have_expected_entropy_effective_count_and_current_weight():
++    query = torch.ones(1, 5, 3)
++    valid = torch.tensor([[True, True, True, False, False]])
++    keys = query*valid[..., None]
++    got = prefix_read_metrics(query, keys, valid, chunk_size=2)
++    torch.testing.assert_close(got['n_eff'], torch.tensor([[1., 2., 3., 0., 0.]]))
++    torch.testing.assert_close(got['entropy'][0, :3], torch.arange(1, 4).float().log())
++    torch.testing.assert_close(got['current_weight'][0, :3], 1/torch.arange(1, 4).float())
++    torch.testing.assert_close(got['relative_n_eff'], valid.float())
++
++
++@pytest.mark.parametrize('kind', [None, 'iv_window1', 'iv_window8', 'iv_strict', 'iv_permute', 'iv_swap'])
++def test_read_statistics_equal_independent_explicit_distribution(kind):
++    torch.manual_seed(17)
++    keys = torch.rand(2, 11, 4)+.1
++    query = torch.rand_like(keys)+.1
++    valid = torch.arange(11)[None] < torch.tensor([[9], [11]])
++    donor = {'keys': torch.rand(2, 7, 4)+.1,
++             'valid': torch.arange(7)[None] < torch.tensor([[7], [5]])}
++    got = prefix_read_metrics(query, keys, valid, kind=kind, donor=donor, chunk_size=3)
++    for b in range(2):
++        for t in range(11):
++            if not valid[b, t]:
++                assert all(value[b, t] == 0 for value in got.values())
++                continue
++            source = donor['keys'][b] if kind == 'iv_swap' else keys[b]
++            mask = donor['valid'][b] if kind == 'iv_swap' else valid[b]
++            indices = [i for i in range(len(source)) if mask[i] and
++                       (i < t if kind in ('iv_strict', 'iv_swap') else i <= t) and
++                       (kind != 'iv_window1' or i == t) and
++                       (kind != 'iv_window8' or i > t-8)]
++            selected = [source[i] for i in indices]
++            if kind == 'iv_swap':
++                selected.append(keys[b, t])
++            if not selected:
++                assert all(value[b, t] == 0 for value in got.values())
++                continue
++            scores = torch.stack(selected) @ query[b, t]
++            prob = scores/scores.sum()
++            neff = 1/prob.square().sum()
++            own = 0. if kind == 'iv_strict' else prob[-1]
++            torch.testing.assert_close(got['current_weight'][b, t], torch.as_tensor(own))
++            torch.testing.assert_close(got['n_eff'][b, t], neff)
++            torch.testing.assert_close(got['relative_n_eff'][b, t], neff/len(selected))
++            torch.testing.assert_close(got['entropy'][b, t], -(prob*prob.log()).sum())
++
++
++def test_observer_sees_native_first_and_last_queries_without_changing_outputs_or_gradients():
++    torch.manual_seed(91)
++    q, k, v = [torch.randn(1, 7, 4, requires_grad=True) for _ in range(3)]
++    reader = LatentReader(4)
++    valid = torch.ones(1, 7, dtype=torch.bool)
++    keys, _, matrices, masses, counts, _ = kernel_prefix_states(k, v, reader, valid)
++    kwargs = dict(steps=4, update='accumulate', readout='increment')
++    normal, _ = read_kernel_prefix(q, reader, matrices, masses, counts, valid, **kwargs)
++    seen = []
++    observed, _ = read_kernel_prefix(q, reader, matrices, masses, counts, valid,
++        observe_read=lambda query, step: seen.append((step, query.detach().clone())), **kwargs)
++    assert torch.equal(observed, normal)
++    assert [step for step, _ in seen] == [1, 2, 3, 4]
++    assert not torch.equal(seen[0][1], seen[-1][1])
++    params = (q, k, v, reader.Rq, reader.Ro)
++    ga = torch.autograd.grad(normal.sum(), params, retain_graph=True)
++    gb = torch.autograd.grad(observed.sum(), params)
++    assert all(torch.equal(a, b) for a, b in zip(ga, gb))
++    cfg = AdapterConfig(branch='memory', rank=4, steps=4, impl='prefix')
++    with torch.no_grad():
++        traced = run_history(q, k, v, reader, valid, cfg, {'trace_reads': True})
++        plain = run_history(q, k, v, reader, valid, cfg, {})
++    assert torch.equal(plain.outputs, traced.outputs)
++    assert [r['step'] for r in traced.diagnostics['read_metrics']] == [1, 4]
++    fixed = replace(cfg, fixed_query=True)
++    with torch.no_grad():
++        records = run_history(q, k, v, reader, valid, fixed, {'trace_reads': True}).diagnostics['read_metrics']
++    assert torch.equal(records[0]['n_eff'], records[1]['n_eff'])
++
++
++def test_gold_answer_query_scope_excludes_padding_and_uses_preceding_position():
++    valid = torch.tensor([[1, 1, 1, 0]])
++    labels = torch.tensor([[-100, -100, 7, -100]])
++    record = {'step': 1, 'n_eff': torch.tensor([[1., 2., 3., 99.]]),
++              'readable_positions': torch.tensor([[1., 2., 3., 0.]])}
++    summary = ReadSummary()
++    summary.add('piqa', {6: {'read_metrics': [record]}}, valid, labels)
++    report = {r['scope']: r for r in summary.finish()}
++    assert report['all_valid_input']['count'] == 3
++    assert report['all_valid_input']['means']['n_eff'] == 2
++    assert report['answer_prediction']['count'] == 1
++    assert report['answer_prediction']['means']['readable_positions'] == 2
++
++
++@pytest.mark.parametrize('steps,mode,fixed', [(1, 'inclusive', False), (4, 'strict', False), (4, 'inclusive', True)])
++def test_default_prefix_outputs_and_training_gradients_bitwise_match_reviewed_pre_observer_source(steps, mode, fixed):
++    path = Path('/work/xg24i002/x10041/bypass-lora/snapshots/6df9e479b229feb3d5edfac588b06264612c7839/src/bypass_core.py')
++    spec = importlib.util.spec_from_file_location('_rb1_pre_observer_core', path)
++    old = importlib.util.module_from_spec(spec)
++    sys.modules[spec.name] = old
++    spec.loader.exec_module(old)
++    torch.manual_seed(331)
++    inputs = [torch.randn(2, 17, 8).requires_grad_() for _ in range(3)]
++    legacy_inputs = [x.detach().clone().requires_grad_() for x in inputs]
++    current_reader, old_reader = LatentReader(8), old.LatentReader(8)
++    old_reader.load_state_dict(current_reader.state_dict())
++    valid = torch.arange(17)[None] < torch.tensor([[17], [13]])
++    kwargs = {'valid': valid, 'steps': steps, 'mode': mode, 'fixed_query': fixed}
++    current = process_prefix(*inputs, current_reader, **kwargs)
++    previous = old.process_prefix(*legacy_inputs, old_reader, **kwargs)
++    assert torch.equal(current.outputs, previous.outputs)
++    assert torch.equal(current.state.M, previous.state.M)
++    assert torch.equal(current.state.c, previous.state.c)
++    assert torch.equal(current.state.counts, previous.state.counts)
++    ga = torch.autograd.grad(current.outputs.square().sum(), (*inputs, *current_reader.parameters()))
++    gb = torch.autograd.grad(previous.outputs.square().sum(), (*legacy_inputs, *old_reader.parameters()))
++    assert all(torch.equal(a, b) for a, b in zip(ga, gb))

@@ -1,0 +1,138 @@
+[
+  {
+    "record_id": "miyabi-pbs:3768984.opbs:1",
+    "attempt_id": "ATT-0223-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 1,
+    "observed_at": "2026-11-02T04:25:40+09:00",
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "submitted",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768984/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768984.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768984/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768984.opbs:2",
+    "attempt_id": "ATT-0223-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 2,
+    "observed_at": "2026-11-02T04:25:40+09:00",
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768984/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768984.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768984/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768985.opbs:1",
+    "attempt_id": "ATT-0224-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 1,
+    "observed_at": "2026-11-02T04:25:43+09:00",
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "submitted",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768985/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768985.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768985/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768985.opbs:2",
+    "attempt_id": "ATT-0224-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 2,
+    "observed_at": "2026-11-02T04:25:43+09:00",
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768985/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768985.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768985/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768987.opbs:1",
+    "attempt_id": "ATT-0225-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 1,
+    "observed_at": "2026-11-02T04:25:46+09:00",
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "submitted",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768987/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768987.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768987/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768987.opbs:2",
+    "attempt_id": "ATT-0225-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 2,
+    "observed_at": "2026-11-02T04:25:46+09:00",
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768987/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768987.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768987/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768988.opbs:1",
+    "attempt_id": "ATT-0226-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 1,
+    "observed_at": "2026-11-02T04:25:49+09:00",
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "submitted",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768988/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768988.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768988/record.json"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3768988.opbs:2",
+    "attempt_id": "ATT-0226-1",
+    "source": "miyabi-mcp-job-submit",
+    "source_sequence": 2,
+    "observed_at": "2026-11-02T04:25:49+09:00",
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768988/record.json",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3768988.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768988/record.json"
+    }
+  }
+]
