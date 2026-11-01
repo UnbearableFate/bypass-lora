@@ -1,0 +1,49 @@
+{
+  "contract": "E-0013@3",
+  "training_steps": 29165,
+  "training_examples": 58329,
+  "training_input_tokens": 4173300,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "formula": "expected_seconds=ceil(29165*max_measured_stable_step_seconds +4*estimated_dev_seconds+30); requested_seconds=ceil(1.5*expected_seconds/60)*60; dev estimate=max(calibration_eval_seconds*2000/4096,smoke_epoch_seconds*1000/32,smoke_reload_seconds*1000/32)",
+  "arms": {
+    "V5-C": {
+      "max_measured_stable_step_seconds": 0.19903337913926628,
+      "max_calibration_eval_seconds": 361.4273725289968,
+      "estimated_dev_seconds": 176.4782092426742,
+      "expected_seconds": 6541,
+      "requested_seconds": 9840,
+      "walltime": "02:44:00",
+      "queue": "short-mig",
+      "expected_node_h_per_run": 0.4542361111111111
+    },
+    "V5-F": {
+      "max_measured_stable_step_seconds": 0.19499615096117787,
+      "max_calibration_eval_seconds": 336.81934330199147,
+      "estimated_dev_seconds": 169.60037318858667,
+      "expected_seconds": 6396,
+      "requested_seconds": 9600,
+      "walltime": "02:40:00",
+      "queue": "short-mig",
+      "expected_node_h_per_run": 0.44416666666666665
+    },
+    "V5-L": {
+      "max_measured_stable_step_seconds": 0.40831688031200963,
+      "max_calibration_eval_seconds": 522.1242280339939,
+      "estimated_dev_seconds": 266.8391550942033,
+      "expected_seconds": 13006,
+      "requested_seconds": 19560,
+      "walltime": "05:26:00",
+      "queue": "short-mig",
+      "expected_node_h_per_run": 0.9031944444444444
+    }
+  },
+  "expected_nine_run_node_h": 5.404791666666667,
+  "requested_nine_run_node_h": 8.125,
+  "measured_prior_MIG_seconds": 8614,
+  "expected_total_T0013_before_latency_node_h": 6.002986111111111,
+  "prior_note": "Includes final LR-lock job14MIGseconds;future latency and actual formal usage remain unmeasured."
+}
