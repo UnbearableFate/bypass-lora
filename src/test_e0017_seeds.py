@@ -2,6 +2,7 @@
 give new ones, and the D5 start run must carry the expected seed. The released-data
 checks read train splits only; the initialization check needs a GPU allocation."""
 import json
+from pathlib import Path
 import random
 import shutil
 
@@ -67,22 +68,70 @@ def test_released_data_seed_zero_reproduces_the_recorded_r1_and_d5_orders():
     assert all(p['warmup_steps'] == 300 and p['steps'] == 6000 for p in seeded.values())
 
 
-def test_start_run_provenance_checks_the_recorded_seed(tmp_path):
-    import v2r16_isolated as runner
-    from v2_memory import config
-    cfg = config('direct_hidden', 'soft_slot', 'F_out')
-    copy = tmp_path/'r1'
+def r1_copy(tmp_path, runner, name='r1', **manifest_changes):
+    copy = tmp_path/name
     (copy/runner.ARM_DIR).mkdir(parents=True)
     shutil.copytree(runner.R1_RUN/runner.ARM_DIR/'adapter', copy/runner.ARM_DIR/'adapter')
     shutil.copy(runner.R1_RUN/'metrics.json', copy/'metrics.json')
     manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
-    (copy/'manifest.json').write_text(json.dumps(dict(manifest, seed=1)))
-    assert runner.r1_provenance(copy, cfg, 1)['start_seed'] == 1
+    (copy/'manifest.json').write_text(json.dumps(dict(manifest, **manifest_changes)))
+    return copy
+
+
+def test_start_run_provenance_checks_the_recorded_seed(tmp_path):
+    import v2r16_isolated as runner
+    from v2_memory import config
+    cfg = config('direct_hidden', 'soft_slot', 'F_out')
+    copy = r1_copy(tmp_path, runner, seed=1)
+    pin = runner.R1_ADAPTER_SHA256
+    assert runner.r1_provenance(copy, cfg, 1, adapter_sha256=pin)['start_seed'] == 1
     with pytest.raises(ValueError, match='at seed 0'):
-        runner.r1_provenance(copy, cfg)
+        runner.r1_provenance(copy, cfg, adapter_sha256=pin)
     with pytest.raises(ValueError, match='at seed 2'):
-        runner.r1_provenance(copy, cfg, 2)
-    assert runner.r1_provenance(runner.R1_RUN, cfg, 0)['start_seed'] == 0
+        runner.r1_provenance(copy, cfg, 2, adapter_sha256=pin)
+    assert runner.r1_provenance(runner.R1_RUN, cfg, 0, adapter_sha256=pin)['start_seed'] == 0
+
+
+def test_start_adapter_is_bound_to_the_expected_producer_digest(tmp_path):
+    """RV-0050: an unchanged or byte-identical source passes; a different loadable
+    same-config adapter.pt, a wrong digest or no digest fails before loading."""
+    import v2r16_isolated as runner
+    from v2_memory import config
+    from v2r16_train import file_record
+    cfg = config('direct_hidden', 'soft_slot', 'F_out')
+    pin = runner.R1_ADAPTER_SHA256
+    assert file_record(runner.R1_RUN/runner.ARM_DIR/'adapter'/'adapter.pt')['sha256'] == pin
+    record = runner.r1_provenance(r1_copy(tmp_path, runner, 'same'), cfg, adapter_sha256=pin)
+    assert record['expected_adapter_sha256'] == pin and record['checkpoint_files']['adapter.pt']['sha256'] == pin
+    swapped = r1_copy(tmp_path, runner, 'swapped')
+    d5 = Path(RUNS)/'ATT-0159-1'/'run'/'adapter'
+    assert (d5/'config.json').read_bytes() == (swapped/runner.ARM_DIR/'adapter'/'config.json').read_bytes()
+    shutil.copy(d5/'adapter.pt', swapped/runner.ARM_DIR/'adapter'/'adapter.pt')
+    with pytest.raises(ValueError, match='expected producer digest'):
+        runner.r1_provenance(swapped, cfg, adapter_sha256=pin)
+    # The swapped source passes only with its own digest, which the job must pin explicitly.
+    own = file_record(d5/'adapter.pt')['sha256']
+    assert runner.r1_provenance(swapped, cfg, adapter_sha256=own)['checkpoint_files']['adapter.pt']['sha256'] == own
+    for bad in (None, '', pin.upper(), pin[:-1], 'x'*64):
+        with pytest.raises(ValueError, match='expected lowercase hex sha256'):
+            runner.r1_provenance(runner.R1_RUN, cfg, adapter_sha256=bad)
+
+
+def test_cli_requires_a_pinned_digest_for_other_start_runs(monkeypatch, tmp_path):
+    import sys
+    import v2r16_isolated as runner
+    called = []
+    monkeypatch.setattr(runner, 'run', lambda args: called.append(args) or 0)
+    common = ['v2r16_isolated.py', '--arm', 'D5', '--data-dir', V2, '--output', str(tmp_path/'out'),
+              '--experiment', 'E-0017', '--seed', '1']
+    monkeypatch.setattr(sys, 'argv', common + ['--r1-seed', '1', '--r1-run', str(tmp_path/'stage-a')])
+    with pytest.raises(SystemExit):
+        runner.main()
+    monkeypatch.setattr(sys, 'argv', common + ['--r1-seed', '1', '--r1-run', str(tmp_path/'stage-a'),
+                                               '--r1-adapter-sha256', 'a'*64])
+    assert runner.main() == 0 and called[-1].r1_adapter_sha256 == 'a'*64
+    monkeypatch.setattr(sys, 'argv', common)  # ATT-0122-1 defaults to the trusted R1 digest
+    assert runner.main() == 0 and called[-1].r1_adapter_sha256 == runner.R1_ADAPTER_SHA256
 
 
 def test_adapter_initialization_follows_the_seed():

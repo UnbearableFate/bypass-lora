@@ -188,7 +188,7 @@ def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
     import shutil
     import v2r16_isolated as runner
     cfg = config('direct_hidden', 'soft_slot', 'F_out')
-    record = runner.r1_provenance(runner.R1_RUN, cfg)
+    record = runner.r1_provenance(runner.R1_RUN, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)
     assert set(record['checkpoint_files']) == {'adapter.pt', 'config.json'}
     assert record['adapter_only'] and record['optimizer_state_loaded'] is False
     copy = tmp_path/'r1'
@@ -198,9 +198,9 @@ def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
     manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
     (copy/'manifest.json').write_text(json.dumps(dict(manifest, smoke_steps=20)))
     with pytest.raises(ValueError, match='completed formal'):
-        runner.r1_provenance(copy, cfg)
+        runner.r1_provenance(copy, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)
     (copy/'manifest.json').write_text(json.dumps(manifest))
-    assert runner.r1_provenance(copy, cfg)['checkpoint_files'] == record['checkpoint_files']
+    assert runner.r1_provenance(copy, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)['checkpoint_files'] == record['checkpoint_files']
     (copy/runner.ARM_DIR/'adapter'/'optimizer.pt').write_bytes(b'x')
     with pytest.raises(ValueError, match='only adapter'):
-        runner.r1_provenance(copy, cfg)
+        runner.r1_provenance(copy, cfg, adapter_sha256=runner.R1_ADAPTER_SHA256)

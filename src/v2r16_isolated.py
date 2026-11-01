@@ -35,16 +35,24 @@ from v2r16_train import STANDARD, checkpoint_records, file_record, make_arm_sche
 
 ARMS = ('D4', 'D5')
 R1_RUN = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0122-1')
+# ATT-0122-1's adapter.pt as loaded by E-0016 D5 (ATT-0159-1, RES-0153) while the replay of
+# R1's recorded dev predictions was still exact (0/1000 mismatches): the trusted R1 digest.
+R1_ADAPTER_SHA256 = '9ea30adb36d914fb09e689fddbb0f27d91e32323231ac359245fcbd3024eb616'
 ARM_DIR = 'direct_hidden.soft_slot.F_out'
 CONTEXT_CONTROLS = ('normal', 'oracle_value')  # descriptive comparison with E-0015 only
 CALIBRATION_CONTROLS = ('normal', 'zero', 'shuffled')  # E-0017 descriptive only
 EXPERIMENTS = {'E-0016': 'E-0016@1', 'E-0017': 'E-0017@1'}
 
 
-def r1_provenance(run, cfg, seed=0):
+def r1_provenance(run, cfg, seed=0, *, adapter_sha256):
     """A run of the R1 recipe (an E-0014/E-0017 v2_train run, e.g. ATT-0122-1 at seed 0):
     completed, formal, E=1 training of the fixed configuration at the expected seed,
-    6000 steps, reload-identical; adapter files are hashed here."""
+    6000 steps, reload-identical. Its adapter.pt must have the expected sha256, which comes
+    from outside the source directory (R1_ADAPTER_SHA256, or the digest a stage-A producer
+    job published when it ended, pinned in the continuation job)."""
+    if not (isinstance(adapter_sha256, str) and len(adapter_sha256) == 64
+            and all(c in '0123456789abcdef' for c in adapter_sha256)):
+        raise ValueError('an expected lowercase hex sha256 of the start adapter.pt is required')
     manifest_path, metrics_path = run/'manifest.json', run/'metrics.json'
     manifest = json.loads(manifest_path.read_text())
     if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
@@ -62,7 +70,10 @@ def r1_provenance(run, cfg, seed=0):
     files = checkpoint_records(run/ARM_DIR/'adapter')
     if set(files) != {'adapter.pt', 'config.json'}:
         raise ValueError('only adapter parameters/config may be resumed')
+    if files['adapter.pt']['sha256'] != adapter_sha256:
+        raise ValueError('start adapter.pt differs from the expected producer digest')
     return {'checkpoint': str((run/ARM_DIR/'adapter').resolve()), 'checkpoint_files': files, 'start_seed': seed,
+            'expected_adapter_sha256': adapter_sha256,
             'source_manifest': file_record(manifest_path), 'source_metrics': file_record(metrics_path),
             'adapter_only': True, 'optimizer_state_loaded': False,
             'optimizer': 'fresh AdamW, weight_decay=0', 'warmup': 'fresh 300 steps for formal runs'}
@@ -73,8 +84,9 @@ def replay_record(comparison, episodes):
 
     The episode identities and order must match (an error otherwise). Numerical prediction
     and NLL differences are recorded, not failures: a cross-job difference that the MIG slice
-    explains is noted and the run continues (D-0018, D-0019). Adapter identity is enforced
-    by the provenance hashes, and the same-job save/reload check stays exact."""
+    explains is noted and the run continues (D-0018, D-0019). The start weights are bound by
+    r1_provenance to an expected adapter.pt digest from outside the source directory, checked
+    before loading and again after it; the same-job save/reload check stays exact."""
     normal = comparison['normal']
     if normal['same_episode_order'] is not True or normal['episodes'] != episodes:
         raise AssertionError('start-run replay does not cover the same dev episodes in the same order')
@@ -123,7 +135,7 @@ def run(args):
         cfg = config('direct_hidden', 'soft_slot', 'F_out')
         checkpoint = None
         if args.arm == 'D5':
-            provenance = r1_provenance(args.r1_run, cfg, args.r1_seed)
+            provenance = r1_provenance(args.r1_run, cfg, args.r1_seed, adapter_sha256=args.r1_adapter_sha256)
             checkpoint = args.r1_run/ARM_DIR/'adapter'
         tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
         pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
@@ -173,6 +185,8 @@ def run(args):
         with adapted(base, cfg=cfg, checkpoint=checkpoint) as model:
             if asdict(model.config) != asdict(cfg):
                 raise ValueError('checkpoint does not match the fixed E-0016 configuration')
+            if checkpoint is not None and checkpoint_records(checkpoint) != provenance['checkpoint_files']:
+                raise ValueError('start adapter files changed between the digest check and loading')
             for parameter in model.adapter_parameters():
                 parameter.requires_grad_(True)
             model.eval()
@@ -269,6 +283,8 @@ def main():
     parser.add_argument('--experiment', choices=tuple(EXPERIMENTS), default='E-0016')
     parser.add_argument('--r1-run', type=Path, default=R1_RUN, help='D5 start: a run of the R1 recipe')
     parser.add_argument('--r1-seed', type=int, default=0, help='the seed the start run must have recorded')
+    parser.add_argument('--r1-adapter-sha256', default=None,
+                        help='expected sha256 of the start adapter.pt (required unless --r1-run is ATT-0122-1)')
     parser.add_argument('--seed', type=int, default=0, help='D5 continuation order seed')
     parser.add_argument('--step-budget', type=int, default=6000)
     parser.add_argument('--smoke-steps', type=int, default=0)
@@ -280,6 +296,10 @@ def main():
         parser.error('smoke steps must be 0..6000')
     if args.smoke_eval_limit and (not args.smoke_steps or args.smoke_eval_limit < 2):
         parser.error('smoke eval limit >=2 requires --smoke-steps')
+    if args.r1_adapter_sha256 is None:
+        if args.arm == 'D5' and args.r1_run != R1_RUN:
+            parser.error('--r1-adapter-sha256 is required for a start run other than ATT-0122-1')
+        args.r1_adapter_sha256 = R1_ADAPTER_SHA256
     if args.experiment == 'E-0016' and (args.seed or args.r1_seed or args.r1_run != R1_RUN):
         parser.error('E-0016 is D4/D5 at seed 0 from ATT-0122-1')
     if args.experiment == 'E-0017' and (args.arm != 'D5' or args.seed not in (1, 2) or args.r1_seed not in (0, args.seed)):
