@@ -47,6 +47,22 @@ def test_rejects_lock_family_split_or_learning_rate_mismatch(tmp_path):
         verify_lr_lock(lock, expected_sha256=_digest(lock))
 
 
+def test_rejects_other_familys_locked_lr_despite_consistent_run_metadata_and_schedule(tmp_path):
+    run = _formal_run(tmp_path, 'RB1-07')
+    lock = json.loads((run/'lock.json').read_text())
+    wrong_rate = lock['locked_lrs']['RBc-R']
+    assert wrong_rate != lock['locked_lrs']['RBc-L']
+    _rewrite(run, 'config.json', lambda data: data.update(lr=wrong_rate))
+    _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(learning_rate=wrong_rate))
+    path = run/'steps.jsonl'
+    steps = [json.loads(line) for line in path.read_text().splitlines()]
+    for index, row in enumerate(steps):
+        row['lr'] = wrong_rate*lr_factor(index, len(steps))
+    path.write_text(''.join(json.dumps(row)+'\n' for row in steps))
+    with pytest.raises(ValueError, match='LR lock family/value mismatch'):
+        validate_formal_run(run, 'RB1-07')
+
+
 def test_rejects_changed_lock_against_accepted_pin(tmp_path):
     source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
     lock = tmp_path / 'wrong-lock-hash.json'
