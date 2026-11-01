@@ -1,0 +1,55 @@
+{
+  "task": "T-0022",
+  "experiment": "E-0019@1",
+  "source_head": "b4229ed05a753f44056a3d3ec0bb79b752d7cca0",
+  "probe": {
+    "attempt": "ATT-0188-1",
+    "result": "RES-0183",
+    "tests": 397,
+    "all_required_gates_passed": true,
+    "used_MIG_seconds": 221
+  },
+  "completed_usage_MIG_seconds": 457,
+  "completed_usage_node_h": 0.03173611111111111,
+  "usage_note": "Two timing jobs still pending;usage unknown,not zero.",
+  "runs": [
+    {
+      "attempt": "ATT-0189-1",
+      "job_id": "3768185.opbs",
+      "code_commit": "f493cec9bd36798a6706592f7d5f248dc45b1558",
+      "spec_digest": "blake2b:264fd1030f9e8b31c88788afed95d2af20915d1907149480053f1589c89f8d4f",
+      "expected_seconds": 900,
+      "walltime": "00:22:30",
+      "notification_id": "N-20261102-023557-ff4e",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1",
+      "allocation_verified": true,
+      "host": "mg1098",
+      "profile": "2g.24gb",
+      "profile_guard_passed": true,
+      "scope": "10trainingcases plus512/128latency/Base/mergedLoRA and full dev/save"
+    },
+    {
+      "attempt": "ATT-0191-1",
+      "job_id": "3768226.opbs",
+      "code_commit": "b4229ed05a753f44056a3d3ec0bb79b752d7cca0",
+      "spec_digest": "blake2b:c859834b5f8d11720b73c1f1ae6323b346e6b69f89ddf01fa7fe116da5f5a744",
+      "expected_seconds": 450,
+      "walltime": "00:11:15",
+      "notification_id": "N-20261102-024336-645c",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1",
+      "allocation_verified": true,
+      "host": "mg1098",
+      "profile": "2g.24gb",
+      "profile_guard_passed": true,
+      "scope": "11additional RB5width/depth/full-LoRA diagnostic cost layouts"
+    }
+  ],
+  "decisions": [
+    "D-0025",
+    "D-0026",
+    "D-0027"
+  ],
+  "code_review_requested": false,
+  "formal_training_started": false,
+  "confirmation_evaluated": false
+}

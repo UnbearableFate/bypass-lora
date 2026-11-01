@@ -1,4 +1,57 @@
-# T-0022 current continuation: D0026/D0027 implemented; ATT0188 running
+# T-0022 current continuation:397checks/startup passed; full cost timing running
+
+This section supersedes older sections below. Read T-0022-timing-jobs.json for
+exact source/spec/notification/queue details. T0022 is not ready to deliver yet.
+
+ATT0188-1/PBS3767999/RES0183 is complete/passed:397checks and all10uniform
+20+4step startup cases. Its exact221MIGseconds usage and result were imported
+once. Completed T0022 usage is457seconds=0.03173611node_h. D0026/D0027 required
+gates pass;BF16cross-GEMM-shape errors remain explicit diagnostics at their
+unchanged bounds. No tolerance/fixture changes and no formal RB training.
+
+Pending jobs(both started with verifiedPBSallocation and passed2g timing guard,
+on mg1098,different allocated MIGUUIDs):
+- ATT0189-1/PBS3768185,sourcef493cec,expected900s/request1350s:main20+100step
+  timing for all9RB1arms plus referenceS1,512prefill/128decode on required arms,
+  mergedLoRA and Base,one full dev pass,save time,RBc/RB1/RB5 predictions.
+  Outputs:/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/.
+  Notification N-20261102-023557-ff4e,daemon active. Listener:
+  /work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-023557-ff4e --notifier miyabi-g2
+- ATT0191-1/PBS3768226,sourceb4229ed,expected450s/request675s:11conditional
+  RB5cost layouts missing from RB1matrix. C_dual/C_upS4;T0S4R_res/C_dual/C_up;
+  r44/r64R_resS1/S4;LoRA28r1/r2. All20+100steps,sameR1rows/order/seed asmain.
+  Outputs:/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/.
+  Notification N-20261102-024336-645c,daemon active. Listener:
+  /work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-024336-645c --notifier miyabi-g2
+
+Both jobs' queued/running observations are imported. Ended usage remains unknown,
+not zero. On either notification import only that ended job/result/usage once;
+if the other is still pending,continue independent report preparation then wait
+for its notification without polling. Do not start formal RBc/RB1/RB5 training.
+
+After both complete:verify every required100stable-step count,param/gradient
+counts,all512/128latency samples/state bytes/mergedLoRA/Base,full dev/save and
+schedule counts. Build final conditional RBc/RB1/RB5 cost tables in PBS from
+these artifacts. RBc evaluation costs scale4096calibration/2000dev rows and
+remain estimates;RB5monitoring is conditional on its later contract. Do not
+mistake the RB1LoRA4 proxy for RB5full-LoRA28. UnmeasuredS2layout costs must be
+labeled interpolation. All adapters here are diagnostic timing artifacts.
+
+If prefix100-step time>0.4s,profile before RB1. If projected RB1>4node_h,report
+the coordinator;do not shorten budgets yourself. Add future frozen-intervention
+and analysis costs before coordinator release;table core estimates exclude them.
+
+Then request the mandatory RB0 code review,targetE0019,including sharedcore/model,
+allRBmodules/tests,lockedtolerances/A2split and D0026/D0027 conventions,plus all
+PBSlogs/timing tables. No review requested yet. Freeze scoped files once requested.
+On review pass,record the diagnostic evidence supporting H0017 only for these
+implementation invariants,write final check/cost/split/review/usage delivery and
+deliverT0022. Coordinator owns hypothesis-state conclusions and future releases.
+All work remains PBS-only;no dependencies or sealed data changed.
+
+---
+
+# Historical continuation before ATT0188 completed
 
 This section supersedes the historical waiting instructions below. The questions
 were answered by D0026/D0027;do not ask for another per-case rounding ruling.
