@@ -22,7 +22,7 @@ from transformers import AutoTokenizer
 
 from bypass_model import BranchModel
 from calibrate import MODEL, REVISION, load_base
-from v2_memory import CONTROLS, DIAGNOSTIC_CONTROLS, collate, config, evaluate_batch, train_forward
+from v2_memory import CONTROLS, DONOR_CONTROLS, collate, config, evaluate_batch, parse_control, train_forward
 from v2r_data import METADATA_SHA256, load_variant
 from v2_schedule import (DATA_HASHES, load_data, lr_multiplier, make_curriculum_schedule, make_schedule,
                          make_step_schedule)
@@ -117,11 +117,13 @@ def _summary(records, prior_token):
 
 
 @torch.no_grad()
-def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None, capture=None):
+def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None, capture=None,
+             batch_size=EVAL_BATCH_SIZE):
     """Fixed global cyclic donors make shuffled independent of batch boundaries.
 
-    E-0015: controls may include DIAGNOSTIC_CONTROLS; ``capture`` (a dict) receives
-    each mode's last-position F_out increments [episodes, d] in row order.
+    E-0015: controls may include the diagnostic and sweep controls of v2_memory;
+    ``capture`` (a dict) receives each mode's last-position F_out increments
+    [episodes, d] in row order. ``batch_size`` changes only batching (BF16 noise).
 
     Diagnostic scalar means are weighted by valid question tokens, matching the
     offline evaluator's all-valid-question scope. EM/NLL and strata are episode
@@ -138,14 +140,13 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
     device = next(model.parameters()).device
     all_metrics, all_predictions = {}, {}
     for mode in controls:
-        if mode not in CONTROLS + DIAGNOSTIC_CONTROLS:
-            raise ValueError('invalid control')
+        parse_control(mode)  # rejects unknown controls
         records, diag_sum, diag_weight, batch_percentiles = [], defaultdict(float), defaultdict(int), []
         diag_max, ratios_all, increments = {}, defaultdict(list), []
-        for start in range(0, len(rows), EVAL_BATCH_SIZE):
-            selected = rows[start:start+EVAL_BATCH_SIZE]
+        for start in range(0, len(rows), batch_size):
+            selected = rows[start:start+batch_size]
             batch = collate(selected, pad_id, device)
-            if mode == 'shuffled':
+            if mode in DONOR_CONTROLS:
                 donors = [rows[(i-1) % len(rows)] for i in range(start, start+len(selected))]
                 donor_batch = collate(donors, pad_id, device)
                 details, logits = evaluate_batch(model, batch, mode, donor_batch=donor_batch)
@@ -176,7 +177,7 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
                     # Relation of the argmax slot in the recipient's own support;
                     # undefined for shuffled donor memory.
                     record['last_argmax_relation'] = (row['facts'][slot]['relation']
-                                                      if slot >= 0 and mode != 'shuffled' else None)
+                                                      if slot >= 0 and mode not in DONOR_CONTROLS else None)
                 for name in RATIO_NAMES:
                     if details.get(f'_{name}_last') is not None:
                         record[name+'_last'] = details[f'_{name}_last'][i]
@@ -210,7 +211,7 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
         metrics['diagnostic_weighting'] = 'valid_question_tokens; read.reconstruction_max_abs is split maximum'
         metrics['denominator_percentiles_by_batch'] = batch_percentiles
         metrics['last_position'], metrics['all_question_positions'] = last_position_summary(records, ratios_all)
-        if mode == 'shuffled':
+        if mode in DONOR_CONTROLS:
             metrics['donor_rule'] = 'global ordered split: recipient i receives support (i-1) modulo split size'
             metrics['diagnostics']['address.target_available'] = False
         with (output/f'{split}.{mode}.predictions.jsonl').open('w') as handle:
