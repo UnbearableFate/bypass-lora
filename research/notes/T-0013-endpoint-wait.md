@@ -1,5 +1,8 @@
 # T-0013: required upper endpoint calibration in progress
 
+Historical endpoint continuation. **Current continuation is T-0013-formal-wait.md**;
+all endpoints and LR lock completed,nine formal jobs are running.
+
 Current continuation;task not delivered. Official validation untouched. Current
 task owner researcher-2;coordinator owns scientific conclusions and waiting.
 
