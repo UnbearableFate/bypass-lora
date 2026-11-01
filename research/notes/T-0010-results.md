@@ -213,6 +213,9 @@ the quarter-node conversion is reported, not charged again. Some end/usage
 exports lag job-get; explicit verified scheduler end observations are retained
 and later ledger exports are imported idempotently. Environment remains lock
 3c916b51337d, cuda extra, cuda/12.8, torch 2.10.0+cu128, Python 3.13.13.
+The ledger rounds each job's MIG hours to six decimals: its imported total is
+0.053335 MIG-instance·h, or **0.01333375 node·h** (about 0.013334), consistent
+with the unrounded seconds conversion above.
 
 All seven attempts have inspected application outputs, imported results,
 diagnostic evidence and measured executor usage. RV-0022 and RV-0024 pass with
