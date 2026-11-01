@@ -646,11 +646,14 @@ def intervene(model, rows, pad_id, steps):
                 mask = batch.question_mask
 
                 def donor_state(donor_indices):
-                    donor = collate([rows[j] for j in donor_indices], pad_id, device)
+                    # Several recipients may share a donor: encode each donor once, then gather.
+                    unique = list(dict.fromkeys(donor_indices))
+                    donor = collate([rows[j] for j in unique], pad_id, device)
                     donor_snapshot = _snapshots(model, donor, 'normal', None)
                     _, donor_seen, _ = _capture(model, donor, donor_snapshot)
                     state, _ = replay(side, donor_seen['q'], donor_seen['k'], donor_seen['v'], donor_snapshot, steps, stop=s)
-                    return _align(state, donor.question_mask, mask)
+                    take = torch.tensor([unique.index(j) for j in donor_indices], device=device)
+                    return _align(state.index_select(0, take), donor.question_mask.index_select(0, take), mask)
 
                 unrelated = donor_state([(i-1) % len(rows) for i in indices])
                 available = [matched[i] is not None for i in indices]

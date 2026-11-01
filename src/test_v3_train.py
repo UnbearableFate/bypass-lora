@@ -414,11 +414,16 @@ def test_every_arm_trains_evaluates_and_reloads(base, tok, dev, arm, tmp_path):
 
 
 def test_v3_05_is_the_exact_magnitude_control(base, tok, dev):
+    """V3-05 equals the stock reader called with LatentReader's own fixed_query=True at S4,
+    and differs from the shared S4 loop (V3-03) on the same weights."""
     from v2_train import adapted
     batch = gpu_batch(tok, dev[:8])
     with v3.arm_model(base, 'V3-05', D5/'adapter') as model, torch.no_grad():
         model.eval()
         fixed = native_logits(model, batch)
+    with v3.arm_model(base, 'V3-03', D5/'adapter') as model, torch.no_grad():
+        model.eval()
+        shared = native_logits(model, batch)
     with adapted(base, checkpoint=D5/'adapter') as model, torch.no_grad():
         model.eval()
         side = model.adapters()[14].side
@@ -426,13 +431,15 @@ def test_v3_05_is_the_exact_magnitude_control(base, tok, dev):
         original = side.reader.forward
 
         def forward(qbar, state, steps=1, update='accumulate', readout='increment', fixed_query=False):
-            calls.append(fixed_query)
+            calls.append((steps, fixed_query))
             return original(qbar, state, 4, update, readout, True)
         side.reader.forward = forward
         try:
-            assert torch.equal(native_logits(model, batch), fixed) and all(calls)
+            forced = native_logits(model, batch)
         finally:
             del side.reader.forward
+    assert calls and all(c == (1, False) for c in calls)  # SideBranch passes no fixed_query
+    assert torch.equal(forced, fixed) and not torch.equal(fixed, shared)
 
 
 def test_initial_checks_and_reviewed_identity(base, tok, dev, tmp_path):
