@@ -139,7 +139,9 @@ def nonzero_exits(model):
     with torch.no_grad():
         for layer in model.adapters().values():
             for p in layer.side.fusion.parameters():
-                p.normal_(std=.1)
+                # Deliberately strong test exits: the rank32 fixture must make
+                # memory effects visible above calibrated BF16 decode variation.
+                p.normal_(std=.5 if layer.side.config.rank == 32 else .1)
 
 
 def chunked(model,ids,mask,chunk,phase='F',memory=None):
