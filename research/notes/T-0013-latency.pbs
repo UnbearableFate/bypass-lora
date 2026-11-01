@@ -1,0 +1,135 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?}" "${SR_SPEC_DIGEST:?}" "${SR_CODE_COMMIT:?}"
+v5_root=/work/xg24i002/x10041/bypass-lora
+v5_code="$v5_root/snapshots/$SR_CODE_COMMIT"
+v5_out="$v5_root/runs/$SR_ATTEMPT_ID"
+mkdir -p "$v5_out"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp --project-dir "$v5_root" call allocation_check '{"target_system":"Miyabi-G"}' > "$v5_out/allocation.json"
+# D-0019: timing comparisons retain the existing fail-fast 2g guard.
+/usr/bin/python3 -I "$v5_code/src/mig_profile_guard.py" --output "$v5_out"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home
+export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4
+export TMPDIR="/local/${PBS_JOBID}/v5-latency"
+mkdir -p "$TMPDIR"
+cd "$v5_code"
+/usr/bin/python3 -I - "$v5_out" "$v5_code" <<'PY'
+import hashlib
+import json
+import math
+from pathlib import Path
+import sys
+
+out, code = map(Path, sys.argv[1:])
+def read(path):
+    return json.loads(Path(path).read_text())
+def ref(path):
+    path = Path(path).resolve()
+    data = path.read_bytes()
+    assert data, str(path)
+    return {"path": str(path), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+def write(name, value):
+    (out/name).write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+
+plan = read(code/"research/notes/T-0013-formal-jobs.json")
+accounting = read(code/"research/notes/T-0013-training-accounting.json")
+lr_reference = plan["learning_rate_lock"]
+assert ref(lr_reference["path"]) == lr_reference
+lr_lock = read(lr_reference["path"])
+assert lr_lock["contract"] == "E-0013@3"
+assert lr_lock["locked_lrs"] == {"V5-C": .001, "V5-F": .001, "V5-L": .001}
+cost_by_attempt = {row["attempt"]: row for row in accounting["formal_runs"]}
+assert len(plan["runs"]) == len(cost_by_attempt) == 9
+entries, summary, orders, found = [], [], {}, set()
+for run in plan["runs"]:
+    arm, seed, attempt = run["arm"], run["seed"], run["attempt"]
+    assert arm in ("V5-C", "V5-F", "V5-L") and type(seed) is int and seed in (1, 2, 3)
+    assert (arm, seed) not in found
+    found.add((arm, seed))
+    folder = Path(run["output"]).resolve()
+    manifest_path = folder/"manifest.json"
+    manifest = read(manifest_path)
+    m = manifest["metrics"]
+    params = 630784 if arm == "V5-L" else 524288
+    assert manifest["status"] == "complete" and manifest["validator"]["passed"] is True
+    assert manifest["contract"] == "E-0013@3" and manifest["phase"] == "train"
+    assert manifest["arm"] == arm and manifest["seed"] == seed
+    assert manifest["spec_digest"] == run["spec_digest"]
+    assert m["reload.identical"] is True
+    assert m["learning_rate"] == lr_lock["locked_lrs"][arm]
+    assert m["lr_lock.sha256"] == lr_reference["sha256"]
+    assert m["params.trainable"] == m["params.with_grad"] == params
+    for prefix in ("plan", "train"):
+        assert m[prefix+".steps"] == 29165
+        assert m[prefix+".examples"] == 58329
+        assert m[prefix+".input_tokens"] == 4173300
+    assert m["data.rows_per_epoch"] == 19443
+    assert m["plan.epoch_end_steps"] == {"1": 9722, "2": 19443, "3": 29165}
+    for value in m.values():
+        if isinstance(value, float):
+            assert math.isfinite(value), (attempt, value)
+    order = m["plan.order_sha256"]
+    assert len(order) == 64
+    assert seed not in orders or orders[seed] == order
+    orders[seed] = order
+    artifact_paths = {Path(a["path"]).resolve() for a in manifest["artifacts"]}
+    assert all(p.is_file() for p in artifact_paths)
+    inventory_path = folder/"checkpoint.json"
+    assert inventory_path in artifact_paths
+    files = read(inventory_path)
+    assert set(files) == {"config.json", "adapter.pt"}
+    for name, reference in files.items():
+        assert Path(reference["path"]) == folder/"adapter"/name
+        assert ref(reference["path"]) == reference, (attempt, name)
+    config = read(files["config.json"]["path"])
+    assert config["model_revision"] == "da87bfb608c14b7cf20ba1ce41287e8de496c0cd"
+    assert config["rank"] == {"V5-C": 32, "V5-F": 64, "V5-L": 1}[arm]
+    assert config["layers"] == (list(range(28)) if arm == "V5-L" else [6, 13, 20, 27])
+    if arm == "V5-L":
+        assert config["alpha"] == 1
+    else:
+        assert config["branch"] == "tokenwise_silu"
+        assert config["fusion"] == ("C_up" if arm == "V5-C" else "F_out")
+    epochs = []
+    for epoch, step in ((1, 9722), (2, 19443), (3, 29165)):
+        path = folder/f"dev-epoch-{epoch}.json"
+        assert path in artifact_paths
+        record = read(path)
+        assert record["epoch"] == epoch and record["step"] == step
+        assert record["metrics"]["dev.piqa.examples"] == record["metrics"]["dev.boolq.examples"] == 1000
+        epochs.append({"file": ref(path), **record})
+    assert epochs[-1]["metrics"] == {k: v for k, v in m.items() if k.startswith("dev.")}
+    entry = {"arm": arm, "seed": seed, "path": str(folder/"adapter"),
+             "expected_parameters": params, "learning_rate": m["learning_rate"], "files": files,
+             "training_manifest": ref(manifest_path), "checkpoint_inventory": ref(inventory_path)}
+    entries.append(entry)
+    cost = cost_by_attempt[attempt]
+    assert (cost["arm"], cost["seed"], cost["job_id"]) == (arm, seed, run["job_id"])
+    summary.append({"arm": arm, "seed": seed, "attempt": attempt,
+                    "result": cost["result"], "job_id": run["job_id"],
+                    "scheduler_MIG_seconds": cost["used_MIG_seconds"],
+                    "scheduler_node_h": cost["used_MIG_seconds"]/14400,
+                    "metrics": m, "epochs": epochs,
+                    "predictions": ref(folder/"predictions.jsonl")})
+assert found == {(a, s) for a in ("V5-C", "V5-F", "V5-L") for s in (1, 2, 3)}
+write("checkpoint-inventory.json", {"schema_version": 1, "experiment": "E-0013@3",
+    "training_code_commit": plan["code_commit"], "learning_rate_lock": lr_reference,
+    "checkpoints": entries})
+write("training-summary.json", {"experiment": "E-0013@3", "scope": "training/dev/cost diagnostics only",
+    "paired_order_sha256_by_seed": orders, "runs": summary,
+    "formal_training_MIG_seconds": sum(r["scheduler_MIG_seconds"] for r in summary),
+    "other_T0013_completed_MIG_seconds": accounting["other_T0013_completed_MIG_seconds"],
+    "validation_accessed": False})
+checkpoints = {e["arm"]: e["path"] for e in entries if e["seed"] == 1}
+assert set(checkpoints) == {"V5-C", "V5-F", "V5-L"}
+write("checkpoint-map.json", checkpoints)
+write("checkpoint-map-provenance.json", {"experiment": "E-0013@3", "seed": 1,
+    "map": ref(out/"checkpoint-map.json"), "inventory": ref(out/"checkpoint-inventory.json"),
+    "parents": [e for e in entries if e["seed"] == 1],
+    "checks": "complete final train manifests; full actual budget; spec/arm/seed/LR/parameter matches; within-job reload identical; exact checkpoint paths/bytes/SHA256; per-seed paired orders across all arms",
+    "validation_accessed": False})
+print("Verified nine final checkpoints and paired sample orders; seed-1 map authenticated.", flush=True)
+PY
+exec /work/xg24i002/x10041/bypass-lora/envs/3c916b51337d-cuda/bin/python src/v5_latency.py --checkpoints "$v5_out/checkpoint-map.json" --data-dir "$v5_root/data/v1" --output "$v5_out"
