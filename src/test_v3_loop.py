@@ -300,7 +300,7 @@ def test_s1_loop_evaluator_equals_the_reviewed_evaluator(base, tok, t2_dev, tmp_
             _, reviewed = evaluate(model, rows, tok.pad_token_id, tmp_path/name, 'dev', loop.LOOP_CONTROLS, None,
                                    support_fn=isolated_support)
             mine, reconstruction = loop.evaluate_loop(model, rows, tok.pad_token_id, 1)
-            print(name, 'S=1 reconstruction max abs', reconstruction)
+            print(name, 'S=1 reconstruction', reconstruction)
             for mode in loop.LOOP_CONTROLS:
                 comparison = loop.compare_to_reviewed(mine[mode], reviewed[mode])
                 assert comparison['identical'], (name, mode, comparison)
@@ -313,8 +313,8 @@ def test_s_step_records_and_fixed_memory(base, tok, t2_dev):
         records = {}
         for steps in (1, 2, 4):
             records[steps], reconstruction = loop.evaluate_loop(model, rows, tok.pad_token_id, steps)
-            print('S', steps, 'reconstruction max abs', reconstruction)
-            assert max(reconstruction.values()) <= loop.RECONSTRUCTION_TOLERANCE
+            print('S', steps, 'reconstruction', reconstruction)
+            assert max(r['max_relative_to_state'] for r in reconstruction.values()) <= loop.RECONSTRUCTION_TOLERANCE
         for steps in (2, 4):
             normal = records[steps]['normal']
             for r, row in zip(normal, rows):

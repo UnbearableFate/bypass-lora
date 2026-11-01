@@ -54,8 +54,11 @@ MAX_HOP = 3
 EVAL_BATCH = 16
 # Per-example fields that the S=1 loop must reproduce from the reviewed evaluator.
 # The explicit replay must reproduce the native increment for its per-step diagnostics to
-# describe the evaluated forward (absolute, FP32, valid question positions).
-RECONSTRUCTION_TOLERANCE = 1e-3
+# describe the evaluated forward. Both compute Z = (z + eta a Ro) - qbar in FP32 on large
+# states, so a one-ulp difference in z appears whole in Z; the bound is therefore relative
+# to the largest state element at each valid question position (1e-5 ~ 84 FP32 ulps).
+# The absolute maximum is recorded alongside.
+RECONSTRUCTION_TOLERANCE = 1e-5
 REVIEWED_FIELDS = ('prediction', 'correct', 'nll', 'all_target_weight', 'last_target_weight',
                    'all_n_eff', 'last_n_eff', 'last_argmax')
 
@@ -207,9 +210,12 @@ def evaluate_loop_batch(model, batch, mode, donor_batch, steps):
     native = captured['z']
     if not (torch.isfinite(native).all() and torch.isfinite(increment).all()):
         raise RuntimeError('nonfinite loop state')
-    reconstruction = float((increment - native)[mask].abs().max())
-    if not reconstruction <= RECONSTRUCTION_TOLERANCE:
-        raise AssertionError(f'loop replay differs from the native increment by {reconstruction}')
+    error = (increment - native).abs().amax(-1)
+    scale = torch.maximum(qbar.abs().amax(-1), (qbar + native).abs().amax(-1)).clamp_min(1e-30)
+    reconstruction = {'max_abs': float(error[mask].max()), 'max_relative_to_state': float((error/scale)[mask].max()),
+                      'state_max_abs': float(scale[mask].max())}
+    if not reconstruction['max_relative_to_state'] <= RECONSTRUCTION_TOLERANCE:
+        raise AssertionError(f'loop replay differs from the native increment: {reconstruction}')
     losses = F.cross_entropy(logits, batch.labels, reduction='none')
     row = torch.arange(len(batch.labels), device=mask.device)
     last = mask.long().sum(-1)-1
@@ -272,7 +278,7 @@ def evaluate_loop(model, rows, pad_id, steps, controls=LOOP_CONTROLS):
     device = next(model.parameters()).device
     result, reconstruction = {}, {}
     for mode in controls:
-        records, worst = [], 0.
+        records, worst = [], {'max_abs': 0., 'max_relative_to_state': 0., 'state_max_abs': 0.}
         for start in range(0, len(rows), EVAL_BATCH):
             selected = rows[start:start+EVAL_BATCH]
             batch = collate(selected, pad_id, device)
@@ -281,7 +287,7 @@ def evaluate_loop(model, rows, pad_id, steps, controls=LOOP_CONTROLS):
                 donors = collate([rows[(i-1) % len(rows)] for i in range(start, start+len(selected))], pad_id, device)
             batch_records, error = evaluate_loop_batch(model, batch, mode, donors, steps)
             records.extend(batch_records)
-            worst = max(worst, error)
+            worst = {k: max(worst[k], error[k]) for k in worst}
         result[mode], reconstruction[mode] = records, worst
     return result, reconstruction
 
@@ -503,7 +509,7 @@ def run_eval(args, output, result):
         result['reviewed_s1'] = {'summary': reviewed_summary, 'by_hop': by_hop,
                                  'seconds': time.monotonic()-tick}
         result['hop1_gate'] = hop1_gate(by_hop)
-        result['loop'], result['reconstruction_max_abs'], result['loop_seconds'] = {}, {}, {}
+        result['loop'], result['reconstruction'], result['loop_seconds'] = {}, {}, {}
         for steps in args.s_eval:
             torch.cuda.synchronize()
             tick = time.monotonic()
@@ -517,7 +523,7 @@ def run_eval(args, output, result):
                 attach_paths(mode_records, dev)
                 result['loop'][str(steps)][mode] = summarize_loop(mode_records, prior)
                 _write_records(directory/f'dev.{mode}.jsonl', mode_records)
-            result['reconstruction_max_abs'][str(steps)] = reconstruction
+            result['reconstruction'][str(steps)] = reconstruction
             if steps == 1:
                 result['s1_vs_reviewed'] = {mode: compare_to_reviewed(records[mode], reviewed[mode])
                                             for mode in LOOP_CONTROLS}
@@ -530,14 +536,14 @@ def run_eval(args, output, result):
             t1_loop, t1_reconstruction = evaluate_loop(model, t1, pad_id, 1)
             recorded = Path(args.adapter_run)/'evaluation'/'isolated'
             result['t1_check'].update({
-                'rows': len(t1), 'reconstruction_max_abs': t1_reconstruction,
+                'rows': len(t1), 'reconstruction': t1_reconstruction,
                 'vs_reviewed_same_job': {m: compare_to_reviewed(t1_loop[m], t1_reviewed[m]) for m in LOOP_CONTROLS},
                 'vs_recorded': {m: compare_to_recorded(t1_loop[m], recorded/f'dev.{m}.predictions.jsonl')
                                 for m in LOOP_CONTROLS} if not args.eval_limit else None,
                 'seconds': time.monotonic()-tick})
             if not all(c['identical'] for c in result['t1_check']['vs_reviewed_same_job'].values()):
                 raise AssertionError('S=1 loop differs from the reviewed evaluator on T1: implementation check failed')
-    write_json(output/'summary.json', {k: result[k] for k in ('hop1_gate', 'reconstruction_max_abs')})
+    write_json(output/'summary.json', {k: result[k] for k in ('hop1_gate', 'reconstruction')})
 
 
 def run_timing(args, output, result):
