@@ -23,3 +23,27 @@ derive_seed(20261101,residual_la_v21,RB5,confirmation) in each task. IDs remain 
 source order in the manifest. Filtering happens before any RB training encoding;
 the calibration and dev slices remain intact. No confirmation labels/content are
 exported or evaluated. Formal RBc/RB1 are not released by this implementation task.
+
+Initial core/split run ATT0180/PBS3767828/RES0176:260 checks passed in28.22s;
+measured scheduler38MIGseconds (0.00263889node_h). Max prefix output error
+9.536743e-7;all5 gradient comparisons passed the pre-fixed mixed normwise rule.
+The A2 manifest has2000 IDs,IDs SHA256
+72c91fd9ad6ec077e7aa33ec6381754d6e24d1f3e538a1ae8b88854b74dbcac5;
+file SHA25634277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc,
+24798bytes. Durable read-only source: runs/ATT-0180-1/rb-confirmation.json.
+RB raw train counts after A2:PIQA12065,BoolQ5379,before encoding exclusions.
+
+After that run,MSG0548 required a single recurrence implementation. Prefix now
+flattens B*T causal states and calls the unchanged LatentReader.forward directly;
+current-weight tracing observes state.read without changing loop semantics.
+researcher3 was notified (MSG0551);their T0021 does not edit either shared module.
+The expanded core/model regression will validate this consolidation before timing.
+
+RB0 probe is20warmups+4measurement steps per timing case,not a stable timing
+claim. Full benchmark is20+100steps for every RB1 arm plus reference S1.
+One R_res S1 full dev pass anchors32rows/task samples for per-arm evaluation-cost
+estimates. RBc estimates count2passes;RB1/RB5 count5(monitors,final,reload).
+Intervention/bootstrap costs are explicitly excluded and must be added before
+RB1 release. RB5 estimates assume the same monitoring;its later contract decides.
+Formal train currently enforces the released RB1 recipe;the planner also supports
+exact3epochs for RB5 cost estimates and smoke. No RB5 contract is fabricated.

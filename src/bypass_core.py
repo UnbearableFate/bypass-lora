@@ -393,25 +393,25 @@ def kernel_prefix_states(kbar, vbar, reader, valid, write=None, state=None):
 def read_kernel_prefix(qbar, reader, matrices, masses, counts, active, *, steps=1,
                        update="accumulate", readout="increment", fixed_query=False,
                        current_keys=None):
-    """Read each position's causal state; only the small recurrence loops in Python."""
-    if steps < 0 or update not in ("accumulate", "anchored") or readout not in ("increment", "full"):
-        raise ValueError("invalid prefix recurrence")
-    z0, z = qbar.float(), qbar.float()
-    fixed = elu_plus_one(rmsnorm_no_affine(z0, reader.eps_norm) @ reader.Rq) if fixed_query else None
+    """Batch all causal states through the single, unchanged LatentReader loop."""
+    batch, length, rank = qbar.shape
+    state = MemoryState(matrices.reshape(-1, rank, rank), masses.reshape(-1, rank),
+                        counts.reshape(-1), "kernel_matrix", rank)
     weights = []
-    for _ in range(steps):
-        query = fixed if fixed_query else elu_plus_one(rmsnorm_no_affine(z, reader.eps_norm) @ reader.Rq)
-        denominator = (query * masses).sum(-1, keepdim=True) + reader.eps_read
-        a = torch.einsum("btr,btrv->btv", query, matrices) / denominator
-        a = torch.where((counts > 0)[..., None], a, torch.zeros_like(a)) * reader.read_gain
-        if current_keys is not None:
-            weight = (query * current_keys).sum(-1) / denominator.squeeze(-1)
-            weights.append(torch.where(active, weight, torch.zeros_like(weight)))
-        z = (z0 if update == "anchored" else z) + reader.eta * (a @ reader.Ro)
-    outputs = z - z0 if readout == "increment" else z
+    if current_keys is not None:
+        class ObservedState:
+            def read(self, query, eps, temperature):
+                weight = (query * current_keys.reshape(-1, rank)).sum(-1) / (
+                    (query * state.c).sum(-1) + eps)
+                weights.append(torch.where(active.reshape(-1), weight, torch.zeros_like(weight)))
+                return state.read(query, eps, temperature)
+        memory = ObservedState()
+    else:
+        memory = state
+    outputs = reader(qbar.float().reshape(-1, rank), memory, steps=steps,
+                     update=update, readout=readout, fixed_query=fixed_query).reshape(batch, length, rank)
     outputs = torch.where(active[..., None], outputs, torch.zeros_like(outputs))
-    reader.last_read_calls = steps
-    return outputs, (torch.stack(weights, -1) if weights else None)
+    return outputs, (torch.stack(weights, -1).reshape(batch, length, steps) if weights else None)
 
 
 def process_prefix(qbar, kbar, vbar, reader, state=None, valid=None, reset=None,

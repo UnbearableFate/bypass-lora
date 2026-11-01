@@ -17,12 +17,12 @@ def main():
     args=parser.parse_args()
     out=args.output.resolve()
     out.mkdir(parents=True,exist_ok=True)
-    core=['src/test_core.py','src/test_rb_core.py','src/test_rb_data.py','src/test_v1_data.py']
+    core=['src/test_core.py','src/test_rb_core.py','src/test_rb_data.py','src/test_rb_train.py','src/test_v1_data.py']
     model=['src/test_model.py','src/test_rb_model.py','src/test_v1_lora.py','src/test_v5_train.py','src/test_v2_memory.py']
     files=core if args.suite=='core' else model if args.suite=='model' else core+model
     start=time.monotonic()
     with (out/'checks.log').open('w') as log:
-        result=subprocess.run([sys.executable,'-m','pytest',*files,'-q','--junitxml='+str(out/'checks.xml')],stdout=log,stderr=subprocess.STDOUT)
+        result=subprocess.run([sys.executable,'-m','pytest',*files,'-q','-p','no:cacheprovider','-o','junit_family=legacy','--junitxml='+str(out/'checks.xml')],stdout=log,stderr=subprocess.STDOUT)
     metrics={'checks.exit_code':result.returncode,'elapsed_s':time.monotonic()-start}
     artifacts=[{'path':str(out/name),'role':name} for name in ('checks.log','checks.xml') if (out/name).is_file()]
     if (out/'checks.xml').is_file():
