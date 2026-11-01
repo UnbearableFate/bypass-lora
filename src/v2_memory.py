@@ -9,18 +9,20 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
-from bypass_core import MemoryState, elu_plus_one, rmsnorm_no_affine
+from bypass_core import MemoryState, centered_cosine_scores, elu_plus_one, rmsnorm_no_affine
 from bypass_model import AdapterConfig
 
 
 CONTROLS = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
+BACKENDS = ('kernel_matrix', 'soft_slot', 'centered_cos_slot')
 
 
-def config(tap='direct_hidden', backend='kernel_matrix', fusion='F_out'):
-    if tap not in ('direct_hidden', 'qknorm_pre_rope') or backend not in ('kernel_matrix', 'soft_slot') or fusion not in ('F_out', 'C_up', 'C_dual'):
+def config(tap='direct_hidden', backend='kernel_matrix', fusion='F_out', prior_rank=0):
+    if tap not in ('direct_hidden', 'qknorm_pre_rope') or backend not in BACKENDS or fusion not in ('F_out', 'C_up', 'C_dual'):
         raise ValueError('not a V2 arm')
     return AdapterConfig(layers=(14,), rank=128, branch='memory', tap=tap,
-                         backend=backend, fusion=fusion, steps=1, slot_capacity=16)
+                         backend=backend, fusion=fusion, steps=1, slot_capacity=16,
+                         prior_rank=prior_rank)
 
 
 def pad(rows, pad_id, device):
@@ -54,7 +56,8 @@ def collate(episodes, pad_id, device='cuda', owners=None):
     """Deduplicate supports by explicit owner; questions may repeat/reorder owners.
 
     Only delimiter positions (public boundaries) and answer labels are used by the
-    training path. target_fact_index is accessed exclusively by evaluate_batch.
+    default training path. target_fact_index is read by evaluate_batch and, only
+    with the E-0014 R5 extra-supervision option, by train_forward.
     """
     if not episodes:
         raise ValueError('empty batch')
@@ -130,13 +133,59 @@ def answer_logits(output, mask):
     return output.logits[torch.arange(len(last), device=last.device), last].float()
 
 
-def train_forward(model, batch):
-    """Only answer CE; no address, value, path or oracle input."""
+def slot_columns(slot_valid, target):
+    """Core slot column of each row's target fact: its (target+1)-th valid slot."""
+    order = slot_valid.long().cumsum(-1) - 1
+    match = slot_valid & (order == target[:, None])
+    if not bool((match.sum(-1) == 1).all()):
+        raise ValueError('target fact index has no stored slot')
+    return match.long().argmax(-1)
+
+
+def address_log_weight(seen_q, memory, reader, question_mask, target):
+    """log w_target of SoftmaxSlot at each row's last valid question position.
+
+    Recomputes the S=1 query and scores from the same differentiable tensors the
+    deployed read uses (no other position or slot enters).
+    """
+    if memory.backend != 'soft_slot':
+        raise ValueError('the address loss is defined for soft_slot only')
+    row = torch.arange(len(target), device=target.device)
+    last = question_mask.long().sum(-1) - 1
+    query = elu_plus_one(rmsnorm_no_affine(seen_q[row, last], reader.eps_norm) @ reader.Rq)
+    scores = torch.einsum('br,bnr->bn', query, memory.slot_keys) / memory.rank ** .5
+    scores = scores.masked_fill(~memory.slot_valid, -torch.inf)
+    return scores.log_softmax(-1)[row, slot_columns(memory.slot_valid, target)]
+
+
+def train_forward(model, batch, *, zero_memory=False, address_weight=0., log=None):
+    """Answer CE by default; no address, value, path or oracle input.
+
+    E-0014 options (default off): zero_memory reads an empty memory after the
+    normal support pass (R4 stage 1); address_weight > 0 adds the extra-supervision
+    term address_weight * mean(-log w_target) at the last question position (R5).
+    """
     support, accounting = build_support(model, batch)
     memory = support.select(batch.owners).memory
-    output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
+    if zero_memory:
+        memory = {i: s.reset() for i, s in memory.items()}
+    if address_weight:
+        if zero_memory or address_weight < 0:
+            raise ValueError('address loss needs real memory and a positive weight')
+        side = model.adapters()[14].side
+        target = torch.tensor([r['query']['target_fact_index'] for r in batch.rows], device=batch.labels.device)
+        with capture_projection(side) as seen:
+            output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
+        address = -address_log_weight(seen['q'], memory[14], side.reader, batch.question_mask, target).mean()
+    else:
+        output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
     logits = answer_logits(output, batch.question_mask)
-    return F.cross_entropy(logits, batch.labels), logits, accounting, output.accounting
+    loss = F.cross_entropy(logits, batch.labels)
+    if address_weight:
+        if log is not None:
+            log.update(answer_ce=float(loss.detach()), address_loss=float(address.detach()))
+        loss = loss + address_weight * address
+    return loss, logits, accounting, output.accounting
 
 
 def memory_from_slots(keys, values, valid, backend):
@@ -179,10 +228,14 @@ def read_vectors(qbar, snapshot, reader, backend, target, mode='normal'):
     if mode == 'oracle_key':
         # Substitute the actual stored positive key, not a twice-transformed key.
         q = snapshot.keys[row, target][:, None].expand_as(q)
-    scores = torch.einsum('btr,bnr->btn', q, snapshot.keys)
+    if backend == 'centered_cos_slot':
+        scores = centered_cosine_scores(q, snapshot.keys, snapshot.valid, reader.temperature())
+    else:
+        scores = torch.einsum('btr,bnr->btn', q, snapshot.keys)
     valid = snapshot.valid[:, None].expand_as(scores)
-    if backend == 'soft_slot':
-        scores = scores / q.shape[-1] ** .5
+    if backend in ('soft_slot', 'centered_cos_slot'):
+        if backend == 'soft_slot':
+            scores = scores / q.shape[-1] ** .5
         logits = scores.masked_fill(~valid, -torch.inf)
         empty = ~valid.any(-1, keepdim=True)
         logits = torch.where(empty, torch.zeros_like(logits), logits)
@@ -256,8 +309,18 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
     if ((target < 0) | (target >= selected_original.valid.sum(-1))).any():
         raise ValueError('invalid target fact index')
     target_value = selected_original.values[row, target]
-    side = model.adapters()[14].side
+    adapted_layer = model.adapters()[14]
+    side = adapted_layer.side
     details = {}
+    last = batch.question_mask.long().sum(-1) - 1
+    norms = {}
+
+    def residual_in(module, args, kwargs):
+        norms['residual'] = (args[0] if args else kwargs['hidden_states']).float().norm(dim=-1)
+
+    def post_attention(module, args):
+        norms['post_attention'] = args[0].float().norm(dim=-1)
+
     with capture_projection(side) as seen:
         def observe(module, args, output):
             z, state, accounting = output
@@ -281,12 +344,35 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
             details['read.reconstruction_max_abs'] = float((z - ((seen['q'] + side.reader.eta*(raw * side.reader.read_gain @ side.reader.Ro)) - seen['q']) * batch.question_mask[..., None]).abs().max())
             details['_clean_vectors'] = target_value.detach().cpu()
             details['_read_vectors'] = raw[row, batch.question_mask.sum(-1)-1].detach().cpu()
+            # E-0014 last-question-position read and E-0012 L4 increment geometry.
+            last_weights = weights[row, last]
+            has_slots = snapshot.valid.any(-1)
+            details['_last_argmax'] = torch.where(has_slots, last_weights.argmax(-1), -1).tolist()
+            prob = last_weights / last_weights.sum(-1, keepdim=True).clamp_min(1e-30)
+            details['_last_n_eff'] = torch.where(has_slots, 1 / prob.square().sum(-1).clamp_min(1e-30), 0).tolist()
+            details['_last_target_weight'] = (None if mode == 'shuffled'
+                                              else last_weights[row, target].tolist())
+            if side.fusion.kind == 'F_out':
+                norms['fusion'] = (z @ side.fusion.P).float().norm(dim=-1)
+            if side.prior is not None:
+                norms['prior'] = side.prior(args[0], args[3]).float().norm(dim=-1)
             return z, state, accounting
-        handle = side.register_forward_hook(observe)
+        handles = [side.register_forward_hook(observe),
+                   adapted_layer.register_forward_pre_hook(residual_in, with_kwargs=True),
+                   adapted_layer.original.post_attention_layernorm.register_forward_pre_hook(post_attention)]
         try:
             out = model(batch.question_ids, batch.question_mask, memory=snapshot.memory, phase='query')
         finally:
-            handle.remove()
+            for handle in handles:
+                handle.remove()
+    # Fusion-increment / residual norm ratios (E-0012 L4: F_out FP32 z@P over the
+    # layer-14 input residual; post-attention denominator also reported).
+    for name in ('fusion', 'prior'):
+        if name in norms:
+            for denominator in ('residual', 'post_attention'):
+                ratio = norms[name] / norms[denominator].clamp_min(1e-12)
+                details[f'_{name}_to_{denominator}_last'] = ratio[row, last].tolist()
+                details[f'_{name}_to_{denominator}_all'] = ratio[batch.question_mask].cpu()
     logits = answer_logits(out, batch.question_mask)
     if not torch.isfinite(logits).all():
         raise RuntimeError('nonfinite full-vocabulary evaluation logits')

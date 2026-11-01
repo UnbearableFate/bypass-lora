@@ -7,6 +7,7 @@ reordered beam rows (including duplicate indices) can be advanced independently.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Optional
 
 import torch
@@ -77,6 +78,45 @@ class SoftmaxSlot(nn.Module):
         return torch.where(empty[:, None], torch.zeros_like(out), out)
 
 
+CENTERED_COS_EPS = 1e-6
+
+
+def centered_cosine_scores(q: torch.Tensor, keys: torch.Tensor, valid: torch.Tensor,
+                           temperature: torch.Tensor) -> torch.Tensor:
+    """``tau * cos(q, k_i - mean_j k_j)``; the mean uses only valid slots of each row.
+
+    ``q`` is [B, R] or [B, T, R]; ``keys`` [B, N, R]; ``valid`` [B, N].
+    Invalid slots receive arbitrary finite scores and must be masked by the caller.
+    """
+    keys = keys.float()
+    count = valid.sum(-1, keepdim=True).clamp_min(1).to(keys.dtype)
+    mean = (keys * valid[..., None].to(keys.dtype)).sum(1) / count
+    centered = F.normalize(keys - mean[:, None], dim=-1, eps=CENTERED_COS_EPS)
+    query = F.normalize(q.float(), dim=-1, eps=CENTERED_COS_EPS)
+    if query.ndim == 2:
+        return temperature * torch.einsum("br,bnr->bn", query, centered)
+    return temperature * torch.einsum("btr,bnr->btn", query, centered)
+
+
+class CenteredCosineSlot(nn.Module):
+    """Explicit-slot softmax over within-episode centered key cosines (E-0014 R6)."""
+
+    def forward(self, q: torch.Tensor, state: "MemoryState", temperature: torch.Tensor) -> torch.Tensor:
+        if state.slot_keys is None or state.slot_values is None or state.slot_valid is None:
+            raise ValueError("CenteredCosineSlot requires stored slots")
+        scores = centered_cosine_scores(q, state.slot_keys, state.slot_valid, temperature)
+        scores = scores.masked_fill(~state.slot_valid, -torch.inf)
+        empty = state.counts == 0
+        scores = torch.where(empty[:, None], torch.zeros_like(scores), scores)
+        weights = torch.softmax(scores, dim=-1)
+        weights = torch.where(state.slot_valid, weights, torch.zeros_like(weights))
+        out = torch.einsum("bn,bnv->bv", weights, state.slot_values.float())
+        return torch.where(empty[:, None], torch.zeros_like(out), out)
+
+
+SLOT_BACKENDS = ("kernel_slot_reference", "soft_slot", "centered_cos_slot")
+
+
 @dataclass(frozen=True)
 class MemoryState:
     """Batched, differentiable memory state. M and c are always FP32."""
@@ -93,7 +133,7 @@ class MemoryState:
     @classmethod
     def empty(cls, batch_size: int, rank: int, backend: str = "kernel_matrix",
               device: Optional[torch.device] = None) -> "MemoryState":
-        if backend not in {"kernel_matrix", "kernel_slot_reference", "soft_slot"}:
+        if backend != "kernel_matrix" and backend not in SLOT_BACKENDS:
             raise ValueError(f"unknown backend: {backend}")
         M = torch.zeros(batch_size, rank, rank, dtype=torch.float32, device=device)
         c = torch.zeros(batch_size, rank, dtype=torch.float32, device=device)
@@ -171,7 +211,14 @@ class MemoryState:
                            self.slot_values.index_select(0, indices).clone(),
                            self.slot_valid.index_select(0, indices).clone())
 
-    def read(self, q: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    def read(self, q: torch.Tensor, eps: float = 1e-6,
+             temperature: Optional[torch.Tensor] = None) -> torch.Tensor:
+        if self.backend == "centered_cos_slot":
+            if temperature is None:
+                raise ValueError("centered_cos_slot requires a temperature")
+            return CenteredCosineSlot()(q, self, temperature)
+        if temperature is not None:
+            raise ValueError("only centered_cos_slot takes a temperature")
         if self.backend == "kernel_matrix":
             return KernelMatrix(eps)(q, self)
         if self.backend == "kernel_slot_reference":
@@ -183,7 +230,8 @@ class LatentReader(nn.Module):
     """Shared Rq/Ro latent-memory loop with fixed eta and read gain defaults."""
 
     def __init__(self, rank: int, eta: float = 0.25, read_gain: float = 1.0,
-                 eps_norm: float = 1e-6, eps_read: float = 1e-6):
+                 eps_norm: float = 1e-6, eps_read: float = 1e-6,
+                 temperature_init: Optional[float] = None):
         super().__init__()
         self.rank = rank
         self.eta = float(eta)
@@ -193,6 +241,17 @@ class LatentReader(nn.Module):
         self.last_read_calls = 0
         self.Rq = nn.Parameter(torch.eye(rank))
         self.Ro = nn.Parameter(torch.eye(rank))
+        # Learnable log-temperature exists only for centered_cos_slot; None keeps
+        # every other reader's parameters and state_dict unchanged.
+        if temperature_init is None:
+            self.register_parameter("log_temperature", None)
+        else:
+            if not temperature_init > 0:
+                raise ValueError("temperature_init must be positive")
+            self.log_temperature = nn.Parameter(torch.tensor(math.log(temperature_init)))
+
+    def temperature(self) -> Optional[torch.Tensor]:
+        return None if self.log_temperature is None else self.log_temperature.exp()
 
     def forward(self, qbar: torch.Tensor, state: MemoryState, steps: int = 1,
                 update: str = "accumulate", readout: str = "increment",
@@ -212,7 +271,7 @@ class LatentReader(nn.Module):
         for _ in range(steps):
             query = fixed_q if fixed_query else elu_plus_one(
                 rmsnorm_no_affine(z, self.eps_norm) @ self.Rq)
-            a = state.read(query, self.eps_read) * self.read_gain
+            a = state.read(query, self.eps_read, self.temperature()) * self.read_gain
             self.last_read_calls += 1
             candidate = z0 if update == "anchored" else z
             z = candidate + self.eta * (a @ self.Ro)
@@ -298,7 +357,8 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
 
 __all__ = [
     "elu_plus_one", "rmsnorm_no_affine", "MemoryState", "KernelMatrix",
-    "KernelSlotReference", "SoftmaxSlot", "LatentReader", "SequenceResult",
+    "KernelSlotReference", "SoftmaxSlot", "CenteredCosineSlot", "centered_cosine_scores",
+    "LatentReader", "SequenceResult",
     "process_sequence",
 ]
 
