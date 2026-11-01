@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_CODE_COMMIT:?registered immutable commit required}"
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+V5_PROJECT=/work/xg24i002/x10041/bypass-lora
+V5_SNAPSHOT="$V5_PROJECT/snapshots/$SR_CODE_COMMIT"
+V5_OUTPUT="$V5_PROJECT/runs/$SR_ATTEMPT_ID"
+mkdir -p "$V5_OUTPUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$V5_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$V5_OUTPUT/allocation.json"
+/usr/bin/jq -e '.ok == true' "$V5_OUTPUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$V5_SNAPSHOT/src"
+export TMPDIR="$V5_OUTPUT/tmp"
+mkdir -p "$TMPDIR"
+cd "$V5_SNAPSHOT"
+V5_PYTHON="$V5_PROJECT/envs/3c916b51337d-cuda/bin/python"
+V5_ARGS=()
+if [[ "${V5_SKIP_WIKITEXT:-0}" == 1 ]]; then
+  V5_ARGS+=(--skip-wikitext)
+fi
+exec "$V5_PYTHON" src/v5_rehearsal.py \
+  --sealed-manifest "$V5_SNAPSHOT/research/artifacts/T-0014/sealed-manifest.json" \
+  --output "$V5_OUTPUT" "${V5_ARGS[@]}"

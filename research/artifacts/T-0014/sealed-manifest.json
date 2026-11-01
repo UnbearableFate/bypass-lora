@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "experiment": "E-0013@3",
+  "sealed_on": "2026-11-01",
+  "validation_content_inspected": false,
+  "files": {
+    "piqa": {
+      "path": "/work/xg24i002/x10041/bypass-lora/data/v5-sealed/piqa-valid.jsonl",
+      "source_url": "https://raw.githubusercontent.com/ybisk/ybisk.github.io/21edab439af693b961be2f069e8690a88d3b4e37/piqa/data/valid.jsonl",
+      "revision": "21edab439af693b961be2f069e8690a88d3b4e37",
+      "bytes": 495929,
+      "sha256": "93503cc97c679e459b065c3d13e848282e44b2a25213985bed3e5d458abef72d"
+    },
+    "piqa_labels": {
+      "path": "/work/xg24i002/x10041/bypass-lora/data/v5-sealed/piqa-valid-labels.lst",
+      "source_url": "https://raw.githubusercontent.com/ybisk/ybisk.github.io/21edab439af693b961be2f069e8690a88d3b4e37/piqa/data/valid-labels.lst",
+      "revision": "21edab439af693b961be2f069e8690a88d3b4e37",
+      "bytes": 3676,
+      "sha256": "b4192dc3a2a0363d9d60ccf79800cbbe2f32ebb17726efdde6970e0b8131bceb"
+    },
+    "boolq": {
+      "path": "/work/xg24i002/x10041/bypass-lora/data/v5-sealed/boolq-validation.parquet",
+      "source_url": "https://huggingface.co/datasets/google/boolq/resolve/35b264d03638db9f4ce671b711558bf7ff0f80d5/data/validation-00000-of-00001.parquet",
+      "revision": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+      "bytes": 1257630,
+      "sha256": "52355d11524b4b874a9b9dcc278feb10f672d52c4f4eff9872e695ede59820f8"
+    },
+    "wikitext": {
+      "path": "/work/xg24i002/x10041/bypass-lora/data/v5-sealed/wikitext-103-test.parquet",
+      "source_url": "https://huggingface.co/datasets/Salesforce/wikitext/resolve/b08601e04326c79dfdd32d625aee71d232d685c3/wikitext-103-raw-v1/test-00000-of-00001.parquet",
+      "revision": "b08601e04326c79dfdd32d625aee71d232d685c3",
+      "config": "wikitext-103-raw-v1",
+      "split": "test",
+      "bytes": 732610,
+      "sha256": "5f1bea067869d04849c0f975a2b29c4ff47d867f484f5010ea5e861eab246d91"
+    }
+  }
+}
