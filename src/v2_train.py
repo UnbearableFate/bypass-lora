@@ -226,12 +226,15 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
 
 
 def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior_token, *,
-          forward_options=None, log_name='train.jsonl', learning_curves=True, monitors=None):
+          forward_options=None, log_name='train.jsonl', learning_curves=True, monitors=None,
+          forward_fn=None, curve_evaluator=None):
     """Defaults reproduce V2. E-0014 options: forward_options go to train_forward;
     only adapter parameters with requires_grad are optimized (R4 freezing);
     monitors maps a completed step to (name, rows) for a calibration normal check."""
     params = [p for p in model.adapter_parameters() if p.requires_grad]
     forward_options = forward_options or {}
+    forward = train_forward if forward_fn is None else forward_fn
+    evaluate_curve = evaluate if curve_evaluator is None else curve_evaluator
     monitors = monitors or {}
     optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.)
     curves, grad_norms, history, seen_gradients = {}, [], [], set()
@@ -258,7 +261,7 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
             batch = collate(selected, pad_id, next(model.parameters()).device)
             log = {} if forward_options.get('address_weight') else None
             options = dict(forward_options, log=log) if log is not None else forward_options
-            loss, _, support_counts, query_counts = train_forward(model, batch, **options)
+            loss, _, support_counts, query_counts = forward(model, batch, **options)
             if not torch.isfinite(loss):
                 raise RuntimeError('nonfinite training loss')
             (loss*(len(selected)/TRAIN_BATCH_SIZE)).backward()
@@ -299,7 +302,7 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
         if step+1 in milestones:
             milestone = milestones[step+1]
             curve_start = time.monotonic()
-            curves[milestone], _ = evaluate(model, dev, pad_id, output/f'curve-{milestone}', 'dev',
+            curves[milestone], _ = evaluate_curve(model, dev, pad_id, output/f'curve-{milestone}', 'dev',
                                            ('normal', 'zero', 'shuffled'), prior_token)
             torch.cuda.synchronize()
             curve_seconds += time.monotonic()-curve_start
