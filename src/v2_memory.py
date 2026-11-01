@@ -199,29 +199,34 @@ def read_vectors(qbar, snapshot, reader, backend, target, mode='normal'):
     return raw, weights, scores, denominator
 
 
-def read_metrics(raw, weights, scores, denominator, target_value, target, valid_question, fact_valid):
+def read_metrics(raw, weights, scores, denominator, target_value, target, valid_question, fact_valid,
+                 address_target_available=True):
     b, t, n = weights.shape
     target_indices = target[:, None, None].expand(b, t, 1)
-    target_weight = weights.gather(-1, target_indices).squeeze(-1)
     prob = weights / weights.sum(-1, keepdim=True).clamp_min(1e-30)
     entropy = -(prob * prob.clamp_min(1e-30).log()).sum(-1)
     neff = torch.where(prob.sum(-1) > 0, 1 / prob.square().sum(-1).clamp_min(1e-30), 0)
     eligible = fact_valid[:, None].expand_as(scores)
-    masked_scores = scores.masked_fill(~eligible, -torch.inf)
-    other = masked_scores.scatter(-1, target_indices, -torch.inf).max(-1).values
-    target_score = scores.gather(-1, target_indices).squeeze(-1)
-    # Single-fact margin is undefined; report 0, alongside eligible fact counts.
-    margin = torch.where(torch.isfinite(other), target_score - other, 0)
     target_value = target_value[:, None].expand_as(raw)
-    top1 = ((masked_scores.argmax(-1) == target[:, None]) & eligible.any(-1)).float()
     measurements = {
-        'address.top1': top1, 'address.margin': margin,
-        'address.target_weight': target_weight, 'address.entropy': entropy, 'address.n_eff': neff,
+        'address.entropy': entropy, 'address.n_eff': neff,
         'read.normalized_error': (raw-target_value).square().sum(-1)/(target_value.square().sum(-1)+1e-6),
         'read.direction_error': 1-F.cosine_similarity(raw, target_value, dim=-1, eps=1e-6),
         'read.raw_norm': raw.norm(dim=-1), 'read.target_norm': target_value.norm(dim=-1),
     }
+    if address_target_available:
+        masked_scores = scores.masked_fill(~eligible, -torch.inf)
+        other = masked_scores.scatter(-1, target_indices, -torch.inf).max(-1).values
+        target_score = scores.gather(-1, target_indices).squeeze(-1)
+        # Single-fact margin is undefined; preserve the documented zero convention.
+        margin = torch.where(torch.isfinite(other), target_score - other, 0)
+        measurements.update({
+            'address.top1': ((masked_scores.argmax(-1) == target[:, None]) & eligible.any(-1)).float(),
+            'address.margin': margin,
+            'address.target_weight': weights.gather(-1, target_indices).squeeze(-1),
+        })
     result = {k: float(v[valid_question].mean()) for k, v in measurements.items()}
+    result['address.target_available'] = address_target_available
     den = denominator[valid_question]
     result.update({f'read.denominator.p{p}': float(torch.quantile(den, p/100)) for p in (0, 50, 95, 100)})
     return result
@@ -255,7 +260,10 @@ def evaluate_batch(model, batch, mode='normal'):
                 z = (qbar + side.reader.eta * (raw * side.reader.read_gain @ side.reader.Ro)) - qbar
                 z = z * batch.question_mask[..., None]
             details.update(read_metrics(raw, weights, scores, denominator, target_value, target,
-                                       batch.question_mask, snapshot.valid))
+                                       batch.question_mask, snapshot.valid,
+                                       address_target_available=mode != 'shuffled'))
+            if mode == 'shuffled':
+                details['address.target_unavailable_reason'] = 'recipient target is undefined in donor memory'
             details['output.z_norm'] = float(z[batch.question_mask].norm(dim=-1).mean())
             for name in ('P', 'C_g', 'C_u'):
                 if hasattr(side.fusion, name):

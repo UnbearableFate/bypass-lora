@@ -166,3 +166,72 @@ def test_probe_split_guard(rows):
         validate_probe_splits(train, [{**train[0], 'identity': {**train[0]['identity'], 'split': 'dev'}}])
     with pytest.raises(ValueError, match='training split'):
         validate_probe_splits(dev, train)
+
+
+@pytest.mark.parametrize('backend', ['kernel_matrix', 'soft_slot'])
+@torch.no_grad()
+def test_shuffled_has_no_recipient_address_target(base, backend, record_property):
+    from v2_memory import capture_projection, answer_logits
+    from bypass_core import elu_plus_one, rmsnorm_no_affine
+    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+    episodes = []
+    groups = [[('Alan', 'emails', 'Bob'), ('Carol', 'tutors', 'Alice')],
+              [('David', 'rescues', 'Eve'), ('Frank', 'photographs', 'Grace')]]
+    for owner, triples in enumerate(groups):
+        text, facts = '', []
+        for head, relation, tail in triples:
+            text += f'{head} {relation} {tail} '
+            start = len(text)
+            text += ';\n'
+            facts.append({'head': head, 'relation': relation, 'tail': tail,
+                          'delimiter_char_span': [start, start+1]})
+        encoded = tok(text, add_special_tokens=False, return_offsets_mapping=True)
+        for f in facts:
+            start, end = f['delimiter_char_span']
+            ix = [i for i, (a, b) in enumerate(encoded['offset_mapping']) if a <= start and b >= end]
+            assert len(ix) == 1
+            f['delimiter_token_index'] = ix[0]
+        head, relation, tail = triples[owner]  # different target ordinal in each owner
+        answer = tok.encode(' '+tail, add_special_tokens=False)
+        assert len(answer) == 1
+        episodes.append({'episode_id': f'distinct-{owner}', 'support_input_ids': encoded['input_ids'],
+                         'question_input_ids': tok.encode(f'Who does {head} {relation}? Answer:', add_special_tokens=False),
+                         'facts': facts, 'query': {'head': head, 'relation': relation,
+                         'target_fact_index': owner, 'answer_token_id': answer[0]}})
+    batch = collate(episodes, tok.pad_token_id, owners=[1, 0, 1])
+    with adapted(base, config(backend=backend)) as model:
+        model.eval()
+        side = model.adapters()[14].side
+        side.fusion.P.normal_(std=.01)  # make memory causally affect logits
+        original, _ = build_support(model, batch, observe=True)
+        selected = original.select(batch.owners)
+        targets = torch.tensor([1, 0, 1], device='cuda')
+        recipients = selected.values[torch.arange(3, device='cuda'), targets]
+        for mode in ('normal', 'permuted', 'shuffled'):
+            snap = control_snapshot(original, mode).select(batch.owners)
+            # Independent deployed forward: no diagnostic side hook and no oracle.
+            with capture_projection(side) as seen:
+                plain = model(batch.question_ids, batch.question_mask, memory=snap.memory, phase='query')
+            expected_logits = answer_logits(plain, batch.question_mask)
+            q = elu_plus_one(rmsnorm_no_affine(seen['q'], side.reader.eps_norm) @ side.reader.Rq)
+            raw = torch.stack([snap.memory[14].read(q[:, t], side.reader.eps_read) for t in range(q.shape[1])], dim=1)
+            expected_error = ((raw-recipients[:, None]).square().sum(-1)/(recipients[:, None].square().sum(-1)+1e-6))[batch.question_mask].mean()
+            details, logits = evaluate_batch(model, batch, mode)
+            assert torch.equal(logits, expected_logits)
+            assert details['nll'] == float(torch.nn.functional.cross_entropy(expected_logits, batch.labels))
+            assert details['em'] == float((expected_logits.argmax(-1) == batch.labels).float().mean())
+            assert details['read.normalized_error'] == pytest.approx(float(expected_error), abs=2e-5)
+            assert 'address.entropy' in details and 'address.n_eff' in details
+            dependent = ('address.top1', 'address.margin', 'address.target_weight')
+            if mode == 'shuffled':
+                assert details['address.target_available'] is False
+                assert 'donor' in details['address.target_unavailable_reason']
+                assert all(k not in details for k in dependent)
+            else:
+                assert details['address.target_available'] is True
+                explicit = read_vectors(seen['q'], snap, side.reader, backend, targets)
+                expected = read_metrics(*explicit, recipients, targets, batch.question_mask, snap.valid)
+                for k in dependent:
+                    assert details[k] == expected[k]
+            record_property(mode+'.logits_max_abs_error', float((logits-expected_logits).abs().max()))
+            record_property(mode+'.read_error_abs_error', abs(details['read.normalized_error']-float(expected_error)))
