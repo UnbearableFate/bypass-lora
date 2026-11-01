@@ -283,6 +283,7 @@ class SequenceResult:
     outputs: torch.Tensor
     state: MemoryState
     accounting: dict[str, int]
+    diagnostics: Optional[dict] = None
 
 
 def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
@@ -294,12 +295,19 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
                      steps: int = 1, mode: str = "inclusive",
                      update: str = "accumulate", readout: str = "increment",
                      fixed_query: bool = False,
-                     backend: str = "kernel_matrix") -> SequenceResult:
+                     backend: str = "kernel_matrix", impl: str = "reference") -> SequenceResult:
     """Process [B,T,r] features causally, writing at most once per token.
 
     ``mode='inclusive'`` writes before reading; ``mode='strict'`` reads first.
     Set ``write=False`` per position for read-only M-line queries.
     """
+    if impl == "prefix":
+        return process_prefix(qbar, kbar, vbar, reader, state=state, valid=valid,
+                              reset=reset, write=write, read=read, steps=steps,
+                              mode=mode, update=update, readout=readout,
+                              fixed_query=fixed_query, backend=backend)
+    if impl != "reference":
+        raise ValueError("unknown sequence implementation")
     if qbar.ndim != 3 or kbar.shape != qbar.shape or vbar.shape != qbar.shape:
         raise ValueError("qbar, kbar, vbar must share [batch, time, rank] shape")
     if mode not in {"inclusive", "strict"}:
@@ -355,10 +363,107 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
     })
 
 
+def kernel_prefix_states(kbar, vbar, reader, valid, write=None, state=None):
+    """FP32 inclusive sufficient statistics, with no token loop or host sync.
+
+    Returned prefixes include the initial state's statistics. Masked positions
+    contribute neither keys nor values. The final state owns fresh storage.
+    """
+    batch, length, rank = kbar.shape
+    if vbar.shape != kbar.shape or valid.shape != (batch, length) or rank != reader.rank:
+        raise ValueError("prefix feature/mask shape mismatch")
+    if state is None:
+        state = MemoryState.empty(batch, rank, device=kbar.device)
+    if state.backend != "kernel_matrix" or (state.batch_size, state.rank) != (batch, rank):
+        raise ValueError("prefix requires a matching KernelMatrix state")
+    active = valid if write is None else valid & write
+    if active.shape != valid.shape:
+        raise ValueError("prefix write mask shape mismatch")
+    keys = torch.where(active[..., None], elu_plus_one(rmsnorm_no_affine(
+        kbar.float(), reader.eps_norm)), torch.zeros_like(kbar, dtype=torch.float32))
+    values = torch.where(active[..., None], vbar.float(), torch.zeros_like(vbar, dtype=torch.float32))
+    matrices = (keys[..., :, None] * values[..., None, :]).cumsum(1) + state.M[:, None]
+    masses = keys.cumsum(1) + state.c[:, None]
+    counts = active.long().cumsum(1) + state.counts[:, None]
+    final = (MemoryState(matrices[:, -1].clone(), masses[:, -1].clone(), counts[:, -1].clone(),
+                         "kernel_matrix", rank) if length else state)
+    return keys, values, matrices, masses, counts, final
+
+
+def read_kernel_prefix(qbar, reader, matrices, masses, counts, active, *, steps=1,
+                       update="accumulate", readout="increment", fixed_query=False,
+                       current_keys=None):
+    """Read each position's causal state; only the small recurrence loops in Python."""
+    if steps < 0 or update not in ("accumulate", "anchored") or readout not in ("increment", "full"):
+        raise ValueError("invalid prefix recurrence")
+    z0, z = qbar.float(), qbar.float()
+    fixed = elu_plus_one(rmsnorm_no_affine(z0, reader.eps_norm) @ reader.Rq) if fixed_query else None
+    weights = []
+    for _ in range(steps):
+        query = fixed if fixed_query else elu_plus_one(rmsnorm_no_affine(z, reader.eps_norm) @ reader.Rq)
+        denominator = (query * masses).sum(-1, keepdim=True) + reader.eps_read
+        a = torch.einsum("btr,btrv->btv", query, matrices) / denominator
+        a = torch.where((counts > 0)[..., None], a, torch.zeros_like(a)) * reader.read_gain
+        if current_keys is not None:
+            weight = (query * current_keys).sum(-1) / denominator.squeeze(-1)
+            weights.append(torch.where(active, weight, torch.zeros_like(weight)))
+        z = (z0 if update == "anchored" else z) + reader.eta * (a @ reader.Ro)
+    outputs = z - z0 if readout == "increment" else z
+    outputs = torch.where(active[..., None], outputs, torch.zeros_like(outputs))
+    reader.last_read_calls = steps
+    return outputs, (torch.stack(weights, -1) if weights else None)
+
+
+def process_prefix(qbar, kbar, vbar, reader, state=None, valid=None, reset=None,
+                   write=None, read=None, steps=1, mode="inclusive", update="accumulate",
+                   readout="increment", fixed_query=False, backend="kernel_matrix",
+                   trace_reads=False):
+    """Causal vectorized KernelMatrix scan with chunk/decode continuation.
+
+    Reset is deliberately rejected, including an explicitly supplied all-false
+    reset tensor: callers needing reset must split the sequence or use reference.
+    Accounting stays on-device; no autograd tensor is converted to a host scalar.
+    """
+    if backend != "kernel_matrix" or reset is not None:
+        raise ValueError("prefix supports KernelMatrix without an in-sequence reset")
+    if qbar.ndim != 3 or kbar.shape != qbar.shape or vbar.shape != qbar.shape:
+        raise ValueError("qbar, kbar, vbar must share [batch,time,rank]")
+    if mode not in ("inclusive", "strict"):
+        raise ValueError("unknown prefix mode")
+    valid = torch.ones(qbar.shape[:2], dtype=torch.bool, device=qbar.device) if valid is None else valid.bool()
+    read = valid if read is None else valid & read.bool()
+    if read.shape != valid.shape:
+        raise ValueError("prefix read mask shape mismatch")
+    initial = state or MemoryState.empty(qbar.shape[0], reader.rank, device=qbar.device)
+    keys, _, matrices, masses, counts, final = kernel_prefix_states(kbar, vbar, reader, valid, write, initial)
+    if mode == "strict" and qbar.shape[1]:
+        matrices = torch.cat((initial.M[:, None], matrices[:, :-1]), 1)
+        masses = torch.cat((initial.c[:, None], masses[:, :-1]), 1)
+        counts = torch.cat((initial.counts[:, None], counts[:, :-1]), 1)
+    outputs, weights = read_kernel_prefix(qbar, reader, matrices, masses, counts, read,
+        steps=steps, update=update, readout=readout, fixed_query=fixed_query,
+        current_keys=keys if trace_reads else None)
+    return SequenceResult(outputs, final, {"valid_tokens": valid.sum().detach(),
+        "writes": (valid if write is None else valid & write).sum().detach(),
+        "reads": read.sum().detach()*steps, "reader_steps": steps},
+        {"current_weight": weights} if trace_reads else None)
+
+
+def process_kernel_tokenwise(qbar, kbar, vbar, reader, valid, steps=1):
+    """T0: identical Q/K/V/Rq/Ro parameters, current-token nonlinear reads, no state."""
+    z = qbar.float()
+    key = rmsnorm_no_affine(kbar.float(), reader.eps_norm)
+    for _ in range(steps):
+        a = F.silu(rmsnorm_no_affine(z, reader.eps_norm) @ reader.Rq + key) * vbar.float()
+        z = z + reader.eta * (a @ reader.Ro)
+    return torch.where(valid[..., None], z-qbar, torch.zeros_like(z))
+
+
 __all__ = [
     "elu_plus_one", "rmsnorm_no_affine", "MemoryState", "KernelMatrix",
     "KernelSlotReference", "SoftmaxSlot", "CenteredCosineSlot", "centered_cosine_scores",
     "LatentReader", "SequenceResult",
-    "process_sequence",
+    "process_sequence", "process_prefix", "kernel_prefix_states", "read_kernel_prefix",
+    "process_kernel_tokenwise",
 ]
 

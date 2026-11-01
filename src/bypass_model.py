@@ -12,7 +12,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from bypass_core import LatentReader, process_sequence
+from bypass_core import LatentReader, process_sequence, process_kernel_tokenwise
 
 
 FUSIONS = ('F_out', 'F_pre', 'F_attnres', 'C_gate', 'C_up', 'C_dual')
@@ -41,9 +41,11 @@ class AdapterConfig:
     # E-0014 R4: rank of a separate query-only tokenwise F_out prior path; 0 = absent.
     prior_rank: int = 0
     model_revision: str = 'da87bfb608c14b7cf20ba1ce41287e8de496c0cd'
+    fixed_query: bool = False
+    impl: str = 'reference'
 
     def __post_init__(self):
-        if self.fusion not in FUSIONS or self.branch not in ('tokenwise_silu', 'tokenwise_linear', 'memory'):
+        if self.fusion not in FUSIONS or self.branch not in ('tokenwise_silu', 'tokenwise_linear', 'memory', 'kernel_tokenwise'):
             raise ValueError('unknown branch or fusion')
         if self.tap not in ('qknorm_pre_rope', 'raw_qkv', 'direct_hidden'):
             raise ValueError('unknown feature tap')
@@ -59,6 +61,14 @@ class AdapterConfig:
             raise ValueError('prior_rank must be a nonnegative integer')
         if self.prior_rank and self.branch != 'memory':
             raise ValueError('the prior path is defined only beside an M-line memory branch')
+        if self.impl not in ('reference', 'prefix'):
+            raise ValueError('unknown memory implementation')
+        if self.fixed_query and self.branch != 'memory':
+            raise ValueError('fixed_query is defined only for memory')
+        if self.impl == 'prefix' and self.backend != 'kernel_matrix':
+            raise ValueError('prefix requires KernelMatrix')
+        if self.branch == 'kernel_tokenwise' and (self.update != 'accumulate' or self.readout != 'increment' or self.read_gain != 1.):
+            raise ValueError('T0 requires accumulating increment recurrence')
 
 
 class LowDimProjection(nn.Module):
@@ -151,7 +161,7 @@ class SideBranch(nn.Module):
         super().__init__()
         self.config = config
         d = layer.self_attn.q_proj.in_features
-        if config.branch == 'memory':
+        if config.branch in ('memory', 'kernel_tokenwise'):
             dims = (d, d, d) if config.tap == 'direct_hidden' else (
                 layer.self_attn.q_proj.out_features, layer.self_attn.k_proj.out_features,
                 layer.self_attn.v_proj.out_features)
@@ -165,20 +175,36 @@ class SideBranch(nn.Module):
         self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features)
         # Created last so that memory-path initialization is unchanged by its presence.
         self.prior = PriorPath(d, config.prior_rank) if config.prior_rank else None
+        self.diagnostics = None
 
-    def forward(self, u, features, state, valid, phase, write_mask=None):
+    def forward(self, u, features, state, valid, phase, write_mask=None, runtime=None):
         cfg = self.config
-        if cfg.branch != 'memory':
+        self.diagnostics = None
+        if cfg.branch not in ('memory', 'kernel_tokenwise'):
             z = u.float() @ self.A
             if cfg.branch == 'tokenwise_silu':
                 z = F.silu(z)
             return z * valid.unsqueeze(-1), state, None
         q, k, v = self.projection(features['q'], features['k'], features['v'])
+        if cfg.branch == 'kernel_tokenwise':
+            if phase != 'F':
+                raise ValueError('T0 is an F-line branch')
+            z = process_kernel_tokenwise(q, k, v, self.reader, valid, cfg.steps)
+            if runtime and runtime.get('kind') == 'iv_off':
+                z = torch.zeros_like(z)
+            return z, None, {'valid_tokens': valid.sum().detach(), 'writes': 0,
+                             'reads': 0, 'reader_steps': cfg.steps}
+        if runtime:
+            from rb_history import run_history
+            result = run_history(q, k, v, self.reader, valid, cfg, runtime)
+            self.diagnostics = result.diagnostics
+            return result.outputs, result.state, result.accounting
         result = process_sequence(q, k, v, self.reader, state=state, valid=valid,
                                   write=(write_mask if phase == 'support' else valid) if phase != 'query' else torch.zeros_like(valid),
                                   read=valid if phase != 'support' else torch.zeros_like(valid),
                                   steps=cfg.steps, mode=cfg.mode, update=cfg.update,
-                                  readout=cfg.readout, backend=cfg.backend)
+                                  readout=cfg.readout, backend=cfg.backend,
+                                  fixed_query=cfg.fixed_query, impl=cfg.impl)
         if phase == 'support' and (result.state.counts > cfg.slot_capacity).any():
             raise ValueError('support slot capacity exceeded')
         return result.outputs, result.state, result.accounting
@@ -192,6 +218,7 @@ class AdaptedLayer(nn.Module):
         self.attention_type = layer.attention_type
         self.request = None
         self.result = None
+        self.runtime = None
         self.calls = {'attention': 0, 'ffn': 0}
         # Count executions, not the requested number of executions.
         self.handles = [layer.self_attn.register_forward_hook(self._attention_called),
@@ -218,7 +245,7 @@ class AdaptedLayer(nn.Module):
                                   position_embeddings=position_embeddings, **kwargs)
         h = hidden_states + o
         u = layer.post_attention_layernorm(h)
-        z, state, counts = self.side(u, features, state, valid, phase, write_mask)
+        z, state, counts = self.side(u, features, state, valid, phase, write_mask, self.runtime)
         self.result = (state, counts)
         if phase == 'support':
             return h + layer.mlp(u)
@@ -251,6 +278,7 @@ class BranchOutput:
     logits: torch.Tensor
     cache: BranchCache
     accounting: dict
+    diagnostics: object = None
 
 
 class BranchModel(nn.Module):
@@ -271,9 +299,20 @@ class BranchModel(nn.Module):
             yield from layer.side.parameters()
 
     def forward(self, input_ids, attention_mask=None, cache=None, memory=None, phase='F', use_cache=False,
-                write_mask=None):
+                write_mask=None, intervention=None, capture_history=False, trace_reads=False):
         if phase not in ('F', 'support', 'query'):
             raise ValueError('unknown protocol phase')
+        runtime = None
+        if intervention is not None or capture_history or trace_reads:
+            if self.training or torch.is_grad_enabled() or phase != 'F' or cache is not None or memory is not None or use_cache:
+                raise ValueError('history diagnostics require no-grad uncached F-line evaluation')
+            if self.config.branch not in ('memory', 'kernel_tokenwise') or self.config.backend != 'kernel_matrix':
+                raise ValueError('history diagnostics require a KernelMatrix/T0 branch')
+            from rb_history import KINDS
+            if intervention is not None and (not isinstance(intervention, dict) or intervention.get('kind') not in KINDS):
+                raise ValueError('unknown history intervention')
+            runtime = dict(intervention or {})
+            runtime.update(capture_history=capture_history, trace_reads=trace_reads)
         if self.model.is_gradient_checkpointing:
             raise ValueError('checkpoint replay requires an explicit replay-safe state protocol')
         if cache is not None and cache.phase != phase:
@@ -309,9 +348,16 @@ class BranchModel(nn.Module):
         if phase == 'query' and self.config.branch == 'memory':
             if any(states.get(i) is None for i in self.config.layers):
                 raise ValueError('query is missing support memory for an adapter layer')
+        if runtime is not None and runtime.get('kind') == 'iv_swap' and self.config.branch == 'memory':
+            donors = runtime.get('donor')
+            if not isinstance(donors, dict) or any(i not in donors for i in self.config.layers):
+                raise ValueError('iv_swap missing donor history for an adapter layer')
         before = {i: dict(layer.calls) for i, layer in self.adapters().items()}
         for i, layer in self.adapters().items():
             layer.request = (valid, states.get(i), phase, write_mask)
+            layer.runtime = dict(runtime) if runtime is not None else None
+            if runtime is not None and runtime.get('kind') == 'iv_swap' and self.config.branch == 'memory':
+                layer.runtime['donor'] = runtime['donor'][i]
         try:
             position_ids = (attention_mask.cumsum(-1) - 1).clamp_min(0)[:, -input_ids.shape[1]:]
             output = self.model(input_ids, attention_mask=attention_mask, position_ids=position_ids,
@@ -320,11 +366,14 @@ class BranchModel(nn.Module):
             new_states = {i: layer.result[0] for i, layer in self.adapters().items()}
             counts = {i: {'base': {k: layer.calls[k] - before[i][k] for k in layer.calls},
                           'side': layer.result[1]} for i, layer in self.adapters().items()}
-            return BranchOutput(output.logits, BranchCache(new_states, output.past_key_values if use_cache else None, phase), counts)
+            diagnostics = {i: layer.side.diagnostics or {} for i, layer in self.adapters().items()} if runtime is not None else None
+            return BranchOutput(output.logits, BranchCache(new_states, output.past_key_values if use_cache else None, phase), counts, diagnostics)
         finally:
             for layer in self.adapters().values():
                 layer.request = None
                 layer.result = None
+                layer.runtime = None
+                layer.side.diagnostics = None
 
     def export_adapter(self, directory):
         directory = Path(directory)
