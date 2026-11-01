@@ -7,6 +7,9 @@ computing entropy and effective item count. Empty reads have all-zero metrics.
 import torch
 
 
+# Per-position vectors carried in read records; ReadSummary never averages them.
+VECTOR_FIELDS = ('read_vector',)
+
 @torch.no_grad()
 def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=None,
                         chunk_size=64):
@@ -36,7 +39,8 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
         history, history_valid = keys, valid
     positions = torch.arange(history.shape[1], device=query.device)
     pieces = {name: [] for name in ('current_weight', 'n_eff', 'entropy',
-                                   'relative_n_eff', 'readable_positions')}
+                                   'relative_n_eff', 'readable_positions',
+                                   'share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')}
     for start in range(0, length, chunk_size):
         end = min(length, start+chunk_size)
         current = torch.arange(start, end, device=query.device)
@@ -55,11 +59,13 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
             scores = torch.cat((scores, own[..., None]), -1)
             readable = eligible.sum(-1) + valid[:, start:end].long()
             own_score = own
+            slots = torch.cat((eligible, valid[:, start:end, None]), -1)
         else:
             own_score = (query[:, start:end]*keys[:, start:end]).sum(-1)
             own_score = torch.where(valid[:, start:end] & (kind != 'iv_strict'), own_score,
                                     torch.zeros_like(own_score))
             readable = eligible.sum(-1)
+            slots = eligible
         total = scores.sum(-1)
         probability = scores / total[..., None].clamp_min(1e-30)
         active = valid[:, start:end] & (readable > 0)
@@ -68,7 +74,14 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
         values = {'current_weight': own_score/total.clamp_min(1e-30),
                   'n_eff': neff, 'entropy': entropy,
                   'relative_n_eff': neff/readable.clamp_min(1),
-                  'readable_positions': readable.float()}
+                  'readable_positions': readable.float(),
+                  # History index 0 is the sequence's first token (the donor's
+                  # first token under iv_swap). Uniform shares use the same slots.
+                  'share0': probability[..., 0],
+                  'share0_2': probability[..., :3].sum(-1),
+                  'argmax0': (probability.argmax(-1) == 0).float(),
+                  'uniform0': slots[..., 0].float()/readable.clamp_min(1),
+                  'uniform0_2': slots[..., :3].sum(-1).float()/readable.clamp_min(1)}
         for name, value in values.items():
             pieces[name].append(torch.where(active, value, torch.zeros_like(value)))
     return {name: torch.cat(value, 1) for name, value in pieces.items()}
@@ -97,7 +110,7 @@ class ReadSummary:
                     total['count'] += count
                     total['empty_reads'] += int((mask & (record['readable_positions'] == 0)).sum())
                     for name, value in record.items():
-                        if name != 'step':
+                        if name not in ('step', *VECTOR_FIELDS):
                             total['sums'][name] = total['sums'].get(name, 0.) + float(value[mask].double().sum())
 
     def finish(self):

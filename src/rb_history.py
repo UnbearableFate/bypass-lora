@@ -116,7 +116,15 @@ def run_history(q, k, v, reader, valid, config, options):
                 metrics = prefix_read_metrics(query, keys, valid,
                     kind='iv_strict' if kind is None and config.mode == 'strict' else kind,
                     donor=options.get('donor'), window=options.get('window'))
-                read_metrics.append({'step': step, **metrics})
+                # The same normalized KernelMatrix read (times read gain, before
+                # Ro) that the reader computes from these intervened states.
+                rank = query.shape[-1]
+                observed = MemoryState(matrices.reshape(-1, rank, rank), masses.reshape(-1, rank),
+                                       counts.reshape(-1), 'kernel_matrix', rank)
+                read = (observed.read(query.reshape(-1, rank), reader.eps_read, reader.temperature())
+                        * reader.read_gain).reshape(query.shape)
+                read = torch.where(valid[..., None], read, torch.zeros_like(read))
+                read_metrics.append({'step': step, **metrics, 'read_vector': read.detach()})
 
     outputs, weights = read_kernel_prefix(q, reader, matrices, masses, counts, valid,
         steps=config.steps, update=config.update, readout=config.readout,
