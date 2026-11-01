@@ -133,3 +133,4 @@ Results are EM and NLL by hop. Following plan §9.4, decoding an entity is not e
   | V3-08 | 0.29 | 655,360 |
   - Maximum replay ratio 2.8e-5. V3-06's replay is exact.
   - V3-07 step-0 gap (smoke start): max|Δlogit| 0.41.
+- ATT-0195-1 (e1f3000, PBS 3768662, the RV-0058 fixes) passes 89 tests. These include the 17 analysis-corruption cases, the truncated and wrong dev matrices, adjacent cosine with padding and a fixed query, the executed MACs, and the real analysis reference: 1000 dev rows at 334/333/333 and the same train order digest as the arm schedule. All smokes complete.
