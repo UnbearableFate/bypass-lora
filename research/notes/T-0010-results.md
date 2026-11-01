@@ -1,9 +1,10 @@
 # T-0010 / E-0011@2: V3 T2 data and difficulty checks
 
-Status: full data and Base checks are complete; the 0.2M-token LoRA pilot awaits
-scoped code review. These are diagnostic engineering/difficulty observations,
-not support for or against H-0005. No M-line training or sealed model evaluation
-has run.
+Status: implementation and all requested diagnostic checks are complete.
+Full data, M Base and the fixed 0.2M-token LoRA pilot satisfy their gates.
+These are diagnostic engineering/difficulty observations,
+not support for or against H-0005. The coordinator owns any V3 release after
+the V2 conclusion. No M-line training or sealed model evaluation has run.
 
 ## Sources, review and integration
 
@@ -24,6 +25,13 @@ The unchanged F-line training, answer-only loss, optimizer, evaluation and
 checkpoint reload paths are reused. V3 strata are joined by episode identity
 after evaluation; axes do not enter model forward. Only the 0.2M pilot is
 allowed by this selector. V2 tests are unchanged.
+
+RV-0024 passed with zero findings. It matched all five scoped sources to the
+executed smoke snapshot, verified the unchanged engine/dependencies and
+default V2 behavior, checked release pins and V3 sample order, and inspected
+exact calibration/dev reload hashes. A nonfatal deprecation-warning logging
+traceback after pytest capture closed its stream did not interrupt the smoke's
+finite training or exact reload; the standalone pilot does not run pytest.
 
 ## Final data
 
@@ -129,7 +137,7 @@ The dev prior is 1.1% overall (hops 1/2/3: 1.4970% / 0.3003% / 1.5015%). F resul
 are difficulty information, without a pass threshold in E-0011. Low Base EM
 does not establish what a trained model can learn.
 
-## Pilot readiness
+## F-line LoRA pilot and validation
 
 ATT-0091-1 tests the integrated selector and unchanged V2 defaults. All 26 PBS
 tests pass in 12.68 s, including the unchanged V2 F-line suite, revised T2 graph
@@ -139,12 +147,55 @@ records reproduce exactly after loading the adapter into a fresh Base.
 Training took 1.1920 s and the combined entrypoint 17.4904 s. PBS measured 19 s on
 mg1098. These four steps are an engineering smoke, not the 0.2M difficulty pilot.
 
-The full pilot remains pending review. It will use LR 1e-3, batch 8 and the
-common complete-step 0.2M prompt-token rule, V3 train-order purposes, full 2048-row
-calibration, and exact reload. No intermediate dev selection or sealed data is
-part of that pilot.
+The reviewed full pilot is ATT-0092-1 / PBS 3762234.opbs, from
+`bb070ce48ad001e157e4d39fb24f7490c1fccdb0`, covered by RV-0022 and RV-0024.
+Result RES-0083, diagnostic evidence EV-0069. It completed **251 steps and
+200,281 support+question tokens** at LR 1e-3 and batch 8, using V3 train-order
+purposes, 13 warmup steps and the shared cosine schedule. Step 250 had
+199,472 tokens; step 251 was the first complete batch crossing 200,000.
+The final batch had 809 tokens and the overshoot was 281. Final LR was zero.
+All training/evaluation scores were finite and `failed_lr=false`.
 
-## Records and measured cost so far
+| Calibration slice | Episodes | Correct | EM | NLL | Train-constant prior |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| hop1 | 683 | 635 | 92.9722% | 0.3284743943 | 1.6105% |
+| hop2 | 683 | 656 | 96.0469% | 0.1863286589 | 1.9034% |
+| hop3 | 682 | 604 | 88.5630% | 0.4314442030 | 2.1994% |
+| hops2–3 pooled | 1365 | 1260 | 92.3077% | 0.3087966451 | 2.0513% |
+| all | 2048 | 1895 | 92.5293% | 0.3153590976 | 1.9043% |
+
+Both individual hops 2/3 and their pooled slice exceed the prior by at least
+20 percentage points. This meets the fixed pilot learnability gate. It does
+not measure a memory-only mechanism or select a V3 configuration.
+
+| Hop | Support order | Episodes | Correct | EM | NLL |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 | natural | 342 | 332 | 97.0760% | 0.1256580208 |
+| 1 | shuffled | 341 | 303 | 88.8563% | 0.5318855373 |
+| 2 | natural | 341 | 340 | 99.7067% | 0.0081054059 |
+| 2 | shuffled | 342 | 316 | 92.3977% | 0.3640307913 |
+| 3 | natural | 341 | 339 | 99.4135% | 0.0171935224 |
+| 3 | shuffled | 341 | 265 | 77.7126% | 0.8456948836 |
+
+Natural/shuffled aggregate EM is 98.7305% / 86.3281%, NLL
+0.0503925563 / 0.5803256388. Order remains a material difficulty axis despite
+the corrected terminal-distractor balance. This single-seed diagnostic does
+not identify which model computation causes that difference.
+
+The full 2048-row calibration file is byte-identical to evaluation of a fresh
+Base plus reloaded adapter. Both SHA256 values are
+`b4cf6e4806205312af2638c35b8870a026bd0c339da940255c3b2d6f8e01c46a`;
+the engine also compared every prediction/target/NLL/rank/subject record
+exactly. Training took 29.1843 s (6862.62 prompt tokens/s); entrypoint total
+48.1229 s, PBS walltime 59 s on confirmed mg1098 / GH200 MIG. Peak allocated
+CUDA memory was 2,739,270,656 bytes. Checkpoint and complete schedule/learning
+trace are in `runs/ATT-0092-1/adapter/`, `schedule.json`, `learning.jsonl`.
+No dev evaluation, intermediate dev selection or sealed read occurs in this
+full pilot. The earlier four-step smoke's dev rows remain a separate
+engineering check. The completion notification was cancelled once this active
+session inspected/imported the finished pilot, avoiding a duplicate resume.
+
+## Records and measured cost
 
 | Attempt | Purpose | Result | Evidence | PBS | MIG seconds |
 | --- | --- | --- | --- | --- | ---: |
@@ -154,14 +205,18 @@ part of that pilot.
 | ATT-0079-1 | Base runtime smoke | RES-0079 | EV-0065 | 3762008.opbs | 11 |
 | ATT-0090-1 | full Base dev | RES-0081 | EV-0067 | 3762040.opbs | 20 |
 | ATT-0091-1 | pilot selector / four-step smoke | RES-0082 | EV-0068 | 3762092.opbs | 19 |
+| ATT-0092-1 | full fixed LoRA pilot | RES-0083 | EV-0069 | 3762234.opbs | 59 |
 
-Measured total 133 MIG seconds = 0.0369444 MIG-instance·h = **0.0092361 node·h**,
+Measured total 192 MIG seconds = 0.0533333 MIG-instance·h = **0.0133333 node·h**,
 well below E-0011's 0.3 node·h ceiling. Executor exports own the usage charges;
 the quarter-node conversion is reported, not charged again. Some end/usage
 exports lag job-get; explicit verified scheduler end observations are retained
 and later ledger exports are imported idempotently. Environment remains lock
 3c916b51337d, cuda extra, cuda/12.8, torch 2.10.0+cu128, Python 3.13.13.
 
-Open work: scoped pilot review, full 0.2M pilot and reload, final result import
-and task delivery. No data or dependency protocol changed beyond the
-coordinator's recorded E-0011@2 rotation correction.
+All seven attempts have inspected application outputs, imported results,
+diagnostic evidence and measured executor usage. RV-0022 and RV-0024 pass with
+zero open findings. No requested check is skipped or blocked. No data or
+dependency protocol changed beyond the coordinator's recorded E-0011@2
+rotation correction. The coordinator owns task acceptance, merge and subsequent
+research decisions.
