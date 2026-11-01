@@ -1,0 +1,1130 @@
+{
+  "experiment": "E-0013@3",
+  "scope": "training/dev/cost diagnostics only",
+  "paired_order_sha256_by_seed": {
+    "1": "86640e55b86142c3b585688c7ada5f8b63bf5fe8995a7d451eaa608e95b4562a",
+    "2": "6b51f0bdfeb3be5e266c0d979488df997cdccc14a28835310157b8f64dbab699",
+    "3": "494973f56427093143ae1307e004574aae57ba82e645df0ee5e2491a47710095"
+  },
+  "runs": [
+    {
+      "arm": "V5-C",
+      "seed": 1,
+      "attempt": "ATT-0129-1",
+      "result": "RES-0147",
+      "job_id": "3765067.opbs",
+      "scheduler_MIG_seconds": 5961,
+      "scheduler_node_h": 0.4139583333333333,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "86640e55b86142c3b585688c7ada5f8b63bf5fe8995a7d451eaa608e95b4562a",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 1.356329571979586,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 524288,
+        "params.stored": 596574208,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 5293.831502134039,
+        "train.steady_step_seconds": 0.18142728084070864,
+        "train.peak_cuda_bytes": 3297333248,
+        "monitor.seconds": 483.91473820398096,
+        "params.with_grad": 524288,
+        "save.seconds": 0.022914755973033607,
+        "dev.piqa.nll": 2.530224307841265,
+        "dev.piqa.accuracy": 0.733,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.7047889489466034,
+        "dev.boolq.accuracy": 0.83,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.617506628393934,
+        "reload.load_seconds": 0.4771584940026514,
+        "reload.eval_seconds": 157.1487457100302,
+        "reload.identical": true,
+        "elapsed_s": 5946.000369481975
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/dev-epoch-1.json",
+            "sha256": "90b3709e9914c2002d57d0a48d05a4cbe915c55c6c1334c66c1b81187bed6c79",
+            "bytes": 399
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 164.03792418696685,
+          "metrics": {
+            "dev.piqa.nll": 2.541751827233326,
+            "dev.piqa.accuracy": 0.734,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.47536324690142645,
+            "dev.boolq.accuracy": 0.798,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5085575370673763
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/dev-epoch-2.json",
+            "sha256": "4b412549ec64b7e3cbd38032567a60d70454c13cafce6776e314e097d44877eb",
+            "bytes": 398
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 159.93653482798254,
+          "metrics": {
+            "dev.piqa.nll": 2.525907957419655,
+            "dev.piqa.accuracy": 0.728,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.556486550724716,
+            "dev.boolq.accuracy": 0.821,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5411972540721854
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/dev-epoch-3.json",
+            "sha256": "c98152c5f6c512d3e8c069f369a17a8d7c1c55a76dcaa7542e7fa80f3361502d",
+            "bytes": 396
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 159.9089788919664,
+          "metrics": {
+            "dev.piqa.nll": 2.530224307841265,
+            "dev.piqa.accuracy": 0.733,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.7047889489466034,
+            "dev.boolq.accuracy": 0.83,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.617506628393934
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/predictions.jsonl",
+        "sha256": "e9c68386c71f28fd50c9f9bd7bccbe29389f80eef42b9249346871e345d6474e",
+        "bytes": 375064
+      }
+    },
+    {
+      "arm": "V5-C",
+      "seed": 2,
+      "attempt": "ATT-0130-1",
+      "result": "RES-0148",
+      "job_id": "3765068.opbs",
+      "scheduler_MIG_seconds": 6177,
+      "scheduler_node_h": 0.42895833333333333,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "6b51f0bdfeb3be5e266c0d979488df997cdccc14a28835310157b8f64dbab699",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 1.3945316940080374,
+        "hardware": "NVIDIA GH200 120GB MIG 1g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 524288,
+        "params.stored": 596574208,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 5498.739314445993,
+        "train.steady_step_seconds": 0.1884562960682832,
+        "train.peak_cuda_bytes": 3304173056,
+        "monitor.seconds": 498.6390081560239,
+        "params.with_grad": 524288,
+        "save.seconds": 0.007169728050939739,
+        "dev.piqa.nll": 2.530772180104335,
+        "dev.piqa.accuracy": 0.731,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.7367623046391173,
+        "dev.boolq.accuracy": 0.826,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.633767242371726,
+        "reload.load_seconds": 0.26211749797221273,
+        "reload.eval_seconds": 155.37971111602383,
+        "reload.identical": true,
+        "elapsed_s": 6163.621259240957
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/dev-epoch-1.json",
+            "sha256": "87111c8276162800b93e86f73795c61bd2b7d0529705b98e21c3152beafb8069",
+            "bytes": 397
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 168.57127052097348,
+          "metrics": {
+            "dev.piqa.nll": 2.5451918561089486,
+            "dev.piqa.accuracy": 0.736,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5024081943817437,
+            "dev.boolq.accuracy": 0.79,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.523800025245346
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/dev-epoch-2.json",
+            "sha256": "5cda32597d1c6ec0a69fe52e54e4eb6a2625b6f272ba2682e75483a83f5b9a45",
+            "bytes": 397
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 168.04286684200633,
+          "metrics": {
+            "dev.piqa.nll": 2.524297496074691,
+            "dev.piqa.accuracy": 0.73,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5703651517044054,
+            "dev.boolq.accuracy": 0.822,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.547331323889548
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/dev-epoch-3.json",
+            "sha256": "b5d99545dfb8487c06cba57e704f0fac794e90a6b471328f0ce5c7a61529aae7",
+            "bytes": 398
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 162.00525483500678,
+          "metrics": {
+            "dev.piqa.nll": 2.530772180104335,
+            "dev.piqa.accuracy": 0.731,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.7367623046391173,
+            "dev.boolq.accuracy": 0.826,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.633767242371726
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/predictions.jsonl",
+        "sha256": "07d2f266bda3fa835cf9258b2544eab408bf6253abb7023ffa48fffc7ea2538e",
+        "bytes": 375382
+      }
+    },
+    {
+      "arm": "V5-C",
+      "seed": 3,
+      "attempt": "ATT-0131-1",
+      "result": "RES-0149",
+      "job_id": "3765069.opbs",
+      "scheduler_MIG_seconds": 6023,
+      "scheduler_node_h": 0.4182638888888889,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "494973f56427093143ae1307e004574aae57ba82e645df0ee5e2491a47710095",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 1.3762702960520983,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 524288,
+        "params.stored": 596574208,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 5370.171955176047,
+        "train.steady_step_seconds": 0.18404695259680004,
+        "train.peak_cuda_bytes": 3298535424,
+        "monitor.seconds": 467.9897815839504,
+        "params.with_grad": 524288,
+        "save.seconds": 0.0074566699913702905,
+        "dev.piqa.nll": 2.5261620141770518,
+        "dev.piqa.accuracy": 0.722,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.7263864268536417,
+        "dev.boolq.accuracy": 0.817,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.6262742205153469,
+        "reload.load_seconds": 0.26186476403381675,
+        "reload.eval_seconds": 160.01123384200037,
+        "reload.identical": true,
+        "elapsed_s": 6009.061038189975
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/dev-epoch-1.json",
+            "sha256": "d84473d550f4e1559ef12beaf6c591009dbb68454864282d9fe5b056c863afe6",
+            "bytes": 398
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 158.18563758500386,
+          "metrics": {
+            "dev.piqa.nll": 2.5449023156726978,
+            "dev.piqa.accuracy": 0.73,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5193905113311484,
+            "dev.boolq.accuracy": 0.804,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5321464135019232
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/dev-epoch-2.json",
+            "sha256": "6af30060bda632ec7d3158b4525359dfd90b6fc8f90d882527b5065077997a52",
+            "bytes": 400
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 154.15372823597863,
+          "metrics": {
+            "dev.piqa.nll": 2.5264470496303346,
+            "dev.piqa.accuracy": 0.725,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5702174737364986,
+            "dev.boolq.accuracy": 0.817,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5483322616834165
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/dev-epoch-3.json",
+            "sha256": "a979d693b94562d5a5c4f9bff1fd2153113f516a50c9078d11e72d8a796e9dad",
+            "bytes": 400
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 155.63859085203148,
+          "metrics": {
+            "dev.piqa.nll": 2.5261620141770518,
+            "dev.piqa.accuracy": 0.722,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.7263864268536417,
+            "dev.boolq.accuracy": 0.817,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.6262742205153469
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/predictions.jsonl",
+        "sha256": "0c58c35a3545e6f0dda81cca85eacd0ac3c95bfee9f7832a634bc7547caa7778",
+        "bytes": 375155
+      }
+    },
+    {
+      "arm": "V5-F",
+      "seed": 1,
+      "attempt": "ATT-0132-1",
+      "result": "RES-0150",
+      "job_id": "3765071.opbs",
+      "scheduler_MIG_seconds": 6287,
+      "scheduler_node_h": 0.43659722222222225,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "86640e55b86142c3b585688c7ada5f8b63bf5fe8995a7d451eaa608e95b4562a",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 1.4265358410193585,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 524288,
+        "params.stored": 596574208,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 5587.521683879953,
+        "train.steady_step_seconds": 0.19150194484781063,
+        "train.peak_cuda_bytes": 3295838208,
+        "monitor.seconds": 510.3001245270134,
+        "params.with_grad": 524288,
+        "save.seconds": 0.00763568002730608,
+        "dev.piqa.nll": 2.5267280591489096,
+        "dev.piqa.accuracy": 0.731,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.7000339428325533,
+        "dev.boolq.accuracy": 0.82,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.6133810009907315,
+        "reload.load_seconds": 0.2602967380080372,
+        "reload.eval_seconds": 165.24250361096347,
+        "reload.identical": true,
+        "elapsed_s": 6273.8513579030405
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/dev-epoch-1.json",
+            "sha256": "cb8a3bfc757a5ff65d5c1bc926dcceac401387d643df1df329c55c67ab231418",
+            "bytes": 399
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 170.97786782501498,
+          "metrics": {
+            "dev.piqa.nll": 2.5429277444828866,
+            "dev.piqa.accuracy": 0.734,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5524904077816755,
+            "dev.boolq.accuracy": 0.768,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5477090761322811
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/dev-epoch-2.json",
+            "sha256": "4a33615c3d83ccc2145c17259900b05a775205b8f2ed24854deae9a720ea0553",
+            "bytes": 398
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 170.2268127219868,
+          "metrics": {
+            "dev.piqa.nll": 2.5237284305873877,
+            "dev.piqa.accuracy": 0.732,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.4953460159203969,
+            "dev.boolq.accuracy": 0.82,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5095372232538924
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/dev-epoch-3.json",
+            "sha256": "01c72ecb842e2b49f82d0a02b0301fe28da14e648721446fcd48881249e04647",
+            "bytes": 399
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 169.07335989404237,
+          "metrics": {
+            "dev.piqa.nll": 2.5267280591489096,
+            "dev.piqa.accuracy": 0.731,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.7000339428325533,
+            "dev.boolq.accuracy": 0.82,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.6133810009907315
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/predictions.jsonl",
+        "sha256": "8f35657c3001d018587d191fabb982d4d9f52caa71640bddeab03ffe1d404773",
+        "bytes": 374769
+      }
+    },
+    {
+      "arm": "V5-F",
+      "seed": 2,
+      "attempt": "ATT-0133-1",
+      "result": "RES-0151",
+      "job_id": "3765072.opbs",
+      "scheduler_MIG_seconds": 6002,
+      "scheduler_node_h": 0.41680555555555554,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "6b51f0bdfeb3be5e266c0d979488df997cdccc14a28835310157b8f64dbab699",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 1.3242890649707988,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 524288,
+        "params.stored": 596574208,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 5348.123528084019,
+        "train.steady_step_seconds": 0.18329463721892814,
+        "train.peak_cuda_bytes": 3301803520,
+        "monitor.seconds": 471.8846842269413,
+        "params.with_grad": 524288,
+        "save.seconds": 0.03618737799115479,
+        "dev.piqa.nll": 2.525445410500104,
+        "dev.piqa.accuracy": 0.736,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.6848245134301687,
+        "dev.boolq.accuracy": 0.828,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.6051349619651365,
+        "reload.load_seconds": 0.45267631503520533,
+        "reload.eval_seconds": 156.18417916400358,
+        "reload.identical": true,
+        "elapsed_s": 5987.2163979150355
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/dev-epoch-1.json",
+            "sha256": "7a5dfbdd677ad4d4b0730d104772d440b0be87aeab88ac21bd65f49341929a1e",
+            "bytes": 398
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 156.46232367301127,
+          "metrics": {
+            "dev.piqa.nll": 2.546492192551146,
+            "dev.piqa.accuracy": 0.726,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5687715726625174,
+            "dev.boolq.accuracy": 0.777,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5576318826068316
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/dev-epoch-2.json",
+            "sha256": "e20f43dd2bba082ab7018aa2168560e4e2d063e02a56cb2b1d5bcef2badbda4c",
+            "bytes": 400
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 158.31222914601676,
+          "metrics": {
+            "dev.piqa.nll": 2.5233408944022537,
+            "dev.piqa.accuracy": 0.736,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5087534812360537,
+            "dev.boolq.accuracy": 0.818,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5160471878191537
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/dev-epoch-3.json",
+            "sha256": "ccedc9fe63a550293a09d0f3d1811499b3e085ffb4377221ba56dac729ab35cb",
+            "bytes": 399
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 157.07386768003926,
+          "metrics": {
+            "dev.piqa.nll": 2.525445410500104,
+            "dev.piqa.accuracy": 0.736,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.6848245134301687,
+            "dev.boolq.accuracy": 0.828,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.6051349619651365
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/predictions.jsonl",
+        "sha256": "a1f32e928a3660972f4b1d75e0de24ef2737c7e66ce50862c1a1de13d3ae466e",
+        "bytes": 375129
+      }
+    },
+    {
+      "arm": "V5-F",
+      "seed": 3,
+      "attempt": "ATT-0134-1",
+      "result": "RES-0152",
+      "job_id": "3765073.opbs",
+      "scheduler_MIG_seconds": 5680,
+      "scheduler_node_h": 0.39444444444444443,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "494973f56427093143ae1307e004574aae57ba82e645df0ee5e2491a47710095",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 0.8546214970410801,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 524288,
+        "params.stored": 596574208,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 5061.45790131198,
+        "train.steady_step_seconds": 0.17346255554928383,
+        "train.peak_cuda_bytes": 3302450176,
+        "monitor.seconds": 445.4697915830184,
+        "params.with_grad": 524288,
+        "save.seconds": 0.02963927498785779,
+        "dev.piqa.nll": 2.526018652539347,
+        "dev.piqa.accuracy": 0.733,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.7235881665867054,
+        "dev.boolq.accuracy": 0.819,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.6248034095630262,
+        "reload.load_seconds": 0.5230594499735162,
+        "reload.eval_seconds": 147.43489470297936,
+        "reload.identical": true,
+        "elapsed_s": 5664.763034311996
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/dev-epoch-1.json",
+            "sha256": "89c23dbbd510dcffa058fd6dcb2e8959930d6ab38ddbdad41966f8a3c6eee427",
+            "bytes": 399
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 147.93928970501292,
+          "metrics": {
+            "dev.piqa.nll": 2.548015477515088,
+            "dev.piqa.accuracy": 0.731,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.49996330387005583,
+            "dev.boolq.accuracy": 0.799,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5239893906925719
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/dev-epoch-2.json",
+            "sha256": "8020769294d857ded1010cab8343b9d79dffb389a67865e9509f0c360f5b1d7f",
+            "bytes": 397
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 147.4201746279723,
+          "metrics": {
+            "dev.piqa.nll": 2.524685274437279,
+            "dev.piqa.accuracy": 0.736,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5759032680886448,
+            "dev.boolq.accuracy": 0.823,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.550294271262962
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/dev-epoch-3.json",
+            "sha256": "47cf787214c28a80757a0c95be74060c9873645179b04b2b3a239214ee8a34c1",
+            "bytes": 398
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 150.0675545820268,
+          "metrics": {
+            "dev.piqa.nll": 2.526018652539347,
+            "dev.piqa.accuracy": 0.733,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.7235881665867054,
+            "dev.boolq.accuracy": 0.819,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.6248034095630262
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/predictions.jsonl",
+        "sha256": "9de163d8044687d814985ca4ff2c639457d3748183254fea2942ed7f8c32c7d6",
+        "bytes": 375056
+      }
+    },
+    {
+      "arm": "V5-L",
+      "seed": 1,
+      "attempt": "ATT-0135-1",
+      "result": "RES-0165",
+      "job_id": "3765074.opbs",
+      "scheduler_MIG_seconds": 11945,
+      "scheduler_node_h": 0.8295138888888889,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "86640e55b86142c3b585688c7ada5f8b63bf5fe8995a7d451eaa608e95b4562a",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 0.6121956590213813,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 630784,
+        "params.stored": 596680704,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 10992.858981295954,
+        "train.steady_step_seconds": 0.37685048430474066,
+        "train.peak_cuda_bytes": 4268922880,
+        "monitor.seconds": 697.9696672120481,
+        "params.with_grad": 630784,
+        "save.seconds": 0.02579880302073434,
+        "dev.piqa.nll": 2.5736007275282295,
+        "dev.piqa.accuracy": 0.746,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.6591496374189737,
+        "dev.boolq.accuracy": 0.836,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.6163751824736017,
+        "reload.load_seconds": 0.49989144498249516,
+        "reload.eval_seconds": 235.28994313598378,
+        "reload.identical": true,
+        "elapsed_s": 11935.967555577983
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/dev-epoch-1.json",
+            "sha256": "bc1b99ad7df066e746ed60893b49b4214091f1282fcea8c7f0f7fd84042d898b",
+            "bytes": 398
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 229.1243649040116,
+          "metrics": {
+            "dev.piqa.nll": 2.621441940738237,
+            "dev.piqa.accuracy": 0.737,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.49288806827832016,
+            "dev.boolq.accuracy": 0.803,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5571650045082785
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/dev-epoch-2.json",
+            "sha256": "3e11f84d263092250cd8a25cf724260cc46872370337a6c7b0fd65d57707c7ef",
+            "bytes": 399
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 235.10327953001251,
+          "metrics": {
+            "dev.piqa.nll": 2.558473263094157,
+            "dev.piqa.accuracy": 0.737,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5086116342323367,
+            "dev.boolq.accuracy": 0.823,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5335424486632467
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/dev-epoch-3.json",
+            "sha256": "cc3c79f1aaaf2bd1355bc23863491567a64aba326f4dc84b8d59a4bb959cb6af",
+            "bytes": 398
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 233.709948298987,
+          "metrics": {
+            "dev.piqa.nll": 2.5736007275282295,
+            "dev.piqa.accuracy": 0.746,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.6591496374189737,
+            "dev.boolq.accuracy": 0.836,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.6163751824736017
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/predictions.jsonl",
+        "sha256": "2a52992d52fb577483d6a477e4ab7c2b4e0874833e00e530b7d403a98b6e47d0",
+        "bytes": 375046
+      }
+    },
+    {
+      "arm": "V5-L",
+      "seed": 2,
+      "attempt": "ATT-0136-1",
+      "result": "RES-0166",
+      "job_id": "3765075.opbs",
+      "scheduler_MIG_seconds": 13178,
+      "scheduler_node_h": 0.9151388888888888,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "6b51f0bdfeb3be5e266c0d979488df997cdccc14a28835310157b8f64dbab699",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 0.5968870869837701,
+        "hardware": "NVIDIA GH200 120GB MIG 1g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 630784,
+        "params.stored": 596680704,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 12073.915253722982,
+        "train.steady_step_seconds": 0.41392331507606067,
+        "train.peak_cuda_bytes": 4275067904,
+        "monitor.seconds": 812.2587229530327,
+        "params.with_grad": 630784,
+        "save.seconds": 0.02327418903587386,
+        "dev.piqa.nll": 2.555797094719355,
+        "dev.piqa.accuracy": 0.741,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.7313611761318607,
+        "dev.boolq.accuracy": 0.827,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.643579135425608,
+        "reload.load_seconds": 0.3053523249691352,
+        "reload.eval_seconds": 272.1740610250272,
+        "reload.identical": true,
+        "elapsed_s": 13168.212015762983
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/dev-epoch-1.json",
+            "sha256": "9b50578563a70bb22db1cc2533fa8a38b39be7bb9999fa05ff56a7d9759c0f5f",
+            "bytes": 398
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 265.5111927840044,
+          "metrics": {
+            "dev.piqa.nll": 2.6228058032621737,
+            "dev.piqa.accuracy": 0.738,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5999448074661196,
+            "dev.boolq.accuracy": 0.762,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.6113753053641466
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/dev-epoch-2.json",
+            "sha256": "830b668b2c222dfb29e601d2ad2b7537b141537c895d767a199aaa9eefa9226a",
+            "bytes": 399
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 271.06820245296694,
+          "metrics": {
+            "dev.piqa.nll": 2.543060061734462,
+            "dev.piqa.accuracy": 0.736,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.5195634060720913,
+            "dev.boolq.accuracy": 0.807,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5313117339032767
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/dev-epoch-3.json",
+            "sha256": "c1193194253eabbd8c22fec54f00670c1030d908a5e388630dc034531859deda",
+            "bytes": 397
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 275.6543243409833,
+          "metrics": {
+            "dev.piqa.nll": 2.555797094719355,
+            "dev.piqa.accuracy": 0.741,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.7313611761318607,
+            "dev.boolq.accuracy": 0.827,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.643579135425608
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/predictions.jsonl",
+        "sha256": "dd4ab0510a0bdaa57f59dc866475ad15c4af32cf7f072888c42c5de12e19f850",
+        "bytes": 375210
+      }
+    },
+    {
+      "arm": "V5-L",
+      "seed": 3,
+      "attempt": "ATT-0137-1",
+      "result": "RES-0167",
+      "job_id": "3765077.opbs",
+      "scheduler_MIG_seconds": 12104,
+      "scheduler_node_h": 0.8405555555555555,
+      "metrics": {
+        "learning_rate": 0.001,
+        "lr_lock.sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+        "data.rows_per_epoch": 19443,
+        "plan.steps": 29165,
+        "plan.examples": 58329,
+        "plan.input_tokens": 4173300,
+        "plan.order_sha256": "494973f56427093143ae1307e004574aae57ba82e645df0ee5e2491a47710095",
+        "plan.epoch_end_steps": {
+          "1": 9722,
+          "2": 19443,
+          "3": 29165
+        },
+        "load.seconds": 1.1781288539641537,
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "torch": "2.10.0+cu128",
+        "transformers": "4.57.1",
+        "cuda": "12.8",
+        "params.trainable": 630784,
+        "params.stored": 596680704,
+        "train.steps": 29165,
+        "train.input_tokens": 4173300,
+        "train.loss_tokens": 919710,
+        "train.padded_tokens": 0,
+        "train.examples": 58329,
+        "train.seconds": 11127.21642120002,
+        "train.steady_step_seconds": 0.3814483163004538,
+        "train.peak_cuda_bytes": 4278430720,
+        "monitor.seconds": 722.4904691629927,
+        "params.with_grad": 630784,
+        "save.seconds": 0.03882959298789501,
+        "dev.piqa.nll": 2.574871097144567,
+        "dev.piqa.accuracy": 0.74,
+        "dev.piqa.examples": 1000,
+        "dev.piqa.loss_tokens": 23183,
+        "dev.boolq.nll": 0.710368696244841,
+        "dev.boolq.accuracy": 0.827,
+        "dev.boolq.examples": 1000,
+        "dev.boolq.loss_tokens": 1000,
+        "dev.nll": 1.642619896694704,
+        "reload.load_seconds": 0.49204151099547744,
+        "reload.eval_seconds": 228.0973280610051,
+        "reload.identical": true,
+        "elapsed_s": 12088.448841084028
+      },
+      "epochs": [
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/dev-epoch-1.json",
+            "sha256": "1365b553502c2538b7a1a417c137dda03d2bd7cf83e90235f663900d48f79ab8",
+            "bytes": 398
+          },
+          "epoch": 1,
+          "step": 9722,
+          "seconds": 239.17744664504426,
+          "metrics": {
+            "dev.piqa.nll": 2.615396160412065,
+            "dev.piqa.accuracy": 0.729,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.4963382494552061,
+            "dev.boolq.accuracy": 0.799,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5558672049336355
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/dev-epoch-2.json",
+            "sha256": "afe32ba41fc9ea2102a731fae8eeb63cc3a7b7e477bef8883193e313490d7ece",
+            "bytes": 398
+          },
+          "epoch": 2,
+          "step": 19443,
+          "seconds": 251.71967511001276,
+          "metrics": {
+            "dev.piqa.nll": 2.553549638085743,
+            "dev.piqa.accuracy": 0.736,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.4845924783293158,
+            "dev.boolq.accuracy": 0.82,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.5190710582075295
+          }
+        },
+        {
+          "file": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/dev-epoch-3.json",
+            "sha256": "644725643ab6ab2aa74fb28d77440934d45a6e628217c17adc643d42667d49fc",
+            "bytes": 396
+          },
+          "epoch": 3,
+          "step": 29165,
+          "seconds": 231.55246601602994,
+          "metrics": {
+            "dev.piqa.nll": 2.574871097144567,
+            "dev.piqa.accuracy": 0.74,
+            "dev.piqa.examples": 1000,
+            "dev.piqa.loss_tokens": 23183,
+            "dev.boolq.nll": 0.710368696244841,
+            "dev.boolq.accuracy": 0.827,
+            "dev.boolq.examples": 1000,
+            "dev.boolq.loss_tokens": 1000,
+            "dev.nll": 1.642619896694704
+          }
+        }
+      ],
+      "predictions": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/predictions.jsonl",
+        "sha256": "13cdd35bc9e464b2d75d74157125980ac25e048873e4dbd431b97b3c7dd498d3",
+        "bytes": 375523
+      }
+    }
+  ],
+  "formal_training_MIG_seconds": 73357,
+  "other_T0013_completed_MIG_seconds": 10147,
+  "validation_accessed": false
+}

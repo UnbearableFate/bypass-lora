@@ -1,0 +1,83 @@
+{
+  "contract": "E-0013@3",
+  "locked_lrs": {
+    "V5-C": 0.001,
+    "V5-F": 0.001,
+    "V5-L": 0.001
+  },
+  "calibration_manifests": [
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0101-1/manifest.json",
+      "sha256": "06d8c2e1621ca0d7961a29d63d3959e500f51c6362cb73f003c355178eff8fe1",
+      "arm": "V5-C",
+      "lr": 0.0001
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0102-1/manifest.json",
+      "sha256": "257365d3e71560fe2cb828be0a926935608fdd9dc96397ea12e046e01d154711",
+      "arm": "V5-C",
+      "lr": 0.0003
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0103-1/manifest.json",
+      "sha256": "c65679882f6487f36779a2a5b0de3be6d461bb39314132dea6b330f3fab0102f",
+      "arm": "V5-C",
+      "lr": 0.001
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0104-1/manifest.json",
+      "sha256": "3a99d2faf3f09422b298cb476429c5c6882c660a92ee161ca5ad01e4f7ade36d",
+      "arm": "V5-F",
+      "lr": 0.0001
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0105-1/manifest.json",
+      "sha256": "f7a89ab279fc99a19c91d00078e7a7b770f9cfc98f135a6a1c73f29d6493647d",
+      "arm": "V5-F",
+      "lr": 0.0003
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0106-1/manifest.json",
+      "sha256": "9a11d44cde02cb4e836a2e3d8f0fb080ae5a002f0a0633741d9283ccfe0ff9a9",
+      "arm": "V5-F",
+      "lr": 0.001
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0107-1/manifest.json",
+      "sha256": "ef1d636dbdb4d15b83255bda5d6d575ef36b9f4e955365a46c540de4e2988470",
+      "arm": "V5-L",
+      "lr": 0.0001
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0108-1/manifest.json",
+      "sha256": "d4f3ce31882469b73b95f9d5ddc9bcb3df9d6eff9462096dc5d6ca4b54cac201",
+      "arm": "V5-L",
+      "lr": 0.0003
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0109-1/manifest.json",
+      "sha256": "6ac6d27a87d0840ba5941f411e9773cf9f975c85f6a796c1982da8ce4752d909",
+      "arm": "V5-L",
+      "lr": 0.001
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0118-1/manifest.json",
+      "sha256": "67740660f7080f3c0fa059da555c85355341ae575817a45553050bdc202c2f40",
+      "arm": "V5-C",
+      "lr": 0.003
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0119-1/manifest.json",
+      "sha256": "267ee7fe3c53842c4cf34da21168fefc5d7f1f0ac8091e881493eafdab4dd5b4",
+      "arm": "V5-F",
+      "lr": 0.003
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0120-1/manifest.json",
+      "sha256": "ee5b421be081d48b1142c1dc6132937cf839d2763fd92ee289dd297973a36b3f",
+      "arm": "V5-L",
+      "lr": 0.003
+    }
+  ],
+  "rule": "expand raw finite initial-grid minimum once; smallest LR within 1% of final finite NLL minimum"
+}

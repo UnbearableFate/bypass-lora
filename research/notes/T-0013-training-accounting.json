@@ -1,0 +1,81 @@
+{
+  "contract": "E-0013@3",
+  "formal_runs": [
+    {
+      "arm": "V5-C",
+      "seed": 1,
+      "attempt": "ATT-0129-1",
+      "job_id": "3765067.opbs",
+      "result": "RES-0147",
+      "used_MIG_seconds": 5961
+    },
+    {
+      "arm": "V5-C",
+      "seed": 2,
+      "attempt": "ATT-0130-1",
+      "job_id": "3765068.opbs",
+      "result": "RES-0148",
+      "used_MIG_seconds": 6177
+    },
+    {
+      "arm": "V5-C",
+      "seed": 3,
+      "attempt": "ATT-0131-1",
+      "job_id": "3765069.opbs",
+      "result": "RES-0149",
+      "used_MIG_seconds": 6023
+    },
+    {
+      "arm": "V5-F",
+      "seed": 1,
+      "attempt": "ATT-0132-1",
+      "job_id": "3765071.opbs",
+      "result": "RES-0150",
+      "used_MIG_seconds": 6287
+    },
+    {
+      "arm": "V5-F",
+      "seed": 2,
+      "attempt": "ATT-0133-1",
+      "job_id": "3765072.opbs",
+      "result": "RES-0151",
+      "used_MIG_seconds": 6002
+    },
+    {
+      "arm": "V5-F",
+      "seed": 3,
+      "attempt": "ATT-0134-1",
+      "job_id": "3765073.opbs",
+      "result": "RES-0152",
+      "used_MIG_seconds": 5680
+    },
+    {
+      "arm": "V5-L",
+      "seed": 1,
+      "attempt": "ATT-0135-1",
+      "job_id": "3765074.opbs",
+      "result": "RES-0165",
+      "used_MIG_seconds": 11945
+    },
+    {
+      "arm": "V5-L",
+      "seed": 2,
+      "attempt": "ATT-0136-1",
+      "job_id": "3765075.opbs",
+      "result": "RES-0166",
+      "used_MIG_seconds": 13178
+    },
+    {
+      "arm": "V5-L",
+      "seed": 3,
+      "attempt": "ATT-0137-1",
+      "job_id": "3765077.opbs",
+      "result": "RES-0167",
+      "used_MIG_seconds": 12104
+    }
+  ],
+  "other_T0013_completed_MIG_seconds": 10147,
+  "other_usage_basis": "Previously imported measured PBS walltime: original calibration/smoke/report/Base/lock 8614 s; guard validation 2 s; two plain diagnostic repeats 1518 s; unused helper regression 13 s. No slice comparison.",
+  "conversion": "one MIG instance second / 14400 = node_h; all profiles use the same user accounting rule",
+  "usage_already_imported": true
+}

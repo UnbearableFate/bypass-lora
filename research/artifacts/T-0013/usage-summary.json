@@ -1,0 +1,121 @@
+{
+  "task": "T-0013",
+  "experiment": "E-0013@3",
+  "basis": "measured scheduler resources_used.walltime;one MIG instance per job",
+  "conversion": "node_h = MIG seconds / 14400; user accounting uses the same quarter-node rule for all MIG profiles",
+  "formal_runs": [
+    {
+      "arm": "V5-C",
+      "seed": 1,
+      "attempt": "ATT-0129-1",
+      "job_id": "3765067.opbs",
+      "result": "RES-0147",
+      "used_MIG_seconds": 5961,
+      "node_h": 0.4139583333333333
+    },
+    {
+      "arm": "V5-C",
+      "seed": 2,
+      "attempt": "ATT-0130-1",
+      "job_id": "3765068.opbs",
+      "result": "RES-0148",
+      "used_MIG_seconds": 6177,
+      "node_h": 0.42895833333333333
+    },
+    {
+      "arm": "V5-C",
+      "seed": 3,
+      "attempt": "ATT-0131-1",
+      "job_id": "3765069.opbs",
+      "result": "RES-0149",
+      "used_MIG_seconds": 6023,
+      "node_h": 0.4182638888888889
+    },
+    {
+      "arm": "V5-F",
+      "seed": 1,
+      "attempt": "ATT-0132-1",
+      "job_id": "3765071.opbs",
+      "result": "RES-0150",
+      "used_MIG_seconds": 6287,
+      "node_h": 0.43659722222222225
+    },
+    {
+      "arm": "V5-F",
+      "seed": 2,
+      "attempt": "ATT-0133-1",
+      "job_id": "3765072.opbs",
+      "result": "RES-0151",
+      "used_MIG_seconds": 6002,
+      "node_h": 0.41680555555555554
+    },
+    {
+      "arm": "V5-F",
+      "seed": 3,
+      "attempt": "ATT-0134-1",
+      "job_id": "3765073.opbs",
+      "result": "RES-0152",
+      "used_MIG_seconds": 5680,
+      "node_h": 0.39444444444444443
+    },
+    {
+      "arm": "V5-L",
+      "seed": 1,
+      "attempt": "ATT-0135-1",
+      "job_id": "3765074.opbs",
+      "result": "RES-0165",
+      "used_MIG_seconds": 11945,
+      "node_h": 0.8295138888888889
+    },
+    {
+      "arm": "V5-L",
+      "seed": 2,
+      "attempt": "ATT-0136-1",
+      "job_id": "3765075.opbs",
+      "result": "RES-0166",
+      "used_MIG_seconds": 13178,
+      "node_h": 0.9151388888888888
+    },
+    {
+      "arm": "V5-L",
+      "seed": 3,
+      "attempt": "ATT-0137-1",
+      "job_id": "3765077.opbs",
+      "result": "RES-0167",
+      "used_MIG_seconds": 12104,
+      "node_h": 0.8405555555555555
+    }
+  ],
+  "formal_training_MIG_seconds": 73357,
+  "formal_training_node_h": 5.094236111111111,
+  "prior_T0013_MIG_seconds": 10147,
+  "prior_T0013_node_h": 0.7046527777777778,
+  "prior_usage_basis": "Previously imported smoke/calibration/report/Base/lock:8614 s;guard validation:2 s;two completed plain diagnostic repeats:1518 s;unused helper regression:13 s.",
+  "final_latency": {
+    "attempt": "ATT-0174-1",
+    "result": "RES-0172",
+    "job_id": "3767640.opbs",
+    "MIG_seconds": 179,
+    "node_h": 0.012430555555555556,
+    "accounting_ref": "miyabi-pbs:3767640.opbs"
+  },
+  "final_tabulation": {
+    "attempt": "ATT-0175-1",
+    "result": "RES-0173",
+    "job_id": "3767690.opbs",
+    "MIG_seconds": 1,
+    "node_h": 0.00006944444444444444,
+    "accounting_ref": "miyabi-pbs:3767690.opbs"
+  },
+  "total_T0013_MIG_seconds": 83684,
+  "total_T0013_node_h": 5.811388888888889,
+  "all_T0013_job_usage_recorded": true,
+  "pending_T0013_jobs": [],
+  "scope_note": "T0013 subtotal only;T0014/T0015 and other E0013 workers' costs belong to their records and are not included here. E0013 ceiling12node_h is shared.",
+  "cost_table_source": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0175-1/cost-summary.json",
+    "sha256": "cc36b0911cb2d1ee274534b95acbeee5be6c577ec13d0431f1ab0f8c7683d695",
+    "bytes": 9011
+  },
+  "note": "The immutable cost-table source reports totals through latency;this final accounting includes the completed one-second tabulation job. All listed usage was imported exactly once."
+}

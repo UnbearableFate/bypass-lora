@@ -1,0 +1,243 @@
+{
+  "experiment": "E-0013@3",
+  "scope": "descriptive training/dev/latency costs only",
+  "learning_rate_lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/2b5c809f6101b5ba132d5565ebbf73ef91e105da/research/artifacts/T-0013/lr-lock.json",
+    "sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+    "bytes": 2859
+  },
+  "checkpoints": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/checkpoint-inventory.json",
+    "sha256": "2886d4981d2fe954bfc022b2d5b6641af638d1d0529d0012755538bd60619619",
+    "bytes": 10830
+  },
+  "training_summary": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/training-summary.json",
+    "sha256": "7d2c35cef7a5c8816d653b291e73ccfa3397989cf22f39ad72611aedf694f377",
+    "bytes": 41028
+  },
+  "latency_manifest": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/manifest.json",
+    "sha256": "fc05e0afd4f6538ef0eeb2645cf95735ff028c418e8f7e8ec3b55622510626d1",
+    "bytes": 1391
+  },
+  "latency_raw": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/latency.json",
+    "sha256": "00b0a4a2aa255ae074c3b12b5059920c1b9015e60b645bbec6eddb651eac2d48",
+    "bytes": 105942
+  },
+  "latency_guard": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/mig-profile.json",
+    "sha256": "2ebf822f72c0582646b54be4ea42ca448264b9fcc0071c5024d60111c8b8d7f6",
+    "bytes": 382
+  },
+  "latency_inputs": 256,
+  "latency_input_sha256": "53ebd2072ca5140cb533feb25d9d4f3aebd1d4376097b6eff39f92f83c270faf",
+  "latency_hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+  "latency_ms": {
+    "base": {
+      "count": 768,
+      "mean_ms": 36.650579542083506,
+      "median_ms": 35.837196512147784,
+      "p95_ms": 42.62098501203582
+    },
+    "V5-C": {
+      "count": 768,
+      "mean_ms": 37.803234421820285,
+      "median_ms": 37.782364030135795,
+      "p95_ms": 38.540544046554714
+    },
+    "V5-F": {
+      "count": 768,
+      "mean_ms": 38.090068237049,
+      "median_ms": 38.06972553138621,
+      "p95_ms": 39.00493198307231
+    },
+    "V5-L": {
+      "count": 768,
+      "mean_ms": 55.760591947015804,
+      "median_ms": 55.736401001922786,
+      "p95_ms": 56.867382023483515
+    },
+    "V5-L-merged": {
+      "count": 768,
+      "mean_ms": 35.929941649025444,
+      "median_ms": 35.91556448373012,
+      "p95_ms": 36.759474023710936
+    }
+  },
+  "latency_rule": "batch1, first64 dev rows per task, both candidates, 16 warmups, 3 timed passes; synchronized host forward walltime",
+  "merge_note": "BF16 merged weights incur one rounding; timing only, unmerged checkpoint used for task scoring",
+  "merge_first_input_logit_max_abs": 0.875,
+  "training_costs": [
+    {
+      "arm": "V5-C",
+      "seed": 1,
+      "attempt": "ATT-0129-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765067.opbs",
+      "scheduler_MIG_seconds": 5961,
+      "scheduler_node_h": 0.4139583333333333,
+      "load.seconds": 1.356329571979586,
+      "train.seconds": 5293.831502134039,
+      "train.steady_step_seconds": 0.18142728084070864,
+      "train.peak_cuda_bytes": 3297333248,
+      "monitor.seconds": 483.91473820398096,
+      "save.seconds": 0.022914755973033607,
+      "reload.load_seconds": 0.4771584940026514,
+      "reload.eval_seconds": 157.1487457100302
+    },
+    {
+      "arm": "V5-C",
+      "seed": 2,
+      "attempt": "ATT-0130-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 1g.24gb",
+      "job_id": "3765068.opbs",
+      "scheduler_MIG_seconds": 6177,
+      "scheduler_node_h": 0.42895833333333333,
+      "load.seconds": 1.3945316940080374,
+      "train.seconds": 5498.739314445993,
+      "train.steady_step_seconds": 0.1884562960682832,
+      "train.peak_cuda_bytes": 3304173056,
+      "monitor.seconds": 498.6390081560239,
+      "save.seconds": 0.007169728050939739,
+      "reload.load_seconds": 0.26211749797221273,
+      "reload.eval_seconds": 155.37971111602383
+    },
+    {
+      "arm": "V5-C",
+      "seed": 3,
+      "attempt": "ATT-0131-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765069.opbs",
+      "scheduler_MIG_seconds": 6023,
+      "scheduler_node_h": 0.4182638888888889,
+      "load.seconds": 1.3762702960520983,
+      "train.seconds": 5370.171955176047,
+      "train.steady_step_seconds": 0.18404695259680004,
+      "train.peak_cuda_bytes": 3298535424,
+      "monitor.seconds": 467.9897815839504,
+      "save.seconds": 0.0074566699913702905,
+      "reload.load_seconds": 0.26186476403381675,
+      "reload.eval_seconds": 160.01123384200037
+    },
+    {
+      "arm": "V5-F",
+      "seed": 1,
+      "attempt": "ATT-0132-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765071.opbs",
+      "scheduler_MIG_seconds": 6287,
+      "scheduler_node_h": 0.43659722222222225,
+      "load.seconds": 1.4265358410193585,
+      "train.seconds": 5587.521683879953,
+      "train.steady_step_seconds": 0.19150194484781063,
+      "train.peak_cuda_bytes": 3295838208,
+      "monitor.seconds": 510.3001245270134,
+      "save.seconds": 0.00763568002730608,
+      "reload.load_seconds": 0.2602967380080372,
+      "reload.eval_seconds": 165.24250361096347
+    },
+    {
+      "arm": "V5-F",
+      "seed": 2,
+      "attempt": "ATT-0133-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765072.opbs",
+      "scheduler_MIG_seconds": 6002,
+      "scheduler_node_h": 0.41680555555555554,
+      "load.seconds": 1.3242890649707988,
+      "train.seconds": 5348.123528084019,
+      "train.steady_step_seconds": 0.18329463721892814,
+      "train.peak_cuda_bytes": 3301803520,
+      "monitor.seconds": 471.8846842269413,
+      "save.seconds": 0.03618737799115479,
+      "reload.load_seconds": 0.45267631503520533,
+      "reload.eval_seconds": 156.18417916400358
+    },
+    {
+      "arm": "V5-F",
+      "seed": 3,
+      "attempt": "ATT-0134-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765073.opbs",
+      "scheduler_MIG_seconds": 5680,
+      "scheduler_node_h": 0.39444444444444443,
+      "load.seconds": 0.8546214970410801,
+      "train.seconds": 5061.45790131198,
+      "train.steady_step_seconds": 0.17346255554928383,
+      "train.peak_cuda_bytes": 3302450176,
+      "monitor.seconds": 445.4697915830184,
+      "save.seconds": 0.02963927498785779,
+      "reload.load_seconds": 0.5230594499735162,
+      "reload.eval_seconds": 147.43489470297936
+    },
+    {
+      "arm": "V5-L",
+      "seed": 1,
+      "attempt": "ATT-0135-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765074.opbs",
+      "scheduler_MIG_seconds": 11945,
+      "scheduler_node_h": 0.8295138888888889,
+      "load.seconds": 0.6121956590213813,
+      "train.seconds": 10992.858981295954,
+      "train.steady_step_seconds": 0.37685048430474066,
+      "train.peak_cuda_bytes": 4268922880,
+      "monitor.seconds": 697.9696672120481,
+      "save.seconds": 0.02579880302073434,
+      "reload.load_seconds": 0.49989144498249516,
+      "reload.eval_seconds": 235.28994313598378
+    },
+    {
+      "arm": "V5-L",
+      "seed": 2,
+      "attempt": "ATT-0136-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 1g.24gb",
+      "job_id": "3765075.opbs",
+      "scheduler_MIG_seconds": 13178,
+      "scheduler_node_h": 0.9151388888888888,
+      "load.seconds": 0.5968870869837701,
+      "train.seconds": 12073.915253722982,
+      "train.steady_step_seconds": 0.41392331507606067,
+      "train.peak_cuda_bytes": 4275067904,
+      "monitor.seconds": 812.2587229530327,
+      "save.seconds": 0.02327418903587386,
+      "reload.load_seconds": 0.3053523249691352,
+      "reload.eval_seconds": 272.1740610250272
+    },
+    {
+      "arm": "V5-L",
+      "seed": 3,
+      "attempt": "ATT-0137-1",
+      "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+      "job_id": "3765077.opbs",
+      "scheduler_MIG_seconds": 12104,
+      "scheduler_node_h": 0.8405555555555555,
+      "load.seconds": 1.1781288539641537,
+      "train.seconds": 11127.21642120002,
+      "train.steady_step_seconds": 0.3814483163004538,
+      "train.peak_cuda_bytes": 4278430720,
+      "monitor.seconds": 722.4904691629927,
+      "save.seconds": 0.03882959298789501,
+      "reload.load_seconds": 0.49204151099547744,
+      "reload.eval_seconds": 228.0973280610051
+    }
+  ],
+  "formal_training_MIG_seconds": 73357,
+  "formal_training_node_h": 5.094236111111111,
+  "prior_T0013_MIG_seconds": 10147,
+  "latency_MIG_seconds": 179,
+  "completed_through_latency_MIG_seconds": 83683,
+  "completed_through_latency_node_h": 5.811319444444444,
+  "this_tabulation_usage": "Pending scheduler end; record separately, not zero.",
+  "accounting_rule": "node_h = measured one-MIG scheduler seconds / 14400 for every profile",
+  "validation_accessed": false,
+  "original_lr_lock_final": true,
+  "slice_comparison_performed": false,
+  "checks": {
+    "all_3840_samples_positive_finite": true,
+    "summary_statistics_match_raw": true,
+    "nine_checkpoint_inventory": true
+  }
+}

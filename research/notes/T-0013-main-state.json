@@ -1,0 +1,108 @@
+{
+  "task": "T-0013",
+  "policy_decisions": [
+    "D-0018",
+    "D-0019"
+  ],
+  "formal_code_commit": "2b5c809f6101b5ba132d5565ebbf73ef91e105da",
+  "formal_lr_lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/2b5c809f6101b5ba132d5565ebbf73ef91e105da/research/artifacts/T-0013/lr-lock.json",
+    "sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+    "bytes": 2859
+  },
+  "completed_formal": [
+    {
+      "attempt": "ATT-0129-1",
+      "result": "RES-0147"
+    },
+    {
+      "attempt": "ATT-0130-1",
+      "result": "RES-0148"
+    },
+    {
+      "attempt": "ATT-0131-1",
+      "result": "RES-0149"
+    },
+    {
+      "attempt": "ATT-0132-1",
+      "result": "RES-0150"
+    },
+    {
+      "attempt": "ATT-0133-1",
+      "result": "RES-0151"
+    },
+    {
+      "attempt": "ATT-0134-1",
+      "result": "RES-0152"
+    },
+    {
+      "attempt": "ATT-0135-1",
+      "result": "RES-0165"
+    },
+    {
+      "attempt": "ATT-0136-1",
+      "result": "RES-0166"
+    },
+    {
+      "attempt": "ATT-0137-1",
+      "result": "RES-0167"
+    }
+  ],
+  "pending_formal": [],
+  "latency": {
+    "attempt": "ATT-0174-1",
+    "job_id": "3767640.opbs",
+    "code_commit": "388f2f82cfa91253830343c299db52537bbfffd5",
+    "notification": "N-20261102-011115-6426",
+    "status": "complete",
+    "host": "mg1098",
+    "profile": "2g.24gb",
+    "guard_passed": true,
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1",
+    "result": "RES-0172",
+    "used_MIG_seconds": 179,
+    "positive_finite_samples": 3840
+  },
+  "all_nine_checkpoint_preflight_passed": true,
+  "paired_orders_match": true,
+  "training_evidence": "EV-0101",
+  "checkpoint_inventory": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/checkpoint-inventory.json",
+    "sha256": "2886d4981d2fe954bfc022b2d5b6641af638d1d0529d0012755538bd60619619",
+    "bytes": 10830
+  },
+  "training_summary": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/training-summary.json",
+    "sha256": "7d2c35cef7a5c8816d653b291e73ccfa3397989cf22f39ad72611aedf694f377",
+    "bytes": 41028
+  },
+  "slice_comparison_canceled": true,
+  "actual_slice_comparison_executed": false,
+  "all_2g_lock_executed": false,
+  "original_lock_final": true,
+  "formal_completed_MIG_seconds": 73357,
+  "other_completed_T0013_MIG_seconds": 10147,
+  "known_completed_MIG_seconds": 83684,
+  "known_completed_node_h": 5.811388888888889,
+  "usage_note": "All T0013 jobs ended and measured usage imported once. T0013 subtotal excludes other E0013 workers.",
+  "validation_accessed": false,
+  "cost_tabulation": {
+    "attempt": "ATT-0175-1",
+    "job_id": "3767690.opbs",
+    "code_commit": "3e7c90c8f7f696561b04a71f96a054a5da65e7b6",
+    "status": "complete",
+    "result": "RES-0173",
+    "used_MIG_seconds": 1,
+    "allocation_verified": true,
+    "host": "mg1098"
+  },
+  "phase": "complete_ready_for_delivery",
+  "pending_T0013_jobs": [],
+  "cost_evidence": "EV-0106",
+  "final_usage_summary": {
+    "path": "research/artifacts/T-0013/usage-summary.json",
+    "sha256": "bff57ac450442240418faa0bf770a7d3bf0a13bbc818c4844042649c084fcd31",
+    "bytes": 3674
+  },
+  "delivery_report": "research/notes/T-0013-delivery.md"
+}

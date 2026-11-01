@@ -1,0 +1,92 @@
+{
+  "contract": "E-0013@3",
+  "integration_commit": "5cad3ebb5ec40b1a5990c1d3f92a2cea940b24bc",
+  "endpoints": [
+    {
+      "arm": "V5-C",
+      "lr": 0.003,
+      "run": "RUN-0118",
+      "attempt": "ATT-0118-1",
+      "job_id": "3764753.opbs",
+      "spec_digest": "blake2b:a155cc97ceffeb75bc09ce87fa764c026f84cfa974348fe084288eeeaaec01fc",
+      "code_commit": "5cad3ebb5ec40b1a5990c1d3f92a2cea940b24bc",
+      "expected_seconds": 555,
+      "requested_walltime": "00:14:00"
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.003,
+      "run": "RUN-0119",
+      "attempt": "ATT-0119-1",
+      "job_id": "3764755.opbs",
+      "spec_digest": "blake2b:69bc525b3bc5bc66e5f4ffec4d94e181e9d40710d3a66e19ce0b71f43fdcbdb9",
+      "code_commit": "5cad3ebb5ec40b1a5990c1d3f92a2cea940b24bc",
+      "expected_seconds": 548,
+      "requested_walltime": "00:14:00"
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.003,
+      "run": "RUN-0120",
+      "attempt": "ATT-0120-1",
+      "job_id": "3764756.opbs",
+      "spec_digest": "blake2b:8f51aef723868781d0b65d2a4f9fab4e1a0af7fc9cf8ed3468762ace67aa7856",
+      "code_commit": "5cad3ebb5ec40b1a5990c1d3f92a2cea940b24bc",
+      "expected_seconds": 981,
+      "requested_walltime": "00:25:00"
+    }
+  ],
+  "notification": "N-20261101-204459-d502",
+  "initial_results": [
+    {
+      "attempt": "ATT-0101-1",
+      "result": "RES-0107"
+    },
+    {
+      "attempt": "ATT-0102-1",
+      "result": "RES-0108"
+    },
+    {
+      "attempt": "ATT-0103-1",
+      "result": "RES-0109"
+    },
+    {
+      "attempt": "ATT-0104-1",
+      "result": "RES-0110"
+    },
+    {
+      "attempt": "ATT-0105-1",
+      "result": "RES-0111"
+    },
+    {
+      "attempt": "ATT-0106-1",
+      "result": "RES-0112"
+    },
+    {
+      "attempt": "ATT-0107-1",
+      "result": "RES-0113"
+    },
+    {
+      "attempt": "ATT-0108-1",
+      "result": "RES-0114"
+    },
+    {
+      "attempt": "ATT-0109-1",
+      "result": "RES-0115"
+    },
+    {
+      "attempt": "ATT-0113-1",
+      "result": "RES-0116"
+    }
+  ],
+  "grid_report": {
+    "attempt": "ATT-0117-1",
+    "result": "RES-0117",
+    "evidence": "EV-0077"
+  },
+  "base": {
+    "attempt": "ATT-0113-1",
+    "result": "RES-0116",
+    "evidence": "EV-0078"
+  }
+}

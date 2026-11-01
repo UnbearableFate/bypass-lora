@@ -1,0 +1,129 @@
+{
+  "contract": "E-0013@3",
+  "required_extensions": {
+    "V5-C": 0.003,
+    "V5-F": 0.003,
+    "V5-L": 0.003
+  },
+  "provisional_initial_choices": {
+    "V5-C": 0.001,
+    "V5-F": 0.001,
+    "V5-L": 0.001
+  },
+  "rows": [
+    {
+      "arm": "V5-C",
+      "lr": 0.0001,
+      "calibration_nll": 1.7013356424961341,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0101-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.1829944816320357,
+      "calibration_eval_seconds": 330.1428634140175,
+      "elapsed_s": 537.5372948280419
+    },
+    {
+      "arm": "V5-C",
+      "lr": 0.0003,
+      "calibration_nll": 1.6323481719859676,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0102-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.17669410274419967,
+      "calibration_eval_seconds": 300.6131710790214,
+      "elapsed_s": 501.0732800530386
+    },
+    {
+      "arm": "V5-C",
+      "lr": 0.001,
+      "calibration_nll": 1.5977210394597021,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0103-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.17756731595175415,
+      "calibration_eval_seconds": 302.4598674469744,
+      "elapsed_s": 503.72330064798007
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.0001,
+      "calibration_nll": 1.65651495608446,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0104-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.18411311162770133,
+      "calibration_eval_seconds": 323.9900763509795,
+      "elapsed_s": 534.5347160819802
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.0003,
+      "calibration_nll": 1.6021932411588116,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0105-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.18290946452211934,
+      "calibration_eval_seconds": 328.3166429850389,
+      "elapsed_s": 537.5349209550186
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.001,
+      "calibration_nll": 1.5675299750501892,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0106-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.18680968804183135,
+      "calibration_eval_seconds": 317.04063472297275,
+      "elapsed_s": 529.7275494239875
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.0001,
+      "calibration_nll": 1.664488090351574,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0107-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.36218440879438724,
+      "calibration_eval_seconds": 462.8722726670094,
+      "elapsed_s": 867.433283352002
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.0003,
+      "calibration_nll": 1.5867400373288816,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0108-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.3972028953516873,
+      "calibration_eval_seconds": 522.1242280339939,
+      "elapsed_s": 966.8052415690036
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.001,
+      "calibration_nll": 1.553388156312454,
+      "failed_lr": false,
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0109-1/manifest.json",
+      "train_steps": 1101,
+      "input_tokens": 200103,
+      "steady_step_seconds": 0.38649694115791206,
+      "calibration_eval_seconds": 480.41325721296016,
+      "elapsed_s": 913.338716164988
+    }
+  ],
+  "paired_plan": {
+    "order_sha256": "e149a10e8f02f8aa10e134dcfac428b8159969a86f59c228a06dfe88c0a94df4",
+    "steps": 1101,
+    "input_tokens": 200103
+  },
+  "note": "Initial grid only. Run required extensions, then v5_train lock; no final LR is locked here."
+}

@@ -1,0 +1,129 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?}" "${SR_SPEC_DIGEST:?}"
+v5_root=/work/xg24i002/x10041/bypass-lora
+v5_out="$v5_root/runs/$SR_ATTEMPT_ID"
+mkdir -p "$v5_out"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp --project-dir "$v5_root" call allocation_check '{"target_system":"Miyabi-G"}' > "$v5_out/allocation.json"
+# This job only validates existing files and tabulates them. No model runs or timing.
+# No new slice check is introduced; the latency parent's timing guard is inspected.
+export PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+/usr/bin/python3 -I - "$v5_out" <<'PY'
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import statistics
+
+out = Path(os.sys.argv[1])
+parent = Path("/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1")
+def ref(path):
+    path = Path(path).resolve()
+    data = path.read_bytes()
+    assert data
+    return {"path": str(path), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+def read_pinned(name, digest):
+    reference = ref(parent/name)
+    assert reference["sha256"] == digest, name
+    return json.loads((parent/name).read_text()), reference
+def write(name, value):
+    (out/name).write_text(json.dumps(value, indent=2, allow_nan=False)+"\n")
+
+latency, latency_ref = read_pinned("latency.json", "00b0a4a2aa255ae074c3b12b5059920c1b9015e60b645bbec6eddb651eac2d48")
+manifest, manifest_ref = read_pinned("manifest.json", "fc05e0afd4f6538ef0eeb2645cf95735ff028c418e8f7e8ec3b55622510626d1")
+training, training_ref = read_pinned("training-summary.json", "7d2c35cef7a5c8816d653b291e73ccfa3397989cf22f39ad72611aedf694f377")
+inventory, inventory_ref = read_pinned("checkpoint-inventory.json", "2886d4981d2fe954bfc022b2d5b6641af638d1d0529d0012755538bd60619619")
+assert manifest["status"] == "complete" and manifest["validator"]["passed"] is True
+guard = json.loads((parent/"mig-profile.json").read_text())
+assert guard["passed"] is True and guard["profile"] == "2g.24gb"
+assert guard["uuid"] and guard["uuid"] == guard["cuda_visible_devices"]
+assert latency["metrics"]["inputs.count"] == 256
+assert latency["metrics"]["hardware"] == "NVIDIA GH200 120GB MIG 2g.24gb"
+measurements = latency["measurements"]
+models = ("base", "V5-C", "V5-F", "V5-L", "V5-L-merged")
+assert set(measurements) == set(models)
+latency_rows = {}
+for arm in models:
+    values = measurements[arm]
+    samples = values["samples_ms"]
+    assert len(samples) == values["count"] == 768
+    assert all(type(v) in (int, float) and math.isfinite(v) and v > 0 for v in samples)
+    expected = {"mean_ms": statistics.mean(samples), "median_ms": statistics.median(samples),
+                "p95_ms": sorted(samples)[int(.95*(len(samples)-1))]}
+    for key, value in expected.items():
+        assert math.isclose(values[key], value, rel_tol=1e-12, abs_tol=1e-12)
+        assert manifest["metrics"][arm+"."+key] == values[key]
+    assert manifest["metrics"][arm+".count"] == 768
+    latency_rows[arm] = {k: v for k, v in values.items() if k != "samples_ms"}
+assert len(inventory["checkpoints"]) == len(training["runs"]) == 9
+cost_keys = ("load.seconds", "train.seconds", "train.steady_step_seconds",
+             "train.peak_cuda_bytes", "monitor.seconds", "save.seconds",
+             "reload.load_seconds", "reload.eval_seconds")
+cost_rows = []
+for row in training["runs"]:
+    metrics = row["metrics"]
+    costs = {k: metrics[k] for k in cost_keys}
+    assert all(type(v) in (int, float) and math.isfinite(v) and v > 0 for v in costs.values())
+    cost_rows.append({"arm": row["arm"], "seed": row["seed"], "attempt": row["attempt"],
+                     "hardware_metadata": metrics["hardware"], "job_id": row["job_id"],
+                     "scheduler_MIG_seconds": row["scheduler_MIG_seconds"],
+                     "scheduler_node_h": row["scheduler_MIG_seconds"]/14400, **costs})
+formal_seconds = sum(r["scheduler_MIG_seconds"] for r in cost_rows)
+assert formal_seconds == training["formal_training_MIG_seconds"] == 73357
+prior_seconds = training["other_T0013_completed_MIG_seconds"]
+assert prior_seconds == 10147
+# Exact ended scheduler walltime from miyabi-mcp job_get: 00:02:59.
+latency_seconds = 179
+summary = {
+    "experiment": "E-0013@3", "scope": "descriptive training/dev/latency costs only",
+    "learning_rate_lock": inventory["learning_rate_lock"],
+    "checkpoints": inventory_ref, "training_summary": training_ref,
+    "latency_manifest": manifest_ref, "latency_raw": latency_ref,
+    "latency_guard": ref(parent/"mig-profile.json"),
+    "latency_inputs": latency["metrics"]["inputs.count"],
+    "latency_input_sha256": latency["metrics"]["inputs.sha256"],
+    "latency_hardware": latency["metrics"]["hardware"], "latency_ms": latency_rows,
+    "latency_rule": latency["rule"], "merge_note": latency["merge_note"],
+    "merge_first_input_logit_max_abs": latency["metrics"]["merge.first_input_logit_max_abs"],
+    "training_costs": cost_rows, "formal_training_MIG_seconds": formal_seconds,
+    "formal_training_node_h": formal_seconds/14400,
+    "prior_T0013_MIG_seconds": prior_seconds, "latency_MIG_seconds": latency_seconds,
+    "completed_through_latency_MIG_seconds": formal_seconds+prior_seconds+latency_seconds,
+    "completed_through_latency_node_h": (formal_seconds+prior_seconds+latency_seconds)/14400,
+    "this_tabulation_usage": "Pending scheduler end; record separately, not zero.",
+    "accounting_rule": "node_h = measured one-MIG scheduler seconds / 14400 for every profile",
+    "validation_accessed": False, "original_lr_lock_final": True,
+    "slice_comparison_performed": False,
+    "checks": {"all_3840_samples_positive_finite": True, "summary_statistics_match_raw": True,
+               "nine_checkpoint_inventory": True}
+}
+write("cost-summary.json", summary)
+lines = ["# V5 descriptive cost tables", "",
+         "Sources and full precision values are in cost-summary.json. All nine training runs used LR0.001, exactly three epochs and the final checkpoint. Official validation was not accessed.", "",
+         "| Arm | Seed | PBS MIG s | Train s | Step ms | Peak CUDA GiB | Load s | Monitor s | Save s | Reload load/eval s |",
+         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+for r in cost_rows:
+    lines.append(f'| {r["arm"]} | {r["seed"]} | {r["scheduler_MIG_seconds"]} | {r["train.seconds"]:.2f} | {r["train.steady_step_seconds"]*1000:.3f} | {r["train.peak_cuda_bytes"]/2**30:.3f} | {r["load.seconds"]:.3f} | {r["monitor.seconds"]:.2f} | {r["save.seconds"]:.4f} | {r["reload.load_seconds"]:.3f} / {r["reload.eval_seconds"]:.2f} |')
+lines += ["", "The step column reports the trainer's train.steady_step_seconds metric. Peak CUDA is the trainer's allocation metric, not total device memory. PBS walltime includes runtime overhead; only that measured walltime contributes to node_h. Hardware strings are retained as metadata in the JSON.", "",
+          "| Model | Timings | Mean ms | Median ms | p95 ms |",
+          "| --- | ---: | ---: | ---: | ---: |"]
+for arm in models:
+    r = latency_rows[arm]
+    lines.append(f'| {arm} | {r["count"]} | {r["mean_ms"]:.3f} | {r["median_ms"]:.3f} | {r["p95_ms"]:.3f} |')
+lines += ["", latency["rule"]+".", "", latency["merge_note"]+".",
+          "Merged LoRA was used only for timing. The first-input maximum logit difference is retained as metadata.",
+          "", f'Formal training: {formal_seconds} MIG s = {formal_seconds/14400:.8f} node_h.',
+          f'Other T0013 work before latency: {prior_seconds} MIG s. Latency: {latency_seconds} MIG s.',
+          f'Total measured through latency: {formal_seconds+prior_seconds+latency_seconds} MIG s = {(formal_seconds+prior_seconds+latency_seconds)/14400:.8f} node_h. Add this tabulation job after its scheduler end. E0013 ceiling:12 node_h.', ""]
+(out/"cost-tables.md").write_text("\n".join(lines))
+write("manifest.json", {"status": "complete", "spec_digest": os.environ["SR_SPEC_DIGEST"],
+    "metrics": {"checkpoints": 9, "latency.models": 5, "latency.samples": 3840,
+                "latency.all_positive_finite": True, "latency.statistics_match": True,
+                "validation_accessed": False},
+    "artifacts": [{"path": str(out/"cost-summary.json"), "role": "cost-summary"},
+                  {"path": str(out/"cost-tables.md"), "role": "cost-tables"},
+                  {"path": str(out/"allocation.json"), "role": "allocation"}],
+    "validator": {"name": "v5_delivery_artifact_integrity", "passed": True}})
+print("Nine training costs tabulated; all3840 raw timings positive/finite and statistics match.", flush=True)
+PY

@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "experiment": "E-0013@3",
+  "training_code_commit": "2b5c809f6101b5ba132d5565ebbf73ef91e105da",
+  "learning_rate_lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/2b5c809f6101b5ba132d5565ebbf73ef91e105da/research/artifacts/T-0013/lr-lock.json",
+    "sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+    "bytes": 2859
+  },
+  "checkpoints": [
+    {
+      "arm": "V5-C",
+      "seed": 1,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/adapter",
+      "expected_parameters": 524288,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/adapter/config.json",
+          "sha256": "2fe3ba4bd178d7c2c714ac432624bd3c42ac7f88f34f067f636f28626aeebfba",
+          "bytes": 470
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/adapter/adapter.pt",
+          "sha256": "49c9bfffded3927a1174a967b0b9387879d3ab57d6a5bbbbe5fac7679286e19a",
+          "bytes": 2100429
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/manifest.json",
+        "sha256": "38f4c152de6735c16f3c04cb9790c04bb8781a149980f68b3fc3c00863d110f3",
+        "bytes": 3180
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1/checkpoint.json",
+        "sha256": "5191dd773a59ef5b54378098595d204463a965c4079c349dd3d408eff368ffdd",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-C",
+      "seed": 2,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/adapter",
+      "expected_parameters": 524288,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/adapter/config.json",
+          "sha256": "2fe3ba4bd178d7c2c714ac432624bd3c42ac7f88f34f067f636f28626aeebfba",
+          "bytes": 470
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/adapter/adapter.pt",
+          "sha256": "e29e933106b8fe5809e89c65e379fcedf9720f22845e8717424e2debc80b75b9",
+          "bytes": 2100429
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/manifest.json",
+        "sha256": "7d95bc7e26ddc71fc1c08fd65c2245d5aef737427edb2522090ee7c45efc5f4f",
+        "bytes": 3182
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1/checkpoint.json",
+        "sha256": "b52f959a8de74698c24468e8d22fc53d1fca65b4d5196166ceaf9161fbc3ce14",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-C",
+      "seed": 3,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/adapter",
+      "expected_parameters": 524288,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/adapter/config.json",
+          "sha256": "2fe3ba4bd178d7c2c714ac432624bd3c42ac7f88f34f067f636f28626aeebfba",
+          "bytes": 470
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/adapter/adapter.pt",
+          "sha256": "daed7cf544b2719d4434cf65b3c6cdcc3efdad91648c7e72fa3ed292cda20e8d",
+          "bytes": 2100429
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/manifest.json",
+        "sha256": "ca0e3de8b3bcea2af231fd368755fbff1c01cf2aec1a452e4f0ceb77a477e2f4",
+        "bytes": 3186
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1/checkpoint.json",
+        "sha256": "fb748941b472ac3c88899a48067242df70934c502564b49438506668bfbd239b",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-F",
+      "seed": 1,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/adapter",
+      "expected_parameters": 524288,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/adapter/config.json",
+          "sha256": "7231e05bd4775f3009a2962782b357f8e85e3d775f4ffca2a73b9cf1c8c690aa",
+          "bytes": 471
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/adapter/adapter.pt",
+          "sha256": "2235ea18e98b8bda939844489bf440b0306785cd018015e3f3105965fd81cfa8",
+          "bytes": 2100429
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/manifest.json",
+        "sha256": "7298bc8afa725abc7edd3422d891d15b351190a52763179093b9b60b4c6b5b18",
+        "bytes": 3183
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1/checkpoint.json",
+        "sha256": "ef0489c030cd865e730698a39073e956bcb3ba53324dfc7e3cb932bb664ebcef",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-F",
+      "seed": 2,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/adapter",
+      "expected_parameters": 524288,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/adapter/config.json",
+          "sha256": "7231e05bd4775f3009a2962782b357f8e85e3d775f4ffca2a73b9cf1c8c690aa",
+          "bytes": 471
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/adapter/adapter.pt",
+          "sha256": "02ba93f77aa6f24fdf63e141c77eaabdf43532ac08356408bb176f5d8f901b2c",
+          "bytes": 2100429
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/manifest.json",
+        "sha256": "21c295abb9d407ae925f556b7d066033107d8ce030d7299e34ecc7981def2ecc",
+        "bytes": 3184
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1/checkpoint.json",
+        "sha256": "9b325acbdb71ff06592b1f8cf0c37164189eb51c4f709df8f5b3b0245bc395dd",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-F",
+      "seed": 3,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/adapter",
+      "expected_parameters": 524288,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/adapter/config.json",
+          "sha256": "7231e05bd4775f3009a2962782b357f8e85e3d775f4ffca2a73b9cf1c8c690aa",
+          "bytes": 471
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/adapter/adapter.pt",
+          "sha256": "e1afa274bff7231904875eff5d397748f7c513aa668e51dbe08e00efeecfb925",
+          "bytes": 2100429
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/manifest.json",
+        "sha256": "a8ed44e299aabb2f3728de0058b8ba9abda364410dfd4cf01571a3a92dc7d356",
+        "bytes": 3181
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1/checkpoint.json",
+        "sha256": "c9284c40320e2ed6b901ff2c540e0d5c297f312a8b2b025dbf9bdd56773c8343",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-L",
+      "seed": 1,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/adapter",
+      "expected_parameters": 630784,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/adapter/config.json",
+          "sha256": "8057e86164968175e2e4df857156276b853d4365bc1c418e49d13ad4896380e1",
+          "bytes": 326
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/adapter/adapter.pt",
+          "sha256": "c7453e10997c252a1f0deb9b84e0b0ecbc62f0bc8424d65ba3e8e20c4877b155",
+          "bytes": 2639599
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/manifest.json",
+        "sha256": "b711c7c4b8f59a8cbe11a4bfa23424f898069c01e6548157d92e336968b1e3ed",
+        "bytes": 3186
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1/checkpoint.json",
+        "sha256": "09facccb621df4147cd837def25482c456575b63dd67154c29e3a8c35965a0b3",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-L",
+      "seed": 2,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/adapter",
+      "expected_parameters": 630784,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/adapter/config.json",
+          "sha256": "8057e86164968175e2e4df857156276b853d4365bc1c418e49d13ad4896380e1",
+          "bytes": 326
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/adapter/adapter.pt",
+          "sha256": "76e96100cfe15cd15b46a9192cb38e23dccc9af345850c870aacaf731dc08e99",
+          "bytes": 2639599
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/manifest.json",
+        "sha256": "7165b8bea3072d78800e5c4987d271856d0852dc840d6890f6572e479f12cb77",
+        "bytes": 3182
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1/checkpoint.json",
+        "sha256": "ce7f5ff909530393e4a0f37187bfe135a5bf0a126480a4e8fdac62707af6b22e",
+        "bytes": 421
+      }
+    },
+    {
+      "arm": "V5-L",
+      "seed": 3,
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/adapter",
+      "expected_parameters": 630784,
+      "learning_rate": 0.001,
+      "files": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/adapter/config.json",
+          "sha256": "8057e86164968175e2e4df857156276b853d4365bc1c418e49d13ad4896380e1",
+          "bytes": 326
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/adapter/adapter.pt",
+          "sha256": "c219d6c1abacff3f3028b9a2b6f955e27d5c166edca4c32714dadd16e2c9e02b",
+          "bytes": 2639599
+        }
+      },
+      "training_manifest": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/manifest.json",
+        "sha256": "6a98e7e78b02d9588d1e4c43c584d7fc69dd42a080b9fdc9739977113269fa26",
+        "bytes": 3179
+      },
+      "checkpoint_inventory": {
+        "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1/checkpoint.json",
+        "sha256": "2dd533adc471eec13e52f05f5528b3dd95adb5ae89b2c9db87a822b27bd5c01c",
+        "bytes": 421
+      }
+    }
+  ]
+}

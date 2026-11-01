@@ -1,0 +1,218 @@
+{
+  "contract": "E-0013@3",
+  "code_commit": "2b5c809f6101b5ba132d5565ebbf73ef91e105da",
+  "learning_rate_lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/2b5c809f6101b5ba132d5565ebbf73ef91e105da/research/artifacts/T-0013/lr-lock.json",
+    "sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+    "bytes": 2859
+  },
+  "locked_lrs": {
+    "V5-C": 0.001,
+    "V5-F": 0.001,
+    "V5-L": 0.001
+  },
+  "notification": {
+    "id": "N-20261101-211800-4e24",
+    "name": "T0013-formal-nine-seed123",
+    "expected": 9,
+    "early_failure": true,
+    "daemon_running_observed": true,
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261101-211800-4e24 --notifier miyabi-g2"
+  },
+  "runs": [
+    {
+      "arm": "V5-C",
+      "seed": 1,
+      "run": "RUN-0129",
+      "attempt": "ATT-0129-1",
+      "job_id": "3765067.opbs",
+      "spec_digest": "blake2b:5e4634ad1cb233038e54dd360e06ff0e923cff19277ce1662407f6500dcab54d",
+      "expected_seconds": 6541,
+      "walltime": "02:44:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-C",
+      "seed": 2,
+      "run": "RUN-0130",
+      "attempt": "ATT-0130-1",
+      "job_id": "3765068.opbs",
+      "spec_digest": "blake2b:ff85417aef28aea3964ee7c5a6f5c88f6703baf217e000ac43486a3eb44b8409",
+      "expected_seconds": 6541,
+      "walltime": "02:44:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0130-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-C",
+      "seed": 3,
+      "run": "RUN-0131",
+      "attempt": "ATT-0131-1",
+      "job_id": "3765069.opbs",
+      "spec_digest": "blake2b:0404c73df7103c5e97f6c0ae665eea93a8686ce6542f55726560a3e9a7c78e79",
+      "expected_seconds": 6541,
+      "walltime": "02:44:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0131-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-F",
+      "seed": 1,
+      "run": "RUN-0132",
+      "attempt": "ATT-0132-1",
+      "job_id": "3765071.opbs",
+      "spec_digest": "blake2b:860f0d688eb3b5c3194dfc1017202b45ebff9e5937409a9f408d222f2dac26ce",
+      "expected_seconds": 6396,
+      "walltime": "02:40:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0132-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-F",
+      "seed": 2,
+      "run": "RUN-0133",
+      "attempt": "ATT-0133-1",
+      "job_id": "3765072.opbs",
+      "spec_digest": "blake2b:cf04c0cccf85acc3964bb6d4976969842117c4c4e1672fa5c96683b8b4f68324",
+      "expected_seconds": 6396,
+      "walltime": "02:40:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0133-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-F",
+      "seed": 3,
+      "run": "RUN-0134",
+      "attempt": "ATT-0134-1",
+      "job_id": "3765073.opbs",
+      "spec_digest": "blake2b:85859ac9d1003b34a972062e7bdb5cedc2f101e60692274e1112f1392f98c9cd",
+      "expected_seconds": 6396,
+      "walltime": "02:40:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0134-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-L",
+      "seed": 1,
+      "run": "RUN-0135",
+      "attempt": "ATT-0135-1",
+      "job_id": "3765074.opbs",
+      "spec_digest": "blake2b:a72834de96b53ec83bd3cf25b175318fa0d3697df26b2ac39ee2b970cc27512e",
+      "expected_seconds": 13006,
+      "walltime": "05:26:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0135-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-L",
+      "seed": 2,
+      "run": "RUN-0136",
+      "attempt": "ATT-0136-1",
+      "job_id": "3765075.opbs",
+      "spec_digest": "blake2b:c5b6e3c8a8cd397165474e989fbe5689527c95a064a7eecd05f27dbeaacf0a0f",
+      "expected_seconds": 13006,
+      "walltime": "05:26:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0136-1",
+      "status_at_handoff": "running"
+    },
+    {
+      "arm": "V5-L",
+      "seed": 3,
+      "run": "RUN-0137",
+      "attempt": "ATT-0137-1",
+      "job_id": "3765077.opbs",
+      "spec_digest": "blake2b:44b142495d437d7ef806bdc1f775606b0b694db18be70d4f2f97bbbdaa69ba74",
+      "expected_seconds": 13006,
+      "walltime": "05:26:00",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0137-1",
+      "status_at_handoff": "running"
+    }
+  ],
+  "allocations": [
+    {
+      "attempt": "ATT-0129-1",
+      "job_id": "3765067.opbs",
+      "host": "mg1109",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0130-1",
+      "job_id": "3765068.opbs",
+      "host": "mg1109",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0131-1",
+      "job_id": "3765069.opbs",
+      "host": "mg1110",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0132-1",
+      "job_id": "3765071.opbs",
+      "host": "mg1110",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0133-1",
+      "job_id": "3765072.opbs",
+      "host": "mg1110",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0134-1",
+      "job_id": "3765073.opbs",
+      "host": "mg1111",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0135-1",
+      "job_id": "3765074.opbs",
+      "host": "mg1111",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0136-1",
+      "job_id": "3765075.opbs",
+      "host": "mg1111",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    },
+    {
+      "attempt": "ATT-0137-1",
+      "job_id": "3765077.opbs",
+      "host": "mg1112",
+      "system": "Miyabi-G",
+      "architecture": "aarch64",
+      "allocation_confirmed": true,
+      "live_state_at_start": "R"
+    }
+  ],
+  "measured_prior_MIG_seconds": 8614,
+  "projected_nine_run_node_h": 5.404791666666667,
+  "prior_usage_note": "Formal usage is not yet measured;do not report it as zero."
+}
