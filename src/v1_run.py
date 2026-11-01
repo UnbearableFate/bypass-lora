@@ -5,6 +5,8 @@ import hashlib
 import json
 import math
 import os
+import random
+from contextlib import contextmanager
 from pathlib import Path
 import time
 
@@ -17,6 +19,7 @@ from v1_lora import LoRAConfig, LoRAModel
 from v1_data import (read_piqa_train, read_boolq_train, make_v1_splits,
                      build_training_stream, encode_candidates, encode_training_example,
                      collate_encoded, derive_seed)
+from v1_data import audit_training_exclusions
 
 SOURCES = {
     'piqa': {'repo': 'ybisk/ybisk.github.io', 'revision': '21edab439af693b961be2f069e8690a88d3b4e37'},
@@ -98,10 +101,12 @@ def lr_factor(step, total):
     return .5 * (1 + math.cos(math.pi * (step-warm+1) / max(1,total-warm)))
 
 
-def plan_batches(splits, tok, budget, batch_size, max_epochs=3):
+def plan_batches(splits, tok, budget, batch_size, max_epochs=3, excluded=None):
     batches, pending, tokens = [], [], 0
     for epoch in range(max_epochs):
-        for row in build_training_stream(splits, epoch):
+        stream = (build_training_stream(splits, epoch) if excluded is None else
+                  build_training_stream(splits, epoch, excluded=excluded))
+        for row in stream:
             encoded = encode_training_example(tok, row)
             encoded['epoch'] = epoch
             pending.append(encoded)
@@ -118,10 +123,10 @@ def plan_batches(splits, tok, budget, batch_size, max_epochs=3):
 
 
 @torch.no_grad()
-def evaluate(model, splits, tok, limit=None):
+def evaluate(model, splits, tok, limit=None, split_names=('calibration', 'dev')):
     model.eval()
     metrics, predictions = {}, []
-    for split in ('calibration', 'dev'):
+    for split in split_names:
         task_nll = []
         for task in ('piqa', 'boolq'):
             total, count, correct = 0., 0, 0
@@ -160,12 +165,30 @@ def evaluate(model, splits, tok, limit=None):
     return metrics, predictions
 
 
-def train(model, batches, tok, lr, output):
+@contextmanager
+def preserved_evaluation_state(model):
+    """Evaluation must not perturb training modes or any active RNG stream."""
+    import numpy as np
+    modes = [(module, module.training) for module in model.modules()]
+    python_state, numpy_state = random.getstate(), np.random.get_state()
+    try:
+        with torch.random.fork_rng():
+            yield
+    finally:
+        random.setstate(python_state)
+        np.random.set_state(numpy_state)
+        for module, mode in modes:
+            module.training = mode
+
+
+def train(model, batches, tok, lr, output, intermediate=None):
     model.train()
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(params, lr=lr, betas=(.9,.999), eps=1e-8, weight_decay=.01)
     totals = {'train.input_tokens':0, 'train.loss_tokens':0, 'train.padded_tokens':0, 'train.examples':0}
     step_times = []
+    evaluation_seconds = 0.
+    grad_seen = set()
     start = time.monotonic()
     with (output/'steps.jsonl').open('w') as log:
         for step, examples in enumerate(batches):
@@ -185,6 +208,7 @@ def train(model, batches, tok, lr, output):
                 example_mean_objective(loss, len(examples)).backward()
                 summed += loss.detach().mean().item()
             norm = torch.nn.utils.clip_grad_norm_(params, 1., error_if_nonfinite=False).item()
+            grad_seen.update(id(p) for p in params if p.grad is not None)
             if not math.isfinite(norm):
                 raise TrainingDiverged('nonfinite gradient norm', dict(totals))
             rate = lr * lr_factor(step, len(batches))
@@ -198,10 +222,19 @@ def train(model, batches, tok, lr, output):
             log.write(json.dumps({'step':step+1,'example_mean_nll':summed/len(examples),'preclip_norm':norm,
                                   'lr':rate,'seconds':duration,'input_tokens':tokens})+'\n')
             log.flush()
+            if intermediate is not None and step+1 in {math.ceil(len(batches)*f) for f in (.25,.5,.75)}:
+                tick = time.monotonic()
+                with preserved_evaluation_state(model):
+                    intermediate(step+1, model)
+                torch.cuda.synchronize()
+                evaluation_seconds += time.monotonic()-tick
     totals.update({'train.steps':len(batches),'train.seconds':time.monotonic()-start,
                    'train.steady_step_seconds':sum(step_times[10:])/len(step_times[10:]) if len(step_times)>10 else None,
                    'train.last_epoch':batches[-1][-1]['epoch'],
                    'train.peak_cuda_bytes':torch.cuda.max_memory_allocated()})
+    totals['intermediate.seconds'] = evaluation_seconds
+    totals['params.with_grad'] = sum(p.numel() for p in params if id(p) in grad_seen)
+    totals['train.seconds'] -= evaluation_seconds
     totals['train.tokens_per_second'] = totals['train.input_tokens']/totals['train.seconds']
     return totals
 
@@ -214,6 +247,8 @@ def main():
     parser.add_argument('--batch', type=int, default=2)
     parser.add_argument('--eval-limit', type=int)
     parser.add_argument('--smoke-steps', type=int)
+    parser.add_argument('--e3', action='store_true')
+    parser.add_argument('--check-init', action='store_true')
     parser.add_argument('--data-dir', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -230,7 +265,12 @@ def main():
         (out/'split-map.json').write_text(mapping)
         (out/'data-metadata.json').write_text(json.dumps(splits['metadata'],indent=2)+'\n')
         (out/'config.json').write_text(json.dumps(vars(args),default=str,indent=2)+'\n')
-        batches = plan_batches(splits,tok,args.tokens,args.batch)
+        excluded = None
+        if args.e3:
+            excluded = audit_training_exclusions(splits,tok)
+            (out/'excluded-train.json').write_text(json.dumps(excluded,indent=2)+'\n')
+            excluded = [(row['task'],row['id']) for row in excluded]
+        batches = plan_batches(splits,tok,args.tokens,args.batch,excluded=excluded)
         metrics['plan.steps'] = len(batches)
         metrics['plan.input_tokens'] = sum(len(e['input_ids']) for batch in batches for e in batch)
         metrics['plan.token_threshold'] = args.tokens
@@ -244,15 +284,49 @@ def main():
         model = make_model(args.arm)
         torch.cuda.synchronize()
         metrics['load.seconds'] = time.monotonic()-tick
+        if args.e3:
+            metrics['params.stored'] = sum(p.numel() for p in model.parameters())
+            metrics['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            adapter_params = (model.adapter_parameters() if hasattr(model,'adapter_parameters') else
+                              (p for layer in model.adapters().values() for p in layer.side.parameters())) if args.arm != 'base' else []
+            metrics['params.adapter_stored'] = sum(p.numel() for p in adapter_params)
+            if args.arm != 'base':
+                assert metrics['params.adapter_stored'] == metrics['params.trainable'] == EXPECTED[args.arm]
+        if args.check_init:
+            with preserved_evaluation_state(model), torch.no_grad():
+                model.eval()
+                batch = batch_tensors([batches[0][0]],tok.pad_token_id)
+                inputs = {k:v for k,v in batch.items() if k != 'labels'}
+                logits = model(**inputs,use_cache=False).logits
+                base = make_model('base')
+                base.eval()
+                reference = base(**inputs,use_cache=False).logits
+                metrics['init.identical'] = torch.equal(logits,reference)
+                assert metrics['init.identical'], 'initial adapter output differs from Base'
+                del base, logits, reference
+                gc.collect()
+                torch.cuda.empty_cache()
         if args.arm != 'base':
-            metrics.update(train(model,batches,tok,args.lr,out))
+            evaluation_stage = 'training'
+            if args.e3:
+                def intermediate(step, current):
+                    nonlocal evaluation_stage
+                    evaluation_stage = 'intermediate_evaluation'
+                    values, preds = evaluate(current,splits,tok,args.eval_limit,split_names=('dev',))
+                    (out/f'dev-step-{step}.json').write_text(json.dumps({'step':step,'metrics':values,'predictions':preds})+'\n')
+                    evaluation_stage = 'training'
+                metrics.update(train(model,batches,tok,args.lr,out,intermediate=intermediate))
+                assert metrics['params.with_grad'] == EXPECTED[args.arm]
+            else:
+                metrics.update(train(model,batches,tok,args.lr,out))
             metrics['train.token_overshoot'] = max(0, metrics['train.input_tokens']-args.tokens)
             tick = time.monotonic()
             model.export_adapter(out/'adapter')
             metrics['save.seconds'] = time.monotonic()-tick
         tick = time.monotonic()
         evaluation_stage = 'evaluation'
-        eval_metrics, predictions = evaluate(model,splits,tok,args.eval_limit)
+        eval_kwargs = {'split_names':('dev',)} if args.e3 else {}
+        eval_metrics, predictions = evaluate(model,splits,tok,args.eval_limit,**eval_kwargs)
         metrics.update(eval_metrics)
         metrics['eval.seconds'] = time.monotonic()-tick
         (out/'predictions.json').write_text(json.dumps(predictions)+'\n')
@@ -263,7 +337,7 @@ def main():
         tick = time.monotonic()
         model = make_model(args.arm, None if args.arm=='base' else out/'adapter')
         evaluation_stage = 'reload_evaluation'
-        repeat_metrics, repeat = evaluate(model,splits,tok,args.eval_limit)
+        repeat_metrics, repeat = evaluate(model,splits,tok,args.eval_limit,**eval_kwargs)
         metrics['reload.seconds'] = time.monotonic()-tick
         metrics['reload.identical'] = repeat == predictions and repeat_metrics == eval_metrics
         assert metrics['reload.identical'], 'checkpoint/repeated Base evaluation is not identical'
@@ -271,7 +345,7 @@ def main():
     except EvaluationNonfinite as exc:
         metrics['failure.stage'] = evaluation_stage
         metrics['failure.reason'] = str(exc)
-        if args.arm == 'base' or evaluation_stage == 'reload_evaluation':
+        if args.arm == 'base' or evaluation_stage in ('reload_evaluation','intermediate_evaluation'):
             metrics['error'] = repr(exc)
             raise
         metrics['train.diverged'] = True
@@ -292,6 +366,9 @@ def main():
         passed = False
         raise
     finally:
+        if (out/'usage.json').exists():
+            for key,value in json.loads((out/'usage.json').read_text()).items():
+                metrics.setdefault(key,value)
         metrics['elapsed_s'] = time.monotonic()-start
         (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
             'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':metrics,

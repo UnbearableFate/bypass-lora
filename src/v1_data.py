@@ -137,11 +137,16 @@ def make_v1_splits(
                                           for name, path in sorted((source_files or {}).items())}}}
 
 
-def build_training_stream(splits: Mapping[str, Any], epoch: int = 0) -> list[dict[str, Any]]:
+def build_training_stream(
+    splits: Mapping[str, Any],
+    epoch: int = 0,
+    excluded: Iterable[tuple[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Shuffle each task's train rows then alternate tasks while both have rows.
 
     Every example appears once per epoch. The epoch RNG seed is the fixed V1
-    training seed plus the zero-based epoch index.
+    training seed plus the zero-based epoch index. ``excluded`` contains
+    ``(task, id)`` pairs to remove after each task's shuffle and before mixing.
     """
     if epoch < 0:
         raise ValueError("epoch must be non-negative")
@@ -150,6 +155,10 @@ def build_training_stream(splits: Mapping[str, Any], epoch: int = 0) -> list[dic
     rng = random.Random(derive_seed(*_SEED_PREFIX, "train", 0) + epoch)
     for values in task_rows.values():
         rng.shuffle(values)
+    excluded_ids = set(excluded or ())
+    for task, values in task_rows.items():
+        task_rows[task] = [row for row in values
+                           if (task, row.get("id")) not in excluded_ids]
     stream: list[dict[str, Any]] = []
     positions = {task: 0 for task in _TASKS}
     while any(positions[t] < len(task_rows[t]) for t in _TASKS):
@@ -186,6 +195,14 @@ def _prompt_tokens(tokenizer: Any, example: Mapping[str, Any], budget: int) -> l
     raise ValueError(f"unknown task: {example['task']!r}")
 
 
+class _CandidateEncodingError(ValueError):
+    """A known, data-dependent reason a complete candidate cannot be encoded."""
+
+    def __init__(self, reason: str, candidate_lengths: Sequence[int] = ()) -> None:
+        super().__init__(reason)
+        self.candidate_lengths = list(candidate_lengths)
+
+
 def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: int = 512) -> list[dict[str, Any]]:
     """Encode every candidate against one shared truncated prompt prefix.
 
@@ -202,12 +219,18 @@ def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: in
     else:
         raise ValueError(f"unknown task: {example['task']!r}")
     completion_ids = [_encode(tokenizer, text) for text in completions]
+    candidate_lengths = [len(ids) for ids in completion_ids]
     reserve = max(map(len, completion_ids), default=0)
     if reserve >= max_length or any(not ids for ids in completion_ids):
-        raise ValueError("a complete candidate exceeds max_length")
-    prompt = _prompt_tokens(tokenizer, example, max_length - reserve)
+        raise _CandidateEncodingError("a complete candidate exceeds max_length", candidate_lengths)
+    try:
+        prompt = _prompt_tokens(tokenizer, example, max_length - reserve)
+    except ValueError as exc:
+        if str(exc) == "BoolQ question/template exceeds prompt token budget":
+            raise _CandidateEncodingError(str(exc), candidate_lengths) from exc
+        raise
     if not prompt:
-        raise ValueError('completion requires a preceding prompt token')
+        raise _CandidateEncodingError('completion requires a preceding prompt token', candidate_lengths)
     result = []
     for text, suffix in zip(completions, completion_ids):
         input_ids = prompt + suffix
@@ -216,6 +239,39 @@ def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: in
                        "labels": [-100] * len(prompt) + suffix.copy(),
                        "prompt_length": len(prompt), "completion_length": len(suffix)})
     return result
+
+
+def audit_training_exclusions(
+    splits: Mapping[str, Any],
+    tok: Any,
+    max_length: int = 512,
+) -> list[dict[str, Any]]:
+    """Find unencodable train rows and reject exclusion rates above one percent.
+
+    Candidate lengths are completion token lengths, matching the budget that
+    must be reserved before prompt truncation. Only known data-dependent
+    ``encode_candidates`` failures are exclusions; tokenizer and other faults
+    propagate to the caller.
+    """
+    train_data = splits.get("splits", splits)
+    excluded: list[dict[str, Any]] = []
+    for task in _TASKS:
+        rows = list(train_data[task]["train"])
+        task_excluded = []
+        for row in rows:
+            try:
+                encode_candidates(tok, row, max_length=max_length)
+            except _CandidateEncodingError as exc:
+                task_excluded.append({"task": task, "id": row.get("id"),
+                                      "candidate_lengths": list(exc.candidate_lengths),
+                                      "reason": str(exc)})
+        if rows and len(task_excluded) / len(rows) > 0.01:
+            raise ValueError(
+                f"{task} training exclusions exceed 1%: "
+                f"{len(task_excluded)}/{len(rows)} rows"
+            )
+        excluded.extend(task_excluded)
+    return excluded
 
 
 def encode_training_example(tokenizer: Any, example: Mapping[str, Any], max_length: int = 512) -> dict[str, Any]:
