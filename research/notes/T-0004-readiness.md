@@ -31,10 +31,16 @@ contract because there is no threshold violation; this does not establish the
 source of the smaller numerical discrepancy. Chunk1 equality is not claimed.
 All state corruption controls and all capacity cases passed.
 
-No training tokens consumed. The scheduler still reported running after the
-result was written; final execution observation and measured node-hours remain
-to be recorded after scheduler completion. Requested usage was 0.033333 MIG
-instance-hours (two minutes); requested usage is not actual usage.
+No training tokens consumed. Final scheduler observation confirms ended/success,
+exit status 0 and measured walltime 38 seconds. The executor ledger reports
+0.010556 MIG instance-hours, equivalent to **0.002639 node-hours** at the
+authorized 1/4 conversion, below the 0.5 node-hour budget. The complete executor
+observation export is recorded under
+`research/artifacts/ATT-0034-1/scheduler-observations.json` in the main project.
+Requested usage was 0.033333 MIG instance-hours (two minutes).
 
-Independent code review is required before delivery. These are implementation
-diagnostics, not evidence for a training or mechanism claim.
+Independent code review **RV-0009 passed with zero findings**. The reviewer
+verified the source matches the executed snapshot and inspected the recorded
+artifacts; no independent workload rerun was performed. These are implementation
+diagnostics, not evidence for a training or mechanism claim. No open findings
+remain within T-0004; coordinator acceptance and merge are separate steps.
