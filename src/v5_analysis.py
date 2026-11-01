@@ -526,6 +526,12 @@ def render_markdown(result: dict) -> str:
     if result['base']:
         for task, values in result['base'].items():
             lines.append(f"| Base | {task} | {values['accuracy']:.4f} | {values['nll']:.4f} |")
+    if result['validation_audit']:
+        lines += ['', '## Validation exclusions', '',
+                  '| Task | Raw rows | Kept | Excluded | Protocol deviation (>0.5%) |',
+                  '|---|---:|---:|---:|---:|']
+        for task, audit in result['validation_audit'].items():
+            lines.append(f"| {task} | {audit['raw_examples']} | {audit['examples']} | {len(audit['excluded_ids'])} | {audit['protocol_deviation']} |")
     p = result['primary']
     lines += ['', '## Primary contrast', '',
               f"V5-C − V5-L: **{pp(p['delta'])}**; 95% bootstrap CI [{pp(p['ci95'][0])}, {pp(p['ci95'][1])}]; decision: **{p['decision']}**.",
@@ -538,7 +544,7 @@ def render_markdown(result: dict) -> str:
         lines.append(f"| {name} {comp['contrast']} | {pp(comp['seed_mean_difference'])} | [{pp(comp['ci95'][0])}, {pp(comp['ci95'][1])}] | {comp['two_sided_empirical_p']:.4g} | {comp['holm_adjusted_p']:.4g} | {comp['holm_reject_at_0_05']} |")
     wiki = result['wikitext']
     if wiki:
-        lines += ['', '## WikiText NLL change vs Base', '']
+        lines += ['', '## WikiText NLL change vs Base', '', f"Base NLL: {wiki['base_nll']:.6f}.", '']
         for arm, values in wiki['delta_nll_vs_base'].items():
             lines.append(f"- {arm}: {values['seed_mean']:+.4f} ± {values['seed_sample_sd']:.4f}")
     lines += ['', result['interpretation']['intervals'],

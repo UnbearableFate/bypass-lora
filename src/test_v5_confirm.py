@@ -226,3 +226,45 @@ def test_base_wikitext_command_does_not_verify_or_read_validation(locked, monkey
     monkeypatch.setattr(confirm, 'load_model', lambda: ToyModel())
     monkeypatch.setattr(confirm, 'evaluate_wikitext', lambda *a: {'wikitext.nll': 2.0})
     assert confirm.run_wikitext_base(seal, tmp_path / 'wiki')['wikitext.nll'] == 2.0
+
+
+def test_confirmation_orchestration_writes_ten_paired_results_and_closes_receipt(monkeypatch, tmp_path):
+    """Exercise output/analysis integration using synthetic rows, never sealed files."""
+    rows = {}
+    for task in confirm.TASKS:
+        prototype = examples()[task][0]
+        rows[task] = [{**prototype, 'id': i} for i in range(confirm.EXPECTED_ROWS[task])]
+    lock_path = tmp_path / 'synthetic-lock.json'
+    lock_path.write_text('synthetic lock for orchestration')
+    lock = {'checkpoints': [{'arm': arm, 'seed': seed, 'files': {}}
+                           for arm in confirm.PARAMETERS for seed in (1, 2, 3)],
+            'data': {'wikitext': {'path': '/synthetic-wiki-only'}},
+            'code_commit': 'a' * 40, 'unseal_receipt': str(tmp_path / 'receipt.json')}
+    order = []
+    monkeypatch.setenv('SR_SPEC_DIGEST', 'synthetic-spec')
+    monkeypatch.setattr(confirm, 'verify_lock', lambda path: order.append('verify') or lock)
+    def synthetic_reader(current):
+        assert Path(current['unseal_receipt']).exists()
+        order.append('read-synthetic')
+        return rows
+    monkeypatch.setattr(confirm, 'read_validation', synthetic_reader)
+    monkeypatch.setattr(confirm, 'load_tokenizer', lambda: ToyTokenizer())
+    monkeypatch.setattr(confirm, 'load_model', lambda entry: ToyModel())
+    monkeypatch.setattr(confirm, 'read_wikitext_blocks', lambda *a: ([[1, 2, 3]], {'blocks': 1}))
+    monkeypatch.setattr(confirm, 'candidate_losses', lambda *a: torch.ones(1))
+    output = tmp_path / 'results'
+    confirm.run_confirmation(lock_path, output, unseal=True)
+    assert order == ['verify', 'read-synthetic']
+    manifest = json.loads((output / 'manifest.json').read_text())
+    assert manifest['status'] == 'complete' and manifest['validator']['passed'] is True
+    analysis = json.loads((output / 'analysis' / 'analysis.json').read_text())
+    assert analysis['counts_by_task'] == {'piqa': 1838, 'boolq': 3270}
+    assert analysis['bootstrap']['repetitions'] == 10000
+    assert set(analysis['wikitext']['delta_nll_vs_base']) == set(confirm.PARAMETERS)
+    inputs = json.loads((output / 'analysis-input.json').read_text())
+    assert len(inputs['entries']) == 10
+    for entry in inputs['entries']:
+        assert len(Path(entry['predictions']).read_text().splitlines()) == 5108
+    assert json.loads(Path(lock['unseal_receipt']).read_text())['status'] == 'complete'
+    with pytest.raises(confirm.LockError, match='predictions already complete'):
+        confirm.run_confirmation(lock_path, tmp_path / 'forbidden-reopen', unseal=True, resume=True)
