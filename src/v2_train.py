@@ -323,6 +323,14 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
             **({'monitors': monitor_results} if monitors else {})}
 
 
+def clear_stale_gradients(module):
+    """Drop gradients of frozen parameters (R4 stage-1 prior grads) so later
+    nonzero-gradient statistics count only parameters trained in that stage."""
+    for parameter in module.parameters():
+        if not parameter.requires_grad:
+            parameter.grad = None
+
+
 def _side_tensors(model, prior_path):
     """Copies of the prior-path (True) or memory-path (False) side parameters."""
     return {name: p.detach().clone() for name, p in model.adapters()[14].side.named_parameters()
@@ -381,6 +389,7 @@ def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output, 
             result['prior_stage']['seconds'] = time.monotonic()-stage_start
             for name, parameter in side.named_parameters():
                 parameter.requires_grad_(not name.startswith('prior.'))
+            clear_stale_gradients(side)
             prior_frozen = _side_tensors(model, True)
         result['train'] = train(model, train_rows, schedule, pad_id, args.lr, args.microbatch_size, output, dev, prior,
                                 forward_options=forward_options, monitors=monitors)

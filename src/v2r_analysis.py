@@ -31,7 +31,8 @@ EXPECTED = {'R1': {'train_facts': 1, 'extra_dev': [1]}, 'R2': {'train_facts': 4,
             'R6': {}}
 
 
-def gate(controls, target_weight, *, margin, weight):
+def gate(controls, target_weight, *, margin, weight, require_nll=True):
+    """E-0014 gates. R1 (E=1) is EM margin only: require_nll=False, weight=None."""
     normal, zero, shuffled = (controls[m] for m in ('normal', 'zero', 'shuffled'))
     n = normal['count']
     require(zero['count'] == n == shuffled['count'], 'gate needs equal counts')
@@ -43,7 +44,8 @@ def gate(controls, target_weight, *, margin, weight):
             'em': {m: controls[m]['em'] for m in controls}, 'nll': {m: controls[m]['nll'] for m in controls},
             'em_margin': float(diff), 'em_margin_fraction': str(diff), 'em_pass': em_pass, 'nll_pass': nll_pass,
             'target_weight': target_weight, 'weight_pass': weight_pass,
-            'passed': em_pass and nll_pass and weight_pass is not False}
+            'nll_required': require_nll,
+            'passed': em_pass and (nll_pass or not require_nll) and weight_pass is not False}
 
 
 def bootstrap(records, controls):
@@ -133,7 +135,7 @@ def load_arm(label, run_dir, arm_dir_name, *, reference=False):
         v_summary, v_records, v_points = load_split(arm/label_e, VARIANT_CONTROLS, provenance, f'{label} {label_e}')
         weight = v_summary['normal']['diagnostics']['address.target_weight']
         result['variants'][label_e] = {
-            'gate_R1': gate(v_points, weight, margin=Fraction(1, 2), weight=None) if facts == 1 else None,
+            'gate_R1': gate(v_points, weight, margin=Fraction(1, 2), weight=None, require_nll=False) if facts == 1 else None,
             'gate_R2': gate(v_points, weight, margin=Fraction(1, 10), weight=.5) if facts == 4 else None,
             'controls': {m: {'em': v_points[m]['em'], 'nll': v_points[m]['nll'], 'correct': v_points[m]['correct_count']}
                          for m in VARIANT_CONTROLS},

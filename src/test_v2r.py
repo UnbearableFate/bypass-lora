@@ -1,6 +1,7 @@
 """E-0014 option regressions (centered cosine read, prior path, address loss, step and
 curriculum schedules, parameter freezing). Execute in the registered GPU allocation."""
 from dataclasses import asdict
+from fractions import Fraction
 import json
 import math
 from pathlib import Path
@@ -351,3 +352,35 @@ def test_pinned_variants_load_and_step_schedule_reproduces_v2_token_schedule():
     token_plan, step_plan = make_schedule(v2, 4_000_000), make_step_schedule(v2, 6000)
     assert step_plan['batches'] == token_plan['batches'] and step_plan['tokens'] == token_plan['tokens'] == 4000470
     assert step_plan['warmup_steps'] == 300 and step_plan['order_sha256'] == token_plan['order_sha256']
+
+
+# ---- RV-0040 regressions -----------------------------------------------------------------
+
+def test_r1_gate_is_em_margin_only_while_h3_and_r2_keep_nll():
+    from v2r_analysis import gate
+
+    def controls(correct, nll):
+        return {m: {'count': 1000, 'correct_count': c, 'em': c/1000, 'nll': x}
+                for m, c, x in zip(('normal', 'zero', 'shuffled'), correct, nll)}
+
+    # Normal NLL is worse than zero: R1 still passes on a >= 50 pp EM margin.
+    worse_nll = controls((600, 100, 50), (3., 2., 4.))
+    r1 = gate(worse_nll, None, margin=Fraction(1, 2), weight=None, require_nll=False)
+    assert r1['passed'] and not r1['nll_pass'] and r1['em_margin_fraction'] == '1/2'
+    assert not gate(controls((599, 100, 50), (1., 2., 4.)), None, margin=Fraction(1, 2), weight=None,
+                    require_nll=False)['passed']
+    assert not gate(worse_nll, .9, margin=Fraction(1, 10), weight=.125)['passed']
+    assert not gate(worse_nll, .9, margin=Fraction(1, 10), weight=.5)['passed']
+    assert gate(controls((600, 100, 50), (1., 2., 4.)), .5, margin=Fraction(1, 10), weight=.5)['passed']
+    assert not gate(controls((600, 100, 50), (1., 2., 4.)), .49, margin=Fraction(1, 10), weight=.5)['passed']
+
+
+def test_stage_transition_clears_frozen_prior_gradients():
+    from v2_train import clear_stale_gradients
+    side = torch.nn.ModuleDict({'memory': torch.nn.Linear(2, 2), 'prior': torch.nn.Linear(2, 2)})
+    for parameter in side.parameters():
+        parameter.grad = torch.ones_like(parameter)
+    for name, parameter in side.named_parameters():
+        parameter.requires_grad_(not name.startswith('prior'))
+    clear_stale_gradients(side)
+    assert all((p.grad is None) == name.startswith('prior') for name, p in side.named_parameters())
