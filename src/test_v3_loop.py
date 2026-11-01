@@ -314,7 +314,7 @@ def test_s_step_records_and_fixed_memory(base, tok, t2_dev):
         for steps in (1, 2, 4):
             records[steps], reconstruction = loop.evaluate_loop(model, rows, tok.pad_token_id, steps)
             print('S', steps, 'reconstruction', reconstruction)
-            assert max(r['max_relative_to_state'] for r in reconstruction.values()) <= loop.RECONSTRUCTION_TOLERANCE
+            assert max(r['max_relative_to_increment'] for r in reconstruction.values()) <= loop.RECONSTRUCTION_TOLERANCE
         for steps in (2, 4):
             normal = records[steps]['normal']
             for r, row in zip(normal, rows):

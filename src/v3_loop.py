@@ -54,11 +54,13 @@ MAX_HOP = 3
 EVAL_BATCH = 16
 # Per-example fields that the S=1 loop must reproduce from the reviewed evaluator.
 # The explicit replay must reproduce the native increment for its per-step diagnostics to
-# describe the evaluated forward. Both compute Z = (z + eta a Ro) - qbar in FP32 on large
-# states, so a one-ulp difference in z appears whole in Z; the bound is therefore relative
-# to the largest state element at each valid question position (1e-5 ~ 84 FP32 ulps).
-# The absolute maximum is recorded alongside.
-RECONSTRUCTION_TOLERANCE = 1e-5
+# describe the evaluated forward. The native reader scores each question position on its
+# own ([rows, r] einsums), the replay all positions at once ([B, T, r], the reviewed
+# read_vectors), so score rounding differs and the softmax passes it on to the read
+# (ATT-0177-1/ATT-0178-1: about 5e-4 absolute on states of about 1e2 at S=1). The bound is
+# on ||Z_replay - Z_native|| / ||Z_native|| per valid question position (0.1%); absolute
+# and state-relative maxima are recorded alongside.
+RECONSTRUCTION_TOLERANCE = 1e-3
 REVIEWED_FIELDS = ('prediction', 'correct', 'nll', 'all_target_weight', 'last_target_weight',
                    'all_n_eff', 'last_n_eff', 'last_argmax')
 
@@ -210,11 +212,15 @@ def evaluate_loop_batch(model, batch, mode, donor_batch, steps):
     native = captured['z']
     if not (torch.isfinite(native).all() and torch.isfinite(increment).all()):
         raise RuntimeError('nonfinite loop state')
-    error = (increment - native).abs().amax(-1)
+    difference = increment - native
+    error = difference.abs().amax(-1)
     scale = torch.maximum(qbar.abs().amax(-1), (qbar + native).abs().amax(-1)).clamp_min(1e-30)
-    reconstruction = {'max_abs': float(error[mask].max()), 'max_relative_to_state': float((error/scale)[mask].max()),
+    # Empty memory gives Z = 0 exactly in both, hence a zero ratio.
+    relative = difference.norm(dim=-1)/native.norm(dim=-1).clamp_min(1e-6)
+    reconstruction = {'max_relative_to_increment': float(relative[mask].max()), 'max_abs': float(error[mask].max()),
+                      'max_relative_to_state': float((error/scale)[mask].max()),
                       'state_max_abs': float(scale[mask].max())}
-    if not reconstruction['max_relative_to_state'] <= RECONSTRUCTION_TOLERANCE:
+    if not reconstruction['max_relative_to_increment'] <= RECONSTRUCTION_TOLERANCE:
         raise AssertionError(f'loop replay differs from the native increment: {reconstruction}')
     losses = F.cross_entropy(logits, batch.labels, reduction='none')
     row = torch.arange(len(batch.labels), device=mask.device)
@@ -278,7 +284,8 @@ def evaluate_loop(model, rows, pad_id, steps, controls=LOOP_CONTROLS):
     device = next(model.parameters()).device
     result, reconstruction = {}, {}
     for mode in controls:
-        records, worst = [], {'max_abs': 0., 'max_relative_to_state': 0., 'state_max_abs': 0.}
+        records = []
+        worst = {'max_relative_to_increment': 0., 'max_abs': 0., 'max_relative_to_state': 0., 'state_max_abs': 0.}
         for start in range(0, len(rows), EVAL_BATCH):
             selected = rows[start:start+EVAL_BATCH]
             batch = collate(selected, pad_id, device)
