@@ -1,0 +1,113 @@
+{
+  "contract": "E-0013@3",
+  "calibration_initial": [
+    {
+      "arm": "V5-C",
+      "lr": 0.0001,
+      "run": "RUN-0101",
+      "attempt": "ATT-0101-1",
+      "job_id": "3764424.opbs",
+      "spec_digest": "blake2b:1ab71b34e2f0f59e3d18c010fc5736e2bc6ce929e1a85112e1c9c18958acb3ba",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 640,
+      "requested_walltime": "00:16:00"
+    },
+    {
+      "arm": "V5-C",
+      "lr": 0.0003,
+      "run": "RUN-0102",
+      "attempt": "ATT-0102-1",
+      "job_id": "3764425.opbs",
+      "spec_digest": "blake2b:62ed1fc68066d99b602f3cd36d45b7654daac547925021ec937916e7587285ae",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 640,
+      "requested_walltime": "00:16:00"
+    },
+    {
+      "arm": "V5-C",
+      "lr": 0.001,
+      "run": "RUN-0103",
+      "attempt": "ATT-0103-1",
+      "job_id": "3764428.opbs",
+      "spec_digest": "blake2b:cf32c99a1e04ea57602c2beb189a1f4bba79d24dc07be5049684b1518824cf06",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 640,
+      "requested_walltime": "00:16:00"
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.0001,
+      "run": "RUN-0104",
+      "attempt": "ATT-0104-1",
+      "job_id": "3764431.opbs",
+      "spec_digest": "blake2b:7486c19c490cc0bf66f79b6d52c4f80454fce50d356886677401c5a280ffeb1f",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 640,
+      "requested_walltime": "00:16:00"
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.0003,
+      "run": "RUN-0105",
+      "attempt": "ATT-0105-1",
+      "job_id": "3764432.opbs",
+      "spec_digest": "blake2b:e0cccab2a71dfd013a6dd3f09e0ae2f5d721c6892c63f3c50c84be3ac5573904",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 640,
+      "requested_walltime": "00:16:00"
+    },
+    {
+      "arm": "V5-F",
+      "lr": 0.001,
+      "run": "RUN-0106",
+      "attempt": "ATT-0106-1",
+      "job_id": "3764433.opbs",
+      "spec_digest": "blake2b:d74c571b9c8e0797127a65bc318fe003d1cfc62b8f47447296e76f4754ce9c1b",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 640,
+      "requested_walltime": "00:16:00"
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.0001,
+      "run": "RUN-0107",
+      "attempt": "ATT-0107-1",
+      "job_id": "3764434.opbs",
+      "spec_digest": "blake2b:62ae5851332b9748aad65ee580712d59393ccfdb91c4eb0adc311ee187eafa43",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 1120,
+      "requested_walltime": "00:28:00"
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.0003,
+      "run": "RUN-0108",
+      "attempt": "ATT-0108-1",
+      "job_id": "3764435.opbs",
+      "spec_digest": "blake2b:d28f21c3a77cc0632f20f205714aa32d2d42ebfd3e39b6a72635919d8d263a3e",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 1120,
+      "requested_walltime": "00:28:00"
+    },
+    {
+      "arm": "V5-L",
+      "lr": 0.001,
+      "run": "RUN-0109",
+      "attempt": "ATT-0109-1",
+      "job_id": "3764436.opbs",
+      "spec_digest": "blake2b:e3d2d5c58bbdf490d3c86718705770f066ae913e208a3a11ca8d5a32765c4d12",
+      "code_commit": "03438968c71f055a6222b2d45dcb78cec281b793",
+      "expected_seconds": 1120,
+      "requested_walltime": "00:28:00"
+    }
+  ],
+  "calibration_notification": "N-20261101-201840-3a6f",
+  "base": {
+    "run": "RUN-0113",
+    "attempt": "ATT-0113-1",
+    "job_id": "3764504.opbs",
+    "spec_digest": "blake2b:78cc081de6b2e233b659206078c382a0e684d676b5bb433b3d2e7adca72babe3",
+    "code_commit": "22509251432bb7251b7e240e1d7612f36e0082ff",
+    "notification": "N-20261101-202714-188a"
+  }
+}

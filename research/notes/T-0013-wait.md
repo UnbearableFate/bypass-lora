@@ -1,5 +1,8 @@
 # T-0013: V5 implementation and first smoke
 
+Historical first-smoke continuation. **Current continuation is
+T-0013-calibration-wait.md**; smoke/reviews below have completed.
+
 Task remains owned by researcher-2; not delivered. Coordinator owns the research
 decisions. Official validation has never been read by this session or code.
 
