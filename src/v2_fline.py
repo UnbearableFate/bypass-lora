@@ -112,6 +112,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     start = time.monotonic()
     metrics, passed = {}, False
+    stage = 'setup'
     try:
         train_rows = load_data(args.data_dir / 'train.jsonl', 'train')
         calibration = load_data(args.data_dir / 'calibration.jsonl', 'calibration')
@@ -128,17 +129,23 @@ def main():
         torch.cuda.reset_peak_memory_stats()
         checkpoints = {math.ceil(len(schedule['batches']) * fraction) for fraction in (.25, .5, .75)}
         def intermediate(step, current):
+            nonlocal stage
             if dev is not None and step in checkpoints:
+                stage = 'intermediate_evaluation'
                 values, _ = evaluate(current, tok, dev, 'dev', constant, out / f'dev-step-{step}.jsonl')
                 with (out / 'curve.jsonl').open('a') as handle:
                     handle.write(json.dumps({'step': step, 'metrics': values}) + '\n')
+                stage = 'training'
+        stage = 'training'
         metrics.update(train(model, tok, train_rows, schedule, args.lr, out, intermediate))
         metrics['train.tokens_per_second'] = metrics['train.tokens'] / metrics['train.seconds']
+        stage = 'checkpoint_save'
         model.export_adapter(out / 'adapter')
         eval_rows = {'calibration': calibration}
         if dev is not None:
             eval_rows['dev'] = dev
         originals = {}
+        stage = 'original_evaluation'
         for split, rows in eval_rows.items():
             values, records = evaluate(model, tok, rows, split, constant, out / f'{split}.jsonl')
             originals[split] = records
@@ -147,7 +154,9 @@ def main():
         del model
         gc.collect()
         torch.cuda.empty_cache()
+        stage = 'checkpoint_reload'
         model = make_model(out / 'adapter')
+        stage = 'reload_evaluation'
         for split, rows in eval_rows.items():
             _, repeated = evaluate(model, tok, rows, split, constant, out / f'{split}-reloaded.jsonl')
             if repeated != originals[split]:
@@ -155,11 +164,16 @@ def main():
         metrics['reload.identical'] = True
         metrics['calibration.gate'] = metrics['calibration.all.em'] >= metrics['calibration.all.prior_em'] + .20
         metrics['failed_lr'] = False
+        if args.smoke and metrics['train.steps'] != 4:
+            raise AssertionError('smoke requires four completed steps')
         passed = True
-    except (ValueError, RuntimeError) as exc:
-        # Nonfinite loss/logits/gradient marks a failed LR; unrelated exceptions
-        # remain engineering failures and never enter the LR selection table.
-        if 'nonfinite' in str(exc).lower() or 'non-finite' in str(exc).lower():
+    except Exception as exc:
+        metrics['failure.stage'] = stage
+        nonfinite = isinstance(exc, (ValueError, RuntimeError)) and (
+            'nonfinite' in str(exc).lower() or 'non-finite' in str(exc).lower())
+        # Only non-smoke training/original-evaluation divergence is a scientific
+        # failed LR. Reload, curve, setup and smoke failures must propagate.
+        if nonfinite and not args.smoke and stage in ('training', 'original_evaluation'):
             metrics.update({'failed_lr': True, 'failure': str(exc)})
             passed = True
         else:
