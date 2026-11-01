@@ -50,6 +50,7 @@ MAC(r, S) = 4096r + S(2r² + 2nr)
 - r128/S4: 524,288 + 4 · 36,864 = 671,744.
 - r'/S1: 4128r' + 2r'² = 671,744 gives r' = 151.6, so r' = 152: 673,664 (+0.29%). A test checks that 152 is the nearest integer.
 - Support-side projection cost per support token is 3·1024r, which grows by 152/128 = +18.75%. This is reported separately.
+- Reported MACs are executed per question token (`macs_per_question_token`, RV-0058). The fixed-query arm computes N(z⁰)Rq once, giving 4096r + r² + S(r² + 2nr) = 622,592 for V3-05. The tokenwise kernel is 4096r + 2Sr² = 655,360 for V3-06. The other arms follow 4096r + S(2r² + 2nr).
 - No latency-matching claim: the 2g step time is dominated by the token loop. The measured stable step time of V3-07 is recorded (`train.stable_step_seconds`).
 
 Why exact initial identity is impossible:
@@ -72,7 +73,7 @@ Initialization (`widen`):
 - It uses the native forward at S_eval through the scoped `eval_steps`, and the reviewed control memories (`v3_loop._snapshots`: normal, zero, shuffled with the global (i−1) donor, permuted) in batches of 16.
 - Asserted: memory unchanged, writes = 0, reads = S × valid question tokens (0 for V3-06).
 - An explicit replay (`replay`) gives the per-step diagnostics and must reproduce the native output within ‖ΔZ‖/‖Z‖ ≤ 1e-3 per valid position (`v3_loop.RECONSTRUCTION_TOLERANCE`). The replay's slot read uses `read_vectors`' expressions.
-- Recorded per step: state norm, read norm, query cosine to step 1 (for V3-06 the query is the pre-activation N(z)Rq), weight on the path's j-th hop fact (all positions and last), n_eff, and last argmax. Path weights are None for shuffled and V3-06.
+- Recorded per step: state norm, read norm, the adjacent-step query cosine `query_cosine_prev_*` (query(s) against query(s−1); None at step 1, as RV-0058 requested), the cosine to step 1 `query_cosine_*`, weight on the path's j-th hop fact (all positions and last), n_eff, and last argmax. For V3-06 the query is the pre-activation N(z)Rq. `_all` is the mean over valid question positions, token-weighted in summaries; `_last` is the last valid position. Path weights are None for shuffled and V3-06.
 - Main evaluation is at S_eval = S_train with four controls. The scan adds the normal control at S ∈ {1, 2, 4, 8}, or {1, 2, 4} for V3-08.
 - S1 arms (V3-01, V3-07): the S=1 records must equal the reviewed E-0016 evaluator example by example (`compare_to_reviewed`), as in E-0018.
 - Reload: export, `load_arm`, re-evaluate at S_train with four controls. The full records must be identical.
@@ -87,7 +88,21 @@ On the normal memory, z^(s) for 1 ≤ s < S is replaced at every valid question 
 Results are EM and NLL by hop. Following plan §9.4, decoding an entity is not evidence of a causal hop-by-hop chain.
 
 ## Analysis (`v3_train.py analyze`, written and reviewed before any ten-arm dev result is read)
-- Inputs: ten completed formal arm runs, one per arm. Their main normal records must cover the same episodes in the same order.
+- Inputs (RV-0058): the passed formal common start (`--start-run`, `--start-sha256`, `start_provenance`) and ten arm runs, one per arm. `validate_arm_run` checks each run against `analysis_reference()`, which is built from the released T2 data:
+  - metadata, train and dev digests;
+  - the shared `train` schedule's order digest and token count, recomputed;
+  - the ordered dev identities (episode, hop, answer token).
+- Each arm run must also satisfy:
+  - completed, validator passed, formal, not smoke, command `arm`, contract E-0022@2;
+  - `metrics.json` and the main `dev.normal.jsonl` equal to the producer manifest's sha256 and size;
+  - config and variant equal to the arm definition;
+  - the same start run, adapter digest and checkpoint files, with `formal_start`;
+  - 6,000 scheduled and executed steps on the reference order and token count, with no smoke trim;
+  - the reference data digests and dev row count;
+  - reload identical at S_train;
+  - records exactly the released dev identities in order, each with `correct == (prediction == target)`;
+  - stored per-hop count, correct_count and EM equal to those recomputed from the records.
+- `decide` and the bootstrap use counts rebuilt from the validated records, not the stored summaries. Tests reject each corruption: denominator (the RV-0058 counterexample), correct count, stored EM, start digest, non-formal start, order, steps, smoke trim, dev digest, config, reload, identity, hop, target, correctness flag, truncation, an unrecorded file edit, and matrices that agree with each other on a truncated or wrong dev set.
 - `decide` applies rules 2–8 on exact fractions (pp, thresholds inclusive):
   - primary = (EM_hop2 + EM_hop3)/2;
   - S_M* = V3-03 if V3-03 − V3-02 ≥ 0.5 pp, else V3-02;

@@ -3,6 +3,7 @@
 Core tests run anywhere; model tests need a GPU allocation and use the D5 seed-0 adapter as a
 stand-in common start. The released-data tests read T2 train/dev only.
 """
+from collections import Counter
 from dataclasses import asdict, replace
 from fractions import Fraction
 import json
@@ -77,6 +78,12 @@ def test_v3_07_width_is_mac_matched_to_v3_03():
     assert v3.macs_per_question_token('V3-07')['question_token'] == 673664
     assert v3.macs_per_question_token('V3-07')['support_projection_per_token'] / \
         v3.macs_per_question_token('V3-03')['support_projection_per_token'] == pytest.approx(1.1875)
+    # Executed counts: the fixed query projects once (RV-0058); the tokenwise kernel has no slot terms.
+    assert v3.macs_per_question_token('V3-05')['question_token'] == 4096*128 + 128**2 + 4*(128**2 + 2*16*128) == 622592
+    assert v3.macs_per_question_token('V3-06')['question_token'] == 4096*128 + 4*2*128**2
+    for arm in ('V3-01', 'V3-02', 'V3-04', 'V3-08', 'V3-09', 'V3-10'):
+        r, steps = 128, v3.ARMS[arm]['steps']
+        assert v3.macs_per_question_token(arm)['question_token'] == 4096*r + steps*(2*r*r + 32*r)
     # 152 is the nearest integer width to the S4 MAC (151.6).
     target = 671744
     assert min(range(128, 200), key=lambda r: abs(4096*r + 2*r*r + 32*r - target)) == 152
@@ -391,6 +398,9 @@ def test_every_arm_trains_evaluates_and_reloads(base, tok, dev, arm, tmp_path):
         print(arm, 'reconstruction', reconstruction)
         for r in records['normal']:
             assert len(r['state_norm_last']) == steps and r['query_cosine_last'][0] == pytest.approx(1., abs=1e-6)
+            assert r['query_cosine_prev_all'][0] is None and len(r['query_cosine_prev_last']) == steps
+            if arm == 'V3-05':  # the fixed query does not move
+                assert all(c == pytest.approx(1., abs=1e-6) for c in r['query_cosine_prev_last'][1:])
         if arm == 'V3-06':
             # No memory is read: every control gives the normal predictions.
             for m in records:
@@ -492,6 +502,10 @@ def test_t2_hop1_training_rows_and_schedules(tok):
           'tokens/step', start['tokens']/6000, train['tokens']/6000)
     assert len(rows) == 18432 and all(hop1[i]['axes']['hop'] == 1 for b in start['batches'] for i in b)
     assert start['steps'] == train['steps'] == 6000 and start['warmup_steps'] == train['warmup_steps'] == 300
+    # The analysis reference is the same released data and the same shared schedule.
+    reference = v3.analysis_reference()
+    assert reference['order_sha256'] == train['order_sha256'] and reference['tokens'] == train['tokens']
+    assert len(reference['dev']) == 1000 and [sum(h == x for _, h, _ in reference['dev']) for x in (1, 2, 3)] == [334, 333, 333]
 
 
 def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
@@ -502,33 +516,162 @@ def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
     assert v3.start_provenance(smoke, sha, smoke=True)['formal_start'] is False
 
 
-def synthetic_arm(directory, arm, hop_correct, n=4):
-    """A completed formal arm run with n rows per hop; hop_correct[h] rows of hop h correct."""
-    steps = str(v3.ARMS[arm]['steps'])
+SYN_START = {'expected_adapter_sha256': 'a'*64, 'formal_start': True, 'run': '/synthetic/start',
+             'checkpoint_files': {'adapter.pt': {'sha256': 'a'*64, 'bytes': 1}}}
+
+
+def synthetic_reference(n=4):
+    return {'metadata_sha256': 'm'*64, 'train_sha256': 't'*64, 'dev_sha256': 'd'*64, 'order_sha256': 'o'*64,
+            'tokens': 4800000, 'order_seed': 1,
+            'dev': [(f'h{h}-{i}', h, 100+i) for h in (1, 2, 3) for i in range(n)]}
+
+
+def refresh_manifest(run):
+    from v2r16_train import file_record
+    manifest = json.loads((run/'manifest.json').read_text())
+    manifest['artifacts'] = [{'path': str(p.resolve()), 'role': str(p.relative_to(run)), **file_record(p)}
+                             for p in sorted(run.rglob('*')) if p.is_file() and p.name != 'manifest.json']
+    (run/'manifest.json').write_text(json.dumps(manifest))
+
+
+def synthetic_arm(directory, arm, hop_correct, reference):
+    """A complete formal arm run on the reference dev set; the first hop_correct[h-1] rows of hop h are correct."""
+    from v2_memory import config
+    steps = v3.ARMS[arm]['steps']
     (directory/f'eval-s{steps}').mkdir(parents=True)
-    records = [{'episode_id': f'h{h}-{i}', 'hop': h, 'correct': i < hop_correct[h-1]} for h in (1, 2, 3) for i in range(n)]
+    records, seen = [], Counter()
+    for episode, hop, target in reference['dev']:
+        right = seen[hop] < hop_correct[hop-1]
+        seen[hop] += 1
+        prediction = target if right else target+1000
+        records.append({'episode_id': episode, 'hop': hop, 'target': target, 'prediction': prediction,
+                        'correct': prediction == target, 'steps': steps, 'nll': 1.})
     (directory/f'eval-s{steps}'/'dev.normal.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records))
-    hops = {f'hop{h}': {'count': n, 'correct_count': hop_correct[h-1], 'em': hop_correct[h-1]/n, 'nll': 1., 'prior_em': 0.}
-            for h in (1, 2, 3)}
-    (directory/'metrics.json').write_text(json.dumps({
-        'evaluation': {steps: {'normal': hops, 'zero': hops}}, 'node_hours': .1, 'macs': v3.macs_per_question_token(arm),
-        'reads_per_question_token': int(steps), 'train': {'stored_parameters': 1, 'stable_step_seconds': .2}}))
-    (directory/'manifest.json').write_text(json.dumps({'status': 'complete', 'eligible_as_evidence': True,
-                                                       'contract': v3.CONTRACT, 'arm': arm}))
+    hops = {}
+    for h in (1, 2, 3):
+        group = [r for r in records if r['hop'] == h]
+        hops[f'hop{h}'] = {'count': len(group), 'correct_count': sum(r['correct'] for r in group),
+                           'em': sum(r['correct'] for r in group)/len(group), 'nll': 1., 'prior_em': 0.}
+    metrics = {
+        'config': asdict(v3.arm_config(config('direct_hidden', 'soft_slot', 'F_out'), arm)),
+        'variant': asdict(v3.arm_variant(arm)), 'start': dict(SYN_START),
+        'schedule': {'steps': 6000, 'stage': 'train', 'order_sha256': reference['order_sha256'], 'tokens': reference['tokens']},
+        'train': {'steps': 6000, 'tokens': reference['tokens'], 'stored_parameters': 1, 'stable_step_seconds': .2},
+        'data': {'metadata_sha256': reference['metadata_sha256'], 'dev_sha256': reference['dev_sha256'],
+                 'train_sha256': reference['train_sha256'], 'dev_rows': len(reference['dev'])},
+        'checkpoint_reload': {'full_records_identical': True, 'steps': steps},
+        'evaluation': {str(steps): {'normal': hops, 'zero': hops}}, 'node_hours': .1,
+        'macs': v3.macs_per_question_token(arm), 'reads_per_question_token': steps}
+    (directory/'metrics.json').write_text(json.dumps(metrics))
+    (directory/'manifest.json').write_text(json.dumps({
+        'status': 'complete', 'validator': {'passed': True}, 'eligible_as_evidence': True, 'smoke_only': False,
+        'smoke_steps': 0, 'eval_limit': 0, 'contract': v3.CONTRACT, 'command': 'arm', 'arm': arm}))
+    refresh_manifest(directory)
     return directory
 
 
-def test_analyze_reads_ten_arms_and_applies_the_rules(tmp_path):
-    from types import SimpleNamespace
-    runs = [synthetic_arm(tmp_path/arm, arm, (2, 1, 1) if arm != 'V3-03' else (2, 3, 3)) for arm in v3.ARMS]
-    result = {}
-    v3.run_analyze(SimpleNamespace(arm_runs=runs), tmp_path, result)
+def synthetic_matrix(tmp_path, reference, star=(2, 3, 3)):
+    return [synthetic_arm(tmp_path/arm, arm, star if arm == 'V3-03' else (2, 1, 1), reference) for arm in v3.ARMS]
+
+
+def test_analyze_validated_records_apply_the_rules(tmp_path):
+    reference = synthetic_reference()
+    result = v3.analyze_runs(synthetic_matrix(tmp_path, reference), reference, SYN_START)
     assert result['decision']['S_M*'] == 'V3-03' and result['decision']['GL_M'] is True
     assert result['decision']['primary_pp']['V3-03'] == 75. and result['decision']['primary_pp']['V3-01'] == 25.
     assert 'V3-03 - V3-01' in result['bootstrap']['intervals_pp'] and set(result['arms']) == set(v3.ARMS)
+    runs = synthetic_matrix(tmp_path/'again', reference)
     with pytest.raises(ValueError):
-        v3.run_analyze(SimpleNamespace(arm_runs=runs[:9]), tmp_path, {})
-    bad = json.loads((runs[0]/'manifest.json').read_text()) | {'eligible_as_evidence': False}
-    (runs[0]/'manifest.json').write_text(json.dumps(bad))
+        v3.analyze_runs(runs[:9], reference, SYN_START)
     with pytest.raises(ValueError):
-        v3.run_analyze(SimpleNamespace(arm_runs=runs), tmp_path, {})
+        v3.analyze_runs(runs + runs[:1], reference, SYN_START)
+
+
+def corrupt_metrics(run, change):
+    metrics = json.loads((run/'metrics.json').read_text())
+    change(metrics)
+    (run/'metrics.json').write_text(json.dumps(metrics))
+    refresh_manifest(run)
+
+
+def corrupt_records(run, change):
+    path = next(run.glob('eval-s*'))/'dev.normal.jsonl'
+    records = [json.loads(line) for line in path.open()]
+    records = change(records)
+    path.write_text(''.join(json.dumps(r)+'\n' for r in records))
+    refresh_manifest(run)
+
+
+def hop(metrics, h):
+    return next(iter(metrics['evaluation'].values()))['normal'][f'hop{h}']
+
+
+CORRUPTIONS = {
+    # RV-0058 counterexample: only the stored denominators change.
+    'denominator': lambda r: corrupt_metrics(r, lambda m: [hop(m, h).update(count=3) for h in (2, 3)]),
+    'correct_count': lambda r: corrupt_metrics(r, lambda m: hop(m, 2).update(correct_count=4)),
+    'stored_em': lambda r: corrupt_metrics(r, lambda m: hop(m, 3).update(em=1.)),
+    'start_digest': lambda r: corrupt_metrics(r, lambda m: m['start'].update(expected_adapter_sha256='b'*64)),
+    'nonformal_start': lambda r: corrupt_metrics(r, lambda m: m['start'].update(formal_start=False)),
+    'order': lambda r: corrupt_metrics(r, lambda m: m['schedule'].update(order_sha256='x'*64)),
+    'steps': lambda r: corrupt_metrics(r, lambda m: m['train'].update(steps=5999)),
+    'smoke_schedule': lambda r: corrupt_metrics(r, lambda m: m['schedule'].update(smoke_steps=3)),
+    'dev_digest': lambda r: corrupt_metrics(r, lambda m: m['data'].update(dev_sha256='y'*64)),
+    'config': lambda r: corrupt_metrics(r, lambda m: m['config'].update(eta=.5)),
+    'reload': lambda r: corrupt_metrics(r, lambda m: m['checkpoint_reload'].update(full_records_identical=False)),
+    'identity': lambda r: corrupt_records(r, lambda rs: [dict(rs[0], episode_id='other'), *rs[1:]]),
+    'hop': lambda r: corrupt_records(r, lambda rs: [dict(rs[0], hop=2), *rs[1:]]),
+    'target': lambda r: corrupt_records(r, lambda rs: [dict(rs[0], target=rs[0]['target']+1), *rs[1:]]),
+    'correct_flag': lambda r: corrupt_records(r, lambda rs: rs[:-1] + [dict(rs[-1], correct=True)]),
+    'truncated': lambda r: corrupt_records(r, lambda rs: rs[:-1]),
+    'unrecorded_edit': lambda r: (r/'metrics.json').write_text((r/'metrics.json').read_text() + ' '),
+}
+
+
+@pytest.mark.parametrize('name', sorted(CORRUPTIONS))
+def test_analyze_rejects_each_corruption(tmp_path, name):
+    reference = synthetic_reference()
+    runs = synthetic_matrix(tmp_path, reference)
+    CORRUPTIONS[name](runs[2])  # V3-03
+    with pytest.raises(ValueError):
+        v3.analyze_runs(runs, reference, SYN_START)
+
+
+def test_analyze_rejects_runs_consistent_with_each_other_but_not_the_released_dev(tmp_path):
+    reference = synthetic_reference()
+    short = dict(reference, dev=reference['dev'][:-1])
+    runs = synthetic_matrix(tmp_path, short)  # every arm agrees on a truncated dev set
+    with pytest.raises(ValueError):
+        v3.analyze_runs(runs, reference, SYN_START)
+    wrong = dict(reference, dev=[(e, h, t+1) for e, h, t in reference['dev']])
+    with pytest.raises(ValueError):
+        v3.analyze_runs(synthetic_matrix(tmp_path/'wrong', wrong), reference, SYN_START)
+
+
+def test_query_cosines_first_and_adjacent():
+    q1 = torch.tensor([[[1., 0.], [1., 0.], [0., 1.]]])
+    q2 = torch.tensor([[[1., 1.], [0., 1.], [1., 0.]]])
+    q3 = torch.tensor([[[0., 1.], [-1., 1.], [1., 0.]]])
+    mask = torch.tensor([[True, True, False]])  # the third position is padding
+    result = v3.query_cosines([q1, q2, q3], mask)
+    assert result[0]['query_cosine_prev_all'] is None and result[0]['query_cosine_prev_last'] is None
+    assert result[0]['query_cosine_all'].item() == pytest.approx(1.)
+    c = 2 ** -.5
+    assert result[2]['query_cosine_all'].item() == pytest.approx((0. + -c)/2)   # q3 vs q1
+    assert result[2]['query_cosine_prev_all'].item() == pytest.approx((c + c)/2)  # q3 vs q2
+    assert result[2]['query_cosine_prev_last'].item() == pytest.approx(c) and result[2]['query_cosine_last'].item() == pytest.approx(-c)
+    fixed = v3.query_cosines([q1, q1, q1], mask)
+    assert all(e['query_cosine_prev_all'].item() == pytest.approx(1.) for e in fixed[1:])
+
+
+def test_summary_weights_adjacent_cosine_by_question_tokens():
+    def record(tokens, prev):
+        return {'episode_id': str(tokens), 'hop': 1, 'support_order': 'natural', 'target': 1, 'prediction': 1,
+                'correct': True, 'nll': 0., 'question_tokens': tokens, 'steps': 2, 'output_norm_last': 1.,
+                'query_cosine_all': [1., .5], 'query_cosine_last': [1., .5], 'query_cosine_prev_all': [None, prev],
+                'query_cosine_prev_last': [None, prev], 'state_norm_all': [1., 1.], 'state_norm_last': [1., 1.],
+                'read_norm_all': [1., 1.], 'read_norm_last': [1., 1.], 'n_eff_all': None, 'n_eff_last': None,
+                'argmax_last': None, 'path_weight_all': None, 'path_weight_last': None}
+    summary = v3.summarize_arm([record(1, 0.), record(3, 1.)])['all']['per_step']
+    assert summary[0]['query_cosine_prev_all'] is None
+    assert summary[1]['query_cosine_prev_all'] == pytest.approx(.75) and summary[1]['query_cosine_prev_last'] == pytest.approx(.5)

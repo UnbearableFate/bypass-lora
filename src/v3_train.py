@@ -251,12 +251,19 @@ def widen(weights, rank, dims, seed_parts=WIDEN_SEED):
 
 
 def macs_per_question_token(arm, d=1024, n=MAC_SLOTS):
-    """E-0022@2: 4096r + S(2r^2 + 2nr) for the memory loop; the tokenwise kernel has no slot terms."""
+    """Executed multiply-accumulates per question token (E-0022@2): projections 3dr, exit P dr, and per
+    step Rq r^2 (once in total for a fixed query, which LatentReader computes outside the loop), the
+    slot scores and weighted values 2nr (none for the tokenwise kernel) and Ro r^2. Memory loop:
+    4096r + S(2r^2 + 2nr); fixed query: 4096r + r^2 + S(r^2 + 2nr); tokenwise: 4096r + 2Sr^2."""
     spec = ARMS[arm]
     r, steps = spec.get('rank', 128), spec['steps']
-    per_step = 2*r*r + (0 if spec.get('kernel') == 'tokenwise' else 2*n*r)
-    return {'question_token': 4*d*r + steps*per_step, 'support_projection_per_token': 3*d*r,
-            'formula': '4096r + S(2r^2 + 2nr), n=16' + ('; tokenwise: 4096r + S*2r^2' if spec.get('kernel') else '')}
+    fixed, tokenwise = spec.get('fixed_query', False), spec.get('kernel') == 'tokenwise'
+    query_projection = r*r if fixed else steps*r*r
+    slots = 0 if tokenwise else steps*2*n*r
+    return {'question_token': 4*d*r + query_projection + slots + steps*r*r,
+            'support_projection_per_token': 3*d*r,
+            'formula': ('4096r + r^2 + S(r^2 + 2nr)' if fixed else '4096r + 2Sr^2' if tokenwise
+                        else '4096r + S(2r^2 + 2nr)') + ', n=16, executed'}
 
 
 # ---- model construction ------------------------------------------------------------------------
@@ -394,6 +401,27 @@ def replay(side, qbar, kbar, vbar, snapshot, steps, replace_state=None, stop=Non
     return (z - z0 if cfg.readout == 'increment' else z), trajectory
 
 
+def query_cosines(queries, mask):
+    """Per step s (0-based): cosine of query(s) with query(0) (query_cosine_*) and with query(s-1)
+    (query_cosine_prev_*, the adjacent-step cosine of E-0022@2; None at the first step), each as the
+    mean over valid question positions (_all) and at the last valid position (_last)."""
+    row = torch.arange(len(mask), device=mask.device)
+    last = mask.long().sum(-1)-1
+    count = mask.sum(-1)
+    result = []
+    for s, query in enumerate(queries):
+        entry = {}
+        for name, other in (('query_cosine', queries[0]), ('query_cosine_prev', queries[s-1] if s else None)):
+            if other is None:
+                entry[f'{name}_all'] = entry[f'{name}_last'] = None
+                continue
+            cosine = F.cosine_similarity(query, other, dim=-1, eps=1e-6)
+            entry[f'{name}_all'] = (cosine*mask).sum(-1)/count
+            entry[f'{name}_last'] = cosine[row, last]
+        result.append(entry)
+    return result
+
+
 def _capture(model, batch, snapshot):
     """Native question forward on a snapshot; returns logits, projections, native Z, state, counts."""
     from v2_memory import answer_logits, capture_projection
@@ -472,13 +500,12 @@ def evaluate_arm_batch(model, batch, mode, donor_batch, steps):
     count = mask.sum(-1)
     has_slots = snapshot.valid.any(-1)
     paths = path_matrix(batch.rows, mask.device)
-    first_query = trajectory[0]['query']
+    cosines = query_cosines([step['query'] for step in trajectory], mask)
     target_available = mode != 'shuffled' and variant.kernel != 'tokenwise'
     per_step = []
-    for step in trajectory:
-        cosine = F.cosine_similarity(step['query'], first_query, dim=-1, eps=1e-6)
+    for step, cosine in zip(trajectory, cosines):
         state_norm, read_norm = step['state'].norm(dim=-1), step['read'].norm(dim=-1)
-        values = {'query_cosine_all': (cosine*mask).sum(-1)/count, 'query_cosine_last': cosine[row, last],
+        values = {**cosine,
                   'state_norm_all': (state_norm*mask).sum(-1)/count, 'state_norm_last': state_norm[row, last],
                   'read_norm_all': (read_norm*mask).sum(-1)/count, 'read_norm_last': read_norm[row, last]}
         weights = step['weights']
@@ -493,7 +520,8 @@ def evaluate_arm_batch(model, batch, mode, donor_batch, steps):
             values.update({'path_weight_all': torch.stack(path_all, -1), 'path_weight_last': torch.stack(path_last, -1),
                            'n_eff_all': (neff*mask).sum(-1)/count, 'n_eff_last': neff[row, last],
                            'argmax_last': torch.where(has_slots, weights[row, last].argmax(-1), -1)})
-        per_step.append({key: value.tolist() for key, value in values.items()})
+        per_step.append({key: [None]*len(batch.rows) if value is None else value.tolist()
+                         for key, value in values.items()})
     out_norm = native.norm(dim=-1)
     predictions, labels, losses = logits.argmax(-1).tolist(), batch.labels.tolist(), losses.tolist()
     records = []
@@ -505,7 +533,8 @@ def evaluate_arm_batch(model, batch, mode, donor_batch, steps):
                   'question_tokens': int(count[i]), 'steps': steps,
                   'output_norm_last': out_norm[row, last][i].item(),
                   'output_norm_all': ((out_norm*mask).sum(-1)/count)[i].item()}
-        for name in ('query_cosine_all', 'query_cosine_last', 'state_norm_all', 'state_norm_last',
+        for name in ('query_cosine_all', 'query_cosine_last', 'query_cosine_prev_all', 'query_cosine_prev_last',
+                     'state_norm_all', 'state_norm_last',
                      'read_norm_all', 'read_norm_last', 'n_eff_all', 'n_eff_last', 'argmax_last'):
             record[name] = [s[name][i] for s in per_step] if name in per_step[0] else None
         for name in ('path_weight_all', 'path_weight_last'):
@@ -568,6 +597,9 @@ def summarize_arm(records, prior_token=None):
                         for field in ('query_cosine', 'state_norm', 'read_norm')}
                 step.update({f'{field}_last': _mean(r[f'{field}_last'][s] for r in group)
                              for field in ('query_cosine', 'state_norm', 'read_norm')})
+                step['query_cosine_prev_all'] = None if s == 0 else \
+                    sum(r['query_cosine_prev_all'][s]*r['question_tokens'] for r in group)/tokens
+                step['query_cosine_prev_last'] = None if s == 0 else _mean(r['query_cosine_prev_last'][s] for r in group)
                 if group[0]['n_eff_all'] is not None:
                     step['n_eff_all'] = sum(r['n_eff_all'][s]*r['question_tokens'] for r in group)/tokens
                     step['n_eff_last'] = _mean(r['n_eff_last'][s] for r in group)
@@ -1033,39 +1065,101 @@ def run_intervene(args, output, result):
             _write_records(output/f'intervention-s{s}.{name}.jsonl', group)
 
 
-def run_analyze(args, output, result):
-    """Reads the ten arms' completed formal runs (manifests, metrics, main normal records)."""
+def analysis_reference():
+    """The pinned released T2 data the ten arms must have used: digests, the training order and
+    token count of the shared 'train' schedule, and the ordered dev identities (id, hop, target)."""
+    from v3_eval import load_released_data
+    from v3_loop import T2_DATA, T2_METADATA_SHA256
+    metadata, train_rows = load_released_data(T2_DATA, T2_METADATA_SHA256, 'train')
+    _, dev = load_released_data(T2_DATA, T2_METADATA_SHA256, 'dev')
+    schedule = v3_schedule(train_rows, 'train')
+    return {'metadata_sha256': T2_METADATA_SHA256, 'train_sha256': metadata['splits']['train']['sha256'],
+            'dev_sha256': metadata['splits']['dev']['sha256'], 'order_sha256': schedule['order_sha256'],
+            'tokens': schedule['tokens'], 'order_seed': schedule['order_seed'],
+            'dev': [(r['episode_id'], r['axes']['hop'], r['query']['answer_token_id']) for r in dev]}
+
+
+def _verified_artifact(manifest, path):
+    """The file's sha256 and size must equal the producer manifest's artifact record."""
     from v2r16_train import file_record
-    runs = {}
-    for item in args.arm_runs:
-        run = Path(item)
-        manifest = json.loads((run/'manifest.json').read_text())
-        if (manifest.get('status') != 'complete' or manifest.get('eligible_as_evidence') is not True
-                or manifest.get('contract') != CONTRACT or manifest.get('arm') not in ARMS):
-            raise ValueError(f'{run} is not a completed formal E-0022@2 arm run')
-        if manifest['arm'] in runs:
+    entries = [a for a in manifest.get('artifacts', []) if Path(a['path']) == path.resolve()]
+    if len(entries) != 1 or {k: entries[0].get(k) for k in ('sha256', 'bytes')} != file_record(path):
+        raise ValueError(f'{path} differs from its producer manifest')
+
+
+def validate_arm_run(run, reference, start):
+    """One formal arm run of E-0022@2, bound to the passed common start, the shared schedule and the
+    released dev set. Returns (arm, metrics, records) with records re-derived and cross-checked."""
+    from v2_memory import config
+    run = Path(run)
+    manifest = json.loads((run/'manifest.json').read_text())
+    arm = manifest.get('arm')
+    if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
+            or manifest.get('eligible_as_evidence') is not True or manifest.get('smoke_only') is not False
+            or manifest.get('smoke_steps') or manifest.get('eval_limit') or manifest.get('contract') != CONTRACT
+            or manifest.get('command') != 'arm' or arm not in ARMS):
+        raise ValueError(f'{run} is not a completed formal E-0022@2 arm run')
+    _verified_artifact(manifest, run/'metrics.json')
+    metrics = json.loads((run/'metrics.json').read_text())
+    expected_config = asdict(arm_config(config('direct_hidden', 'soft_slot', 'F_out'), arm))
+    if (json.loads(json.dumps(metrics.get('config'))) != json.loads(json.dumps(expected_config))
+            or metrics.get('variant') != asdict(arm_variant(arm))):
+        raise ValueError(f'{arm}: configuration or variant differs from the arm definition')
+    started = metrics.get('start', {})
+    if (started.get('expected_adapter_sha256') != start['expected_adapter_sha256']
+            or started.get('formal_start') is not True or started.get('run') != start['run']
+            or started.get('checkpoint_files') != start['checkpoint_files']):
+        raise ValueError(f'{arm}: not trained from the passed common start')
+    schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
+    if (schedule.get('steps') != STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
+            or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']
+            or train.get('steps') != STEPS or train.get('tokens') != reference['tokens']):
+        raise ValueError(f'{arm}: not the shared 6000-step training schedule')
+    data = metrics.get('data', {})
+    if (data.get('metadata_sha256') != reference['metadata_sha256'] or data.get('dev_sha256') != reference['dev_sha256']
+            or data.get('train_sha256') != reference['train_sha256'] or data.get('dev_rows') != len(reference['dev'])):
+        raise ValueError(f'{arm}: not the pinned released T2 data')
+    reload = metrics.get('checkpoint_reload', {})
+    steps = ARMS[arm]['steps']
+    if reload.get('full_records_identical') is not True or reload.get('steps') != steps:
+        raise ValueError(f'{arm}: reload check missing')
+    path = run/f'eval-s{steps}'/'dev.normal.jsonl'
+    _verified_artifact(manifest, path)
+    records = [json.loads(line) for line in path.open()]
+    if [(r['episode_id'], r['hop'], r['target']) for r in records] != reference['dev']:
+        raise ValueError(f'{arm}: main records are not the released dev episodes in order')
+    if any(type(r['prediction']) is not int or r['correct'] is not (r['prediction'] == r['target'])
+           or r['steps'] != steps for r in records):
+        raise ValueError(f'{arm}: inconsistent per-example correctness')
+    summary = metrics['evaluation'][str(steps)]['normal']
+    for hop in range(1, MAX_HOP+1):
+        group = [r for r in records if r['hop'] == hop]
+        derived = {'count': len(group), 'correct_count': sum(r['correct'] for r in group),
+                   'em': sum(r['correct'] for r in group)/len(group)}
+        if {k: summary[f'hop{hop}'][k] for k in derived} != derived:
+            raise ValueError(f'{arm}: stored hop{hop} summary disagrees with its records')
+    return arm, metrics, records
+
+
+def analyze_runs(runs, reference, start):
+    """Rules and bootstrap from the validated records of exactly one run per arm."""
+    validated = {}
+    for run in runs:
+        arm, metrics, records = validate_arm_run(run, reference, start)
+        if arm in validated:
             raise ValueError('one run per arm')
-        runs[manifest['arm']] = run
-    if set(runs) != set(ARMS):
+        validated[arm] = (Path(run), metrics, records)
+    if set(validated) != set(ARMS):
         raise ValueError('all ten arms are required')
-    main, correct, order, table = {}, {}, None, {}
-    for arm, run in sorted(runs.items()):
-        metrics = json.loads((run/'metrics.json').read_text())
-        steps = str(ARMS[arm]['steps'])
-        evaluation = metrics['evaluation'][steps]
-        main[arm] = {f'hop{h}': evaluation['normal'][f'hop{h}'] for h in (1, 2, 3)}
-        records = [json.loads(line) for line in (run/f'eval-s{steps}'/'dev.normal.jsonl').open()]
-        ids = [r['episode_id'] for r in records]
-        if order is None:
-            order = ids
-        elif ids != order:
-            raise ValueError('arms evaluated different dev episodes or orders')
-        for h in (1, 2, 3):
-            group = [r for r in records if r['hop'] == h]
-            if sum(r['correct'] for r in group) != main[arm][f'hop{h}']['correct_count']:
-                raise AssertionError('records and summary disagree')
+    main, correct, table = {}, {}, {}
+    for arm, (run, metrics, records) in sorted(validated.items()):
+        main[arm] = {f'hop{h}': {'count': sum(r['hop'] == h for r in records),
+                                 'correct_count': sum(r['correct'] for r in records if r['hop'] == h)}
+                     for h in (1, 2, 3)}
         correct[arm] = {h: [int(r['correct']) for r in records if r['hop'] == h] for h in (1, 2, 3)}
+        evaluation = metrics['evaluation'][str(ARMS[arm]['steps'])]
         table[arm] = {
+            'run': str(run.resolve()),
             'main': {mode: {f'hop{x}': {k: evaluation[mode][f'hop{x}'][k] for k in ('em', 'nll', 'count', 'prior_em')}
                             for x in (1, 2, 3)} for mode in evaluation},
             'scan': {s: {f'hop{x}': metrics['evaluation'][s]['normal'][f'hop{x}']['em'] for x in (1, 2, 3)}
@@ -1073,16 +1167,26 @@ def run_analyze(args, output, result):
             'stored_parameters': metrics['train']['stored_parameters'],
             'stable_step_seconds': metrics['train']['stable_step_seconds'],
             'node_hours': metrics['node_hours'], 'macs': metrics['macs'],
-            'reads_per_question_token': metrics['reads_per_question_token'],
-            'source_metrics': file_record(run/'metrics.json')}
-    result['decision'] = decide(main)
-    star = result['decision']['S_M*']
+            'reads_per_question_token': metrics['reads_per_question_token']}
+    decision = decide(main)
+    star = decision['S_M*']
     pairs = [(star, other) for other in ('V3-01', 'V3-05', 'V3-06', 'V3-07', 'V3-04', 'V3-08', 'V3-09', 'V3-10')
              if other != star] + [('V3-03', 'V3-05'), ('V3-02', 'V3-01'), ('V3-03', 'V3-01')]
     pairs = list(dict.fromkeys(pairs))
-    result['bootstrap'] = {'resamples': BOOTSTRAP_RESAMPLES, 'seed': SEED, 'stratified_by': 'hop', 'paired': True,
-                           'intervals_pp': bootstrap(correct, pairs), 'descriptive_only': True}
-    result['arms'] = table
+    return {'decision': decision, 'arms': table,
+            'bootstrap': {'resamples': BOOTSTRAP_RESAMPLES, 'seed': SEED, 'stratified_by': 'hop', 'paired': True,
+                          'intervals_pp': bootstrap(correct, pairs), 'descriptive_only': True},
+            'inputs': {'start': start, 'reference': {k: v for k, v in reference.items() if k != 'dev'},
+                       'dev_rows': len(reference['dev'])}}
+
+
+def run_analyze(args, output, result):
+    """Validates the ten formal arm runs against the passed common start and the released data,
+    then applies the rules and the bootstrap to their records."""
+    start = start_provenance(args.start_run, args.start_sha256)
+    if start['formal_start'] is not True:
+        raise ValueError('analysis needs the formal common start')
+    result.update(analyze_runs(args.arm_runs, analysis_reference(), start))
 
 
 def _write_records(path, records):
@@ -1096,8 +1200,8 @@ def main():
     parser.add_argument('command', choices=('start', 'arm', 'intervene', 'analyze'))
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--arm', choices=tuple(ARMS))
-    parser.add_argument('--start-run', type=Path, help='the V3-S0 run directory (arm)')
-    parser.add_argument('--start-sha256', help='pinned adapter.pt digest of the common start (arm)')
+    parser.add_argument('--start-run', type=Path, help='the V3-S0 run directory (arm, analyze)')
+    parser.add_argument('--start-sha256', help='pinned adapter.pt digest of the common start (arm, analyze)')
     parser.add_argument('--arm-run', type=Path, help='the S_M* arm run directory (intervene)')
     parser.add_argument('--arm-sha256', help='pinned adapter.pt digest of the S_M* arm (intervene)')
     parser.add_argument('--arm-runs', type=Path, nargs='*', default=(), help='the ten arm run directories (analyze)')
@@ -1106,6 +1210,8 @@ def main():
     args = parser.parse_args()
     if args.command == 'arm' and (args.arm is None or args.start_run is None or args.start_sha256 is None):
         parser.error('arm needs --arm, --start-run and --start-sha256')
+    if args.command == 'analyze' and (args.start_run is None or args.start_sha256 is None or len(args.arm_runs) != len(ARMS)):
+        parser.error('analyze needs --start-run, --start-sha256 and the ten --arm-runs')
     if args.command == 'intervene' and (args.arm_run is None or args.arm_sha256 is None):
         parser.error('intervene needs --arm-run and --arm-sha256')
     if args.command != 'arm' and args.arm:
