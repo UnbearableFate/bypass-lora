@@ -37,9 +37,12 @@ def locked(tmp_path, monkeypatch):
         sealed[name] = (reference['revision'], reference['sha256'])
     monkeypatch.setattr(confirm, 'SEALED', sealed)
     checkpoints = []
+    lr_lock = put(tmp_path / 'lr-lock.json', {'contract': confirm.EXPERIMENT,
+                  'locked_lrs': {arm: .001 for arm in confirm.PARAMETERS}})
     for arm, parameters in confirm.PARAMETERS.items():
         for seed in (1, 2, 3):
-            directory = tmp_path / f'{arm}-{seed}'
+            run_directory = tmp_path / f'{arm}-{seed}'
+            directory = run_directory / 'adapter'
             config = {'model_revision': confirm.REVISION,
                       'layers': list(range(28)) if arm == 'V5-L' else [6, 13, 20, 27],
                       'rank': {'V5-C': 32, 'V5-F': 64, 'V5-L': 1}[arm]}
@@ -49,11 +52,15 @@ def locked(tmp_path, monkeypatch):
                 config.update(branch='tokenwise_silu', fusion='C_up' if arm == 'V5-C' else 'F_out')
             files = {'config.json': put(directory / 'config.json', config),
                      'adapter.pt': put(directory / 'adapter.pt', f'opaque weights {arm} {seed}')}
-            manifest = put(directory / 'manifest.json', {'status': 'complete', 'arm': arm, 'seed': seed,
-                'metrics': {'reload.identical': True, 'params.trainable': parameters, 'learning_rate': .001}})
+            inventory = put(run_directory / 'checkpoint.json', files)
+            manifest = put(run_directory / 'manifest.json', {'status': 'complete', 'arm': arm, 'seed': seed,
+                'contract': confirm.EXPERIMENT, 'phase': 'train', 'validator': {'passed': True},
+                'artifacts': [{'path': inventory['path'], 'role': 'checkpoint'}],
+                'metrics': {'reload.identical': True, 'params.trainable': parameters, 'learning_rate': .001,
+                            'train.examples': 58329, 'train.steps': 29165, 'lr_lock.sha256': lr_lock['sha256']}})
             checkpoints.append({'arm': arm, 'seed': seed, 'path': str(directory),
                 'expected_parameters': parameters, 'learning_rate': .001,
-                'files': files, 'training_manifest': manifest})
+                'files': files, 'training_manifest': manifest, 'checkpoint_inventory': inventory})
     contract = put(tmp_path / 'contract.md', '---\nexperiment: E-0013\n---\nSynthetic contract fixture.\n')
     monkeypatch.setattr(confirm, 'CONTRACT_SHA256', contract['sha256'])
     lock = {'schema_version': 1, 'experiment': confirm.EXPERIMENT, 'code_commit': commit,
@@ -61,6 +68,7 @@ def locked(tmp_path, monkeypatch):
         'model': confirm.MODEL, 'model_revision': confirm.REVISION, 'tokenizer_revision': confirm.REVISION,
         'max_length': 512, 'wikitext_block_length': 1024,
         'contract': contract,
+        'learning_rate_lock': lr_lock,
         'prerequisites': {'code_review': {'id': 'RV-9999', 'passed': True,
             'answer': put(tmp_path / 'review.md', 'Synthetic passing review.')},
             'dev_rehearsal': put(tmp_path / 'rehearsal.json', {'split': 'dev'})},
@@ -117,23 +125,67 @@ def test_bad_lock_refuses_before_validation_content(locked, monkeypatch, mutatio
 
 def test_unseal_receipt_retries_require_same_lock(locked):
     path, lock = locked
-    confirm.claim_unseal(lock, path)
+    with confirm.claim_unseal(lock, path, path.parent / 'first'):
+        pass
     with pytest.raises(confirm.LockError, match='already claimed'):
-        confirm.claim_unseal(lock, path)
-    confirm.claim_unseal(lock, path, resume=True)
+        with confirm.claim_unseal(lock, path, path.parent / 'second'):
+            pytest.fail('duplicate claim')
+    with confirm.claim_unseal(lock, path, path.parent / 'retry', resume=True):
+        pass
     path.write_text(path.read_text() + '\n')
     with pytest.raises(confirm.LockError, match='identical lock'):
-        confirm.claim_unseal(lock, path, resume=True)
+        with confirm.claim_unseal(lock, path, path.parent / 'bad-retry', resume=True):
+            pytest.fail('changed lock admitted')
 
 
 def test_completed_predictions_cannot_be_reopened(locked):
     path, lock = locked
-    confirm.claim_unseal(lock, path)
+    with confirm.claim_unseal(lock, path, path.parent / 'first'):
+        pass
     receipt = json.loads(Path(lock['unseal_receipt']).read_text())
     receipt['status'] = 'predictions_complete'
     Path(lock['unseal_receipt']).write_text(json.dumps(receipt))
     with pytest.raises(confirm.LockError, match='predictions already complete'):
-        confirm.claim_unseal(lock, path, resume=True)
+        with confirm.claim_unseal(lock, path, path.parent / 'retry', resume=True):
+            pytest.fail('completed predictions admitted')
+
+
+@pytest.mark.parametrize('mutation', ['seed-swap', 'inventory-bytes', 'smoke', 'incomplete', 'contract',
+                                     'validator', 'missing-phase', 'lr-lock'])
+def test_final_training_provenance_failures_precede_receipt_and_reader(locked, monkeypatch, mutation):
+    path, lock = locked
+    monkeypatch.setattr(confirm, 'read_validation', lambda *a: pytest.fail('validation parsed'))
+    first, second = lock['checkpoints'][:2]
+    if mutation == 'seed-swap':
+        for key in ('path', 'files'):
+            first[key], second[key] = second[key], first[key]
+    elif mutation == 'inventory-bytes':
+        ref = first['checkpoint_inventory']
+        value = json.loads(Path(ref['path']).read_text())
+        value['adapter.pt']['sha256'] = '0' * 64
+        first['checkpoint_inventory'] = put(Path(ref['path']), value)
+    else:
+        ref = first['training_manifest']
+        value = json.loads(Path(ref['path']).read_text())
+        if mutation == 'smoke':
+            value['phase'] = 'smoke'
+            value['metrics']['train.steps'] = 5
+            value['metrics']['plan.steps'] = 29165
+        elif mutation == 'incomplete':
+            value['metrics']['train.examples'] = 58328
+        elif mutation == 'contract':
+            value['contract'] = 'E-0013@2'
+        elif mutation == 'validator':
+            value['validator']['passed'] = False
+        elif mutation == 'missing-phase':
+            value.pop('phase')
+        else:
+            value['metrics']['lr_lock.sha256'] = '0' * 64
+        first['training_manifest'] = put(Path(ref['path']), value)
+    path.write_text(json.dumps(lock))
+    with pytest.raises(confirm.LockError):
+        confirm.run_confirmation(path, path.parent / 'forbidden', unseal=True)
+    assert not Path(lock['unseal_receipt']).exists()
 
 
 class ToyTokenizer:

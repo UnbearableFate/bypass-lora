@@ -7,6 +7,8 @@ See research/notes/T-0014-lock-schema.md for the lock format.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import gc
 import hashlib
 import json
@@ -14,6 +16,7 @@ import math
 import os
 from pathlib import Path
 import re
+import tempfile
 import time
 
 from v1_data import (_CandidateEncodingError, collate_encoded, encode_candidates,
@@ -52,8 +55,30 @@ def read_json(path):
         raise LockError(f'cannot read JSON metadata {path}: {exc}') from exc
 
 
+def _atomic_write_bytes(path, payload):
+    """Publish a fully flushed file, preserving its previous value on failure."""
+    path = Path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f'.{path.name}.', delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        temporary = None
+        directory_fd = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def write_json(path, value):
-    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
+    _atomic_write_bytes(path, (json.dumps(value, indent=2, allow_nan=False) + '\n').encode())
 
 
 def sha256_file(path):
@@ -163,6 +188,10 @@ def verify_lock(lock_path, *, code_root=None, actual_commit=None):
             'absolute shared unseal_receipt required')
     checkpoints = lock.get('checkpoints')
     require(isinstance(checkpoints, list) and len(checkpoints) == 9, 'nine checkpoints required')
+    lr_reference = lock.get('learning_rate_lock')
+    lr_lock = read_json(verify_file(lr_reference, 'learning-rate lock'))
+    require(lr_lock.get('contract') == EXPERIMENT and isinstance(lr_lock.get('locked_lrs'), dict) and
+            set(lr_lock['locked_lrs']) == set(PARAMETERS), 'learning-rate lock contract/grid mismatch')
     found, directories, rates = set(), set(), {}
     for entry in checkpoints:
         require(isinstance(entry, dict), 'checkpoint entry must be an object')
@@ -180,6 +209,7 @@ def verify_lock(lock_path, *, code_root=None, actual_commit=None):
         rate = entry.get('learning_rate')
         require(type(rate) in (int, float) and math.isfinite(rate) and rate > 0,
                 f'{arm}/{seed}: locked learning rate required')
+        require(lr_lock['locked_lrs'][arm] == rate, f'{arm}/{seed}: LR differs from calibration lock')
         require(arm not in rates or rates[arm] == rate, f'{arm}: learning rate differs across seeds')
         rates[arm] = rate
         files = entry.get('files')
@@ -190,7 +220,8 @@ def verify_lock(lock_path, *, code_root=None, actual_commit=None):
             require(path.resolve() == (Path(entry['path']) / name).resolve(),
                     f'{arm}/{seed}: checkpoint inventory path mismatch')
         verify_adapter_config(read_json(files['config.json']['path']), arm)
-        training = read_json(verify_file(entry.get('training_manifest'), f'{arm}/{seed} training manifest'))
+        training_path = verify_file(entry.get('training_manifest'), f'{arm}/{seed} training manifest').resolve()
+        training = read_json(training_path)
         metrics = training.get('metrics', {})
         require(training.get('status') == 'complete' and metrics.get('reload.identical') is True,
                 f'{arm}/{seed}: final training/reload incomplete')
@@ -198,6 +229,34 @@ def verify_lock(lock_path, *, code_root=None, actual_commit=None):
                 f'{arm}/{seed}: training manifest arm/seed mismatch')
         require(metrics.get('params.trainable') == PARAMETERS[arm] and
                 metrics.get('learning_rate') == rate, f'{arm}/{seed}: training metadata mismatch')
+        require(training.get('contract') == EXPERIMENT and training.get('phase') == 'train',
+                f'{arm}/{seed}: wrong contract or non-final training phase')
+        require(isinstance(training.get('validator'), dict) and training['validator'].get('passed') is True,
+                f'{arm}/{seed}: final training validator did not pass')
+        require(type(metrics.get('train.examples')) is int and metrics['train.examples'] == 58329 and
+                type(metrics.get('train.steps')) is int and metrics['train.steps'] == 29165,
+                f'{arm}/{seed}: actual completed training budget mismatch')
+        require(metrics.get('lr_lock.sha256') == lr_reference['sha256'],
+                f'{arm}/{seed}: training used a different learning-rate lock')
+        inventory_path = verify_file(entry.get('checkpoint_inventory'),
+                                     f'{arm}/{seed} checkpoint inventory').resolve()
+        require(training_path.name == 'manifest.json' and
+                inventory_path == training_path.parent / 'checkpoint.json' and
+                Path(entry['path']).resolve() == training_path.parent / 'adapter',
+                f'{arm}/{seed}: checkpoint is not from the named training run')
+        artifact_paths = {Path(item['path']).resolve() for item in training.get('artifacts', [])
+                          if isinstance(item, dict) and isinstance(item.get('path'), str)}
+        require(inventory_path in artifact_paths, f'{arm}/{seed}: inventory absent from training artifacts')
+        inventory = read_json(inventory_path)
+        require(isinstance(inventory, dict) and set(inventory) == set(files),
+                f'{arm}/{seed}: incomplete training checkpoint inventory')
+        for name, reference in files.items():
+            recorded = inventory[name]
+            require(isinstance(recorded, dict) and
+                    recorded.get('path') == reference['path'] and
+                    recorded.get('bytes') == reference['bytes'] and
+                    recorded.get('sha256') == reference['sha256'],
+                    f'{arm}/{seed}/{name}: checkpoint differs from final training inventory')
     require(found == {(arm, seed) for arm in PARAMETERS for seed in (1, 2, 3)},
             'checkpoint grid incomplete')
     data = lock.get('data')
@@ -356,22 +415,103 @@ def load_model(entry=None):
     return model.eval()
 
 
-def claim_unseal(lock, lock_path, *, resume=False):
-    receipt = Path(lock['unseal_receipt'])
+def _model_grid(lock):
+    return [('Base', None), *[(spec['arm'], spec['seed']) for spec in
+                             sorted(lock['checkpoints'], key=lambda r: (r['arm'], r['seed']))]]
+
+
+def _model_name(arm, seed):
+    return 'Base' if seed is None else f'{arm}-s{seed}'
+
+
+def publish_predictions(model_output, arm, seed, metrics, predictions, lock_digest):
+    """Publish the recovery inventory BEFORE the atomic prediction publication.
+
+    After predictions.jsonl becomes visible, its complete byte stream and both
+    recovery references already exist, even if the worker exits immediately.
+    """
+    model_output = Path(model_output).resolve()
+    payload = ''.join(json.dumps(row, allow_nan=False) + '\n' for row in predictions).encode()
+    prediction_path = model_output / 'predictions.jsonl'
+    metrics_path = model_output / 'metrics.json'
+    write_json(metrics_path, metrics)
+    bundle = {'arm': arm, 'seed': seed, 'lock_sha256': lock_digest,
+              'predictions': {'path': str(prediction_path), 'bytes': len(payload),
+                              'sha256': hashlib.sha256(payload).hexdigest()},
+              'metrics': file_reference(metrics_path)}
+    write_json(model_output / 'prediction-bundle.json', bundle)
+    _atomic_write_bytes(prediction_path, payload)
+    return {'arm': arm, 'seed': seed, 'predictions': str(prediction_path), 'metrics': str(metrics_path)}
+
+
+def recover_analysis_input(lock, receipt):
+    """Reconcile published bundles under the held process lock, without raw data.
+
+    Recovery is safe to repeat after interruption. The input manifest is durable
+    before the receipt may advertise predictions_complete.
+    """
+    digest = receipt['lock_sha256']
+    for run in receipt.get('runs', []):
+        output = Path(run['output'])
+        require(output.is_absolute(), 'receipt output must be absolute')
+        entries = []
+        for arm, seed in _model_grid(lock):
+            directory = output / _model_name(arm, seed)
+            bundle_path = directory / 'prediction-bundle.json'
+            if not bundle_path.exists() or not (directory / 'predictions.jsonl').exists():
+                break
+            bundle = read_json(bundle_path)
+            require(bundle.get('arm') == arm and bundle.get('seed') == seed and
+                    bundle.get('lock_sha256') == digest, 'prediction bundle identity mismatch')
+            for key, filename in (('predictions', 'predictions.jsonl'), ('metrics', 'metrics.json')):
+                path = verify_file(bundle.get(key), f'{directory.name} recovery {key}')
+                require(path.resolve() == (directory / filename).resolve(), 'prediction bundle path mismatch')
+            entries.append({'arm': arm, 'seed': seed, 'predictions': bundle['predictions']['path'],
+                            'metrics': bundle['metrics']['path']})
+        if len(entries) != 10:
+            continue
+        manifest_path = output / 'analysis-input.json'
+        write_json(manifest_path, {'experiment': EXPERIMENT, 'split': 'validation',
+                                   'entries': entries, 'lock_sha256': digest})
+        updated = {**receipt, 'analysis_input': str(manifest_path)}
+        if receipt['status'] != 'complete':
+            updated['status'] = 'predictions_complete'
+        write_json(lock['unseal_receipt'], updated)
+        receipt.update(updated)
+        return manifest_path
+    return None
+
+
+@contextmanager
+def claim_unseal(lock, lock_path, output, *, resume=False):
+    """One process owns all evaluation/recovery/receipt transitions until exit."""
+    receipt_path = Path(lock['unseal_receipt'])
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
     digest = sha256_file(lock_path)
-    if receipt.exists():
-        previous = read_json(receipt)
-        require(resume and previous.get('lock_sha256') == digest,
-                'unseal already claimed; retries require --resume with the identical lock')
-        require(previous.get('status') == 'started',
-                'predictions already complete; evaluation cannot be reopened')
-    else:
-        require(not resume, 'no unseal receipt to resume')
-        receipt.parent.mkdir(parents=True, exist_ok=True)
-        with receipt.open('x') as handle:
-            json.dump({'experiment': EXPERIMENT, 'lock_sha256': digest,
-                       'code_commit': lock['code_commit'], 'status': 'started',
-                       'attempt': os.environ.get('SR_ATTEMPT_ID')}, handle)
+    # Never unlink this guard: another opener must always lock the same inode.
+    with Path(str(receipt_path) + '.guard').open('a+b') as guard:
+        try:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise LockError('another evaluation process owns the unseal receipt') from exc
+        try:
+            if receipt_path.exists():
+                receipt = read_json(receipt_path)
+                require(resume and receipt.get('lock_sha256') == digest,
+                        'unseal already claimed; retries require --resume with the identical lock')
+                recovered = recover_analysis_input(lock, receipt)
+                require(recovered is None and receipt.get('status') == 'started',
+                        f'predictions already complete; use analysis-only recovery at {receipt.get("analysis_input")}')
+            else:
+                require(not resume, 'no unseal receipt to resume')
+                receipt = {'experiment': EXPERIMENT, 'lock_sha256': digest,
+                           'code_commit': lock['code_commit'], 'status': 'started', 'runs': []}
+            receipt['runs'].append({'attempt': os.environ.get('SR_ATTEMPT_ID'),
+                                    'output': str(Path(output).resolve())})
+            write_json(receipt_path, receipt)
+            yield receipt
+        finally:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_UN)
 
 
 def run_confirmation(lock_path, output, *, unseal=False, resume=False):
@@ -380,17 +520,21 @@ def run_confirmation(lock_path, output, *, unseal=False, resume=False):
     output = Path(output).resolve()
     require(not (output / 'manifest.json').exists(), 'output already contains a result; use a fresh attempt')
     output.mkdir(parents=True, exist_ok=True)
-    claim_unseal(lock, lock_path, resume=resume)
+    with claim_unseal(lock, lock_path, output, resume=resume) as receipt:
+        _evaluate_claimed(lock, output, receipt)
+
+
+def _evaluate_claimed(lock, output, receipt):
     # The first semantic validation read is below, behind the complete lock gate.
     rows = read_validation(lock)
     tokenizer = load_tokenizer()
     encoded, audit = encode_validation(rows, tokenizer)
     blocks, wiki_metadata = read_wikitext_blocks(lock['data']['wikitext']['path'], tokenizer)
-    entries, all_metrics = [], {}
+    all_metrics = {}
     import torch
     for spec in [None, *sorted(lock['checkpoints'], key=lambda r: (r['arm'], r['seed']))]:
         arm, seed = ('Base', None) if spec is None else (spec['arm'], spec['seed'])
-        name = 'Base' if seed is None else f'{arm}-s{seed}'
+        name = _model_name(arm, seed)
         model_output = output / name
         model_output.mkdir()
         started = time.monotonic()
@@ -402,26 +546,15 @@ def run_confirmation(lock_path, output, *, unseal=False, resume=False):
         values.update(evaluate_wikitext(model, blocks))
         values['elapsed_s'] = time.monotonic() - started
         metrics = {'metrics': values, 'validation': audit, 'wikitext': wiki_metadata}
-        write_json(model_output / 'metrics.json', metrics)
-        with (model_output / 'predictions.jsonl').open('w') as handle:
-            for row in predictions:
-                handle.write(json.dumps(row, allow_nan=False) + '\n')
-        entries.append({'arm': arm, 'seed': seed,
-                        'predictions': str(model_output / 'predictions.jsonl'),
-                        'metrics': str(model_output / 'metrics.json')})
+        publish_predictions(model_output, arm, seed, metrics, predictions, receipt['lock_sha256'])
         all_metrics.update({f'{name}.{key}': value for key, value in values.items()})
         del model
         gc.collect()
         torch.cuda.empty_cache()
-    receipt = read_json(lock['unseal_receipt'])
-    receipt['status'] = 'predictions_complete'
-    receipt['analysis_input'] = str(output / 'analysis-input.json')
-    write_json(lock['unseal_receipt'], receipt)
-    analysis_manifest = {'experiment': EXPERIMENT, 'split': 'validation', 'entries': entries,
-                         'lock_sha256': sha256_file(lock_path)}
-    write_json(output / 'analysis-input.json', analysis_manifest)
+    analysis_path = recover_analysis_input(lock, receipt)
+    require(analysis_path is not None, 'prediction bundle grid is incomplete')
     from v5_analysis import analyze, write_outputs
-    report = analyze(analysis_manifest, 'validation')
+    report = analyze(analysis_path, 'validation')
     write_outputs(report, output / 'analysis')
     write_json(output / 'manifest.json', {'status': 'complete',
         'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': all_metrics,

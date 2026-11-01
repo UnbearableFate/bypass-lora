@@ -30,7 +30,7 @@ def rehearse(output, *, sealed_manifest, skip_wikitext=False):
     try:
         with tempfile.TemporaryDirectory(prefix='synthetic-', dir=output) as test_tmp, (output / 'pytest.log').open('w') as log:
             result = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
-                'src/test_v5_confirm.py', 'src/test_v5_analysis.py', 'src/test_v1_data.py',
+                'src/test_v5_confirm.py', 'src/test_v5_analysis.py', 'src/test_v5_recovery.py', 'src/test_v1_data.py',
                 f'--basetemp={test_tmp}', f'--junitxml={output / "pytest.xml"}'], stdout=log, stderr=subprocess.STDOUT)
         metrics['pytest.exit_code'] = result.returncode
         if (output / 'pytest.xml').exists():

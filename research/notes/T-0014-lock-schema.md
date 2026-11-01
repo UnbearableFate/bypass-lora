@@ -47,6 +47,7 @@ positive byte size, and SHA256. The JSON lock contains these fields:
 | `prerequisites.code_review` | `{ "id": "RV-...", "passed": true, "answer": <file reference> }` |
 | `prerequisites.dev_rehearsal` | File reference to `analysis/analysis.json` whose `split` is `dev` |
 | `unseal_receipt` | Absolute shared path for an exclusive receipt, identical across all attempts |
+| `learning_rate_lock` | File reference to T-0013's final LR lock with contract `E-0013@3` and all three `locked_lrs` |
 | `checkpoints` | Exactly nine checkpoint objects, covering V5-C/V5-F/V5-L × seeds 1/2/3 |
 
 Each checkpoint object has `arm`, integer `seed`, absolute adapter directory
@@ -56,8 +57,17 @@ containing file references for **both** `config.json` and `adapter.pt`. It also
 has `training_manifest`: a file reference to the final manifest with
 `status=complete`, matching top-level `arm`/`seed`, and
 `metrics.reload.identical=true`, `metrics.learning_rate`, and
-`metrics.params.trainable` matching the lock. Checkpoint directories must be
-distinct. Configuration layers, ranks, fusions, branch type, model revision and
+`metrics.params.trainable` matching the lock. Each entry also has
+`checkpoint_inventory`: a file reference to that final run's `checkpoint.json`,
+which must be listed in its training manifest artifacts. Its two file references
+must exactly match the locked paths, byte sizes and hashes. The inventory and
+training manifest belong to the same run directory, and `path` is its `adapter`
+subdirectory. This binds the loaded bytes to the run whose seed is reported.
+The training manifest must additionally have `contract=E-0013@3`, `phase=train`,
+`validator.passed=true`, actual `train.examples=58329` and `train.steps=29165`,
+and `metrics.lr_lock.sha256` equal to the locked LR file hash. Planned counts
+alone do not pass. Checkpoint directories must be distinct.
+Configuration layers, ranks, fusions, branch type, model revision and
 LoRA alpha are verified. Adapter loading uses the existing V1 `load_adapter`
 methods and never imports training code. Trainable parameters must have the
 registered count and finite FP32 values.
@@ -77,11 +87,28 @@ python src/v5_confirm.py evaluate --lock /absolute/committed-lock.json \
   --output /work/xg24i002/x10041/bypass-lora/runs/ATT-ID --unseal
 ```
 
-The exclusive receipt stores the SHA256 of the entire lock. An engineering
-retry before all predictions complete requires the same lock and `--resume`,
-with a fresh attempt output directory. Once predictions complete, the receipt
-blocks further evaluation, even if subsequent analysis fails. In that case,
-rerun only `v5_analysis.py` on the already-written `analysis-input.json`.
+An exclusive `flock` on the receipt's permanent `.guard` file is held through
+evaluation, recovery and all receipt transitions. A concurrent initial attempt
+or retry cannot reach the semantic reader. Process exit releases ownership.
+The guard file is never removed, so all contenders lock the same inode.
+
+The receipt stores the SHA256 of the entire lock plus the originating attempt
+and absolute output directory for every admitted run. An engineering retry
+before all predictions complete requires the same lock and `--resume`, with a
+fresh attempt output directory. Each model writes its metrics and an inventory
+with prediction/metric paths, byte sizes and SHA256 before atomically publishing
+`predictions.jsonl`. All JSON and prediction publication uses flushed temporary
+files followed by atomic replacement, preserving the previous receipt on a
+failed replacement.
+
+Under exclusive ownership, a retry reconciles the persisted bundles of every
+prior attempt before any raw-data read. If all ten exist and their hashes match,
+it regenerates and durably writes `analysis-input.json` before marking the
+receipt `predictions_complete`, then refuses further evaluation. Thus a crash
+immediately after the tenth prediction publication still selects analysis-only
+recovery. An interrupted analysis-manifest write or receipt replacement can be
+retried through the same reconciliation path. After that refusal, run only
+`v5_analysis.py` on the recovered `analysis-input.json` in a PBS job.
 No checkpoint/method/rule changes are permitted after any validation output.
 
 ## Analysis interface
