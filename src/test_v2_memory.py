@@ -218,7 +218,7 @@ def test_shuffled_has_no_recipient_address_target(base, backend, record_property
             expected_error = ((raw-recipients[:, None]).square().sum(-1)/(recipients[:, None].square().sum(-1)+1e-6))[batch.question_mask].mean()
             details, logits = evaluate_batch(model, batch, mode)
             assert torch.equal(logits, expected_logits)
-            assert details['nll'] == float(torch.nn.functional.cross_entropy(expected_logits, batch.labels))
+            assert details['nll'] == float(torch.nn.functional.cross_entropy(expected_logits, batch.labels, reduction='none').mean())
             assert details['em'] == float((expected_logits.argmax(-1) == batch.labels).float().mean())
             assert details['read.normalized_error'] == pytest.approx(float(expected_error), abs=2e-5)
             assert 'address.entropy' in details and 'address.n_eff' in details
