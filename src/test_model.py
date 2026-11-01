@@ -161,10 +161,33 @@ def test_cache_causality_padding(base,mode,rank,steps,record_property):
         changed = ids.clone()
         changed[:,5:] = 330
         suffix = model(changed,attention_mask=mask)
-        measure(suffix.logits[:,:5],full.logits[:,:5],record_property,'causal',atol=2e-5)
+        prefix_valid = mask[:, :5].bool()
+        measure(suffix.logits[:,:5][prefix_valid],full.logits[:,:5][prefix_valid],
+                record_property,'causal',atol=2e-5)
         assert full.accounting[14]['side']['writes'] == int(mask.sum())
         assert full.accounting[14]['side']['reads'] == steps*int(mask.sum())
         assert full.accounting[14]['base'] == {'attention':1,'ffn':1}
+
+
+def test_base_padding_causal_diagnostic(base, record_property):
+    # Fully masked padding query rows are not semantic token outputs. The pinned
+    # eager backend uses finite-min masking followed by softmax for these rows.
+    ids = fixture()
+    mask = torch.ones_like(ids)
+    mask[0,:2] = 0
+    mask[1,-2:] = 0
+    changed = ids.clone()
+    changed[:,5:] = 330
+    pos = (mask.cumsum(-1)-1).clamp_min(0)
+    with torch.no_grad():
+        a = base(ids,attention_mask=mask,position_ids=pos,use_cache=False).logits
+        b = base(changed,attention_mask=mask,position_ids=pos,use_cache=False).logits
+    prefix_valid = mask[:,:5].bool()
+    measure(b[:,:5][prefix_valid],a[:,:5][prefix_valid],record_property,
+            'base.valid_prefix',atol=2e-5)
+    padded_diff = (b[:,:5][~prefix_valid].float()-a[:,:5][~prefix_valid].float()).abs().max().item()
+    record_property('base.padded_prefix.max_abs_err',padded_diff)
+    assert padded_diff > 1, 'Revisit the padding diagnosis if the pinned Base behavior changes'
 
 
 @pytest.mark.parametrize('backend', ['kernel_matrix','kernel_slot_reference','soft_slot'])
