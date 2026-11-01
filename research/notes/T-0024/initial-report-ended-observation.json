@@ -1,0 +1,26 @@
+{
+  "record_id": "miyabi-job-get:3768977.opbs:ended",
+  "attempt_id": "ATT-0222-1",
+  "source": "miyabi-mcp-job-get",
+  "observed_at": "2026-11-02T04:22:16+09:00",
+  "occurred_at": "2026-11-02T04:21:35+09:00",
+  "execution_state": "ended",
+  "outcome": "success",
+  "raw_state": "F Exit_status=0",
+  "source_ref": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rbc-initial-report-20261102-042116-728fb6.log",
+  "execution_ref": {
+    "kind": "hpc_job",
+    "executor_namespace": "miyabi-pbs",
+    "opaque_id": "3768977.opbs",
+    "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3768977/record.json"
+  },
+  "usage": {
+    "accounting_ref": "miyabi-pbs:3768977.opbs",
+    "quantity": 0.0009027777777777777,
+    "unit": "node_h",
+    "resource_type": "compute",
+    "hardware": "GH200 MIG; profile metadata only",
+    "basis": "measured",
+    "source_ref": "PBS resources_used.walltime=00:00:13; one MIG;seconds/14400"
+  }
+}
