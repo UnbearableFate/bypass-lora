@@ -513,6 +513,19 @@ def test_apply_deletes_exactly_the_candidates_and_logs_them(project):
     assert log[-1]["bytes"] == done["bytes"]
 
 
+def test_a_reviewer_keeps_a_candidate_by_dropping_it_from_the_plan(project):
+    plan_path, _ = project.write_plan()
+    doc = json.loads(plan_path.read_bytes())
+    cited = str(project.root / "runs/ATT-0001-1/adapter/adapter.pt")  # the reviewer keeps what RES-0001 cites
+    doc["entries"] = [e for e in doc["entries"] if e["path"] != cited]
+    reviewed = plan_path.with_name("plan.reviewed.json")
+    reviewed.write_text(json.dumps(doc))
+    done = ac.apply_plan(reviewed, project.records, hashlib.sha256(reviewed.read_bytes()).hexdigest(), git=project.git)
+    assert done["deleted"] == len(candidates(reviewed)) == len(H2_CANDIDATES) - 1
+    assert not [p for p in candidates(reviewed) if os.path.lexists(p)]
+    assert os.path.exists(cited)
+
+
 def test_cli_returns_2_on_a_refusal(project, capsys):
     plan_path, _ = project.write_plan()
     assert ac.main(["apply", "--plan", str(plan_path), "--records", str(project.records), "--confirm", "0"]) == 2
