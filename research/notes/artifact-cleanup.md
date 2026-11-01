@@ -108,6 +108,7 @@ runs/ 按类别分：
 | E-0016（H-0010、H-0011 paused，H-0012 active），T-0017、T-0018 accepted | 回归张量 2 个 0.584 GB；adapter 16 个 0.036 GB（其中 14 个被结果引用）；临时目录 21 个；快照 3 个 | 0.647 GB | predictions 0.093 GB，metadata 0.013 GB | ATT-0154-1 的 D1 adapter 和快照 6da33b3：D-0021 reopen 的 (a) 点名 → 该条件不再适用。ATT-0159-1 的 D5 adapter 和快照 415cac3：E-0018、E-0022 契约和 T-0023 点名 → T-0023 accepted、E-0022 关闭、H-0005 paused 或 stopped |
 | **以上合计** | 317 项，互不重叠 | **7.738 GB** | | |
 | 另：E-0017（H-0009、H-0012），T-0019 accepted | 回归张量 8 个 2.338 GB；adapter 21 个；临时目录 44 个；快照 1 个 | 2.423 GB | predictions 0.108 GB | ATT-0166-1、ATT-0167-1：ATT-0172-1、ATT-0173-1 的起点。ATT-0172-1、ATT-0173-1：E-0018 契约点名。这些 → H-0005 paused 或 stopped |
+| 另：E-0020（RBc，H-0013），T-0024 accepted | 尚未出计划 | – | | lr-lock（research/artifacts/T-0024/lr-lock.json）登记的 16 个 calibration manifest：RB1 的分析、干预与延迟脚本会重新校验它们的 sha256（RV-0069）→ T-0025 accepted、E-0021 分析完成。manifest 本来属于 keep，这里只是写明依赖 |
 | 另：E-0013（V5，H-0008） | 无：REFUSED（T-0020 waiting，ATT-0179-1 queued） | 0 | | 0.132 GB 一直 hold 到 T-0020 accepted、ATT-0179-1 结束 |
 
 按假说出计划的例子：

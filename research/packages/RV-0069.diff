@@ -1,0 +1,646 @@
+diff --git a/src/rb1_analysis.py b/src/rb1_analysis.py
+index f78f9bd..017a9c2 100644
+--- a/src/rb1_analysis.py
++++ b/src/rb1_analysis.py
+@@ -13,7 +13,8 @@ import os
+ from pathlib import Path
+ 
+ from rb1_artifacts import (finite_tree, read, reference, validate_formal_run,
+-                           verified_latency)
++                           verified_latency, ACCEPTED_LR_LOCK_SHA256,
++                           ACCEPTED_TRAINING_SOURCE_COMMIT)
+ from rb1_rules import (ARM_IDS, TASKS, analyze_counts, counts_from_rows,
+                        paired_interval)
+ from v1_analysis import _read_run
+@@ -21,6 +22,17 @@ from v5_train import write_json
+ 
+ 
+ MODES = ('iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute')
++ACCEPTED_BASE_MANIFEST_SHA256 = '076a1a0595de6620508a7e99810a96baf979483d805428465807d40beadde196'
++
++
++def expected_release(spec):
++    expected = spec.get('expected')
++    pins = {'source_commit': ACCEPTED_TRAINING_SOURCE_COMMIT,
++            'lr_lock_sha256': ACCEPTED_LR_LOCK_SHA256,
++            'base_manifest_sha256': ACCEPTED_BASE_MANIFEST_SHA256}
++    if expected != pins:
++        raise ValueError('expected source commit/LR lock/Base manifest must match the pre-result RB1 release pins')
++    return expected
+ 
+ 
+ def validate_rows(rows, label, paired=None):
+@@ -103,6 +115,18 @@ def validate_read_summary(records, arm, mode):
+             raise ValueError(f'{arm}/{mode}: invalid normalized read metric range')
+         if mode == 'iv_strict' and means['current_weight'] != 0:
+             raise ValueError(f'{arm}/{mode}: strict read cannot include current-token weight')
++        conditional = record.get('nonempty_means', {})
++        if set(conditional) != set(means):
++            raise ValueError(f'{arm}/{mode}: missing nonempty read means')
++        count = record['count']-record['empty_reads']
++        if count == 0:
++            if any(value is not None for value in conditional.values()):
++                raise ValueError(f'{arm}/{mode}: all-empty read has undefined nonempty means')
++        else:
++            finite_tree(conditional)
++            if any(not math.isclose(conditional[name], value*record['count']/count, rel_tol=1e-12, abs_tol=1e-12)
++                   for name, value in means.items()):
++                raise ValueError(f'{arm}/{mode}: nonempty read denominator is inconsistent')
+     if found != expected:
+         raise ValueError(f'{arm}/{mode}: incomplete task/layer/first-last read diagnostic grid')
+ 
+@@ -134,10 +158,24 @@ def measured_cost(paths):
+             'conversion': 'node_h = measured MIG instance hours * 0.25; includes supplied attempts only'}
+ 
+ 
++def normal_training_agreement(normal, trained, training_hardware='unknown', intervention_hardware='unknown'):
++    if len(normal) != len(trained) or [(r['task'], r['id']) for r in normal] != [(r['task'], r['id']) for r in trained]:
++        raise ValueError('agreement report requires paired normal/training rows')
++    return {'prediction_mismatches': sum(a['prediction'] != b['prediction'] for a, b in zip(normal, trained)),
++            'max_abs_score_difference': max(abs(a-b) for left, right in zip(normal, trained)
++                                             for a, b in zip(left['scores'], right['scores'])),
++            'macro_accuracy_difference': summarize_rows(normal)['macro_accuracy']-summarize_rows(trained)['macro_accuracy'],
++            'training_hardware': training_hardware, 'intervention_hardware': intervention_hardware,
++            'scope': 'descriptive agreement of repeated evaluation; hardware is metadata'}
++
++
+ def analyze(spec, stage='final'):
++    release_pins = expected_release(spec)
+     if set(spec.get('training_runs', {})) != set(ARM_IDS):
+         raise ValueError('all nine registered training arms are required')
+     base_root = Path(spec['base_run'])
++    if reference(base_root/'manifest.json')['sha256'] != release_pins['base_manifest_sha256']:
++        raise ValueError('Base manifest differs from accepted ATT-0024-1')
+     base_rows, base_manifest = _read_run(base_root, 'Base', 'base')
+     rows = {'Base': validate_rows(base_rows, 'Base')}
+     sources = {'Base': {name: reference(base_root/name) for name in
+@@ -148,6 +186,8 @@ def analyze(spec, stage='final'):
+         root = Path(spec['training_runs'][arm])
+         manifest, refs, _ = validate_formal_run(root, arm)
+         metrics = manifest['metrics']
++        if metrics['source.commit'] != release_pins['source_commit'] or metrics['lr_lock.sha256'] != release_pins['lr_lock_sha256']:
++            raise ValueError(f'{arm}: source commit or LR lock differs from expected release')
+         plan = {k: metrics.get(k) for k in ('plan.steps', 'plan.examples', 'plan.input_tokens',
+                 'plan.order_sha256', 'split_manifest.sha256', 'lr_lock.sha256', 'source.commit',
+                 'environment.lock_sha256', 'model_revision', 'tokenizer_revision')}
+@@ -179,9 +219,9 @@ def analyze(spec, stage='final'):
+             if set(accounting.get('layers', {})) != {'6', '13', '20', '27'}:
+                 raise ValueError(f'{arm}: accounting must cover all four adapted layers')
+             depth = 2 if arm == 'RB1-03' else 4 if arm in ('RB1-04', 'RB1-05', 'RB1-06') else 1
+-            expected = 0 if arm == 'RB1-01' else metrics['train.input_tokens']
++            expected_writes = 0 if arm == 'RB1-01' else metrics['train.input_tokens']
+             for counts in accounting['layers'].values():
+-                if (counts['writes'] != expected or counts['reads'] != expected*depth or
++                if (counts['writes'] != expected_writes or counts['reads'] != expected_writes*depth or
+                     counts['valid_tokens'] != metrics['train.input_tokens'] or
+                     counts['attention'] != metrics['train.examples'] or counts['ffn'] != metrics['train.examples']):
+                     raise ValueError(f'{arm}: invalid per-layer write/read/original call counts')
+@@ -203,7 +243,7 @@ def analyze(spec, stage='final'):
+     counts = {label: counts_from_rows(value) for label, value in rows.items()}
+     preliminary = analyze_counts(counts)
+     s_star = preliminary['selection']['S_F_star']
+-    intervention_tables, read_tables = {}, {}
++    intervention_tables, read_tables, agreement = {}, {}, {}
+     if stage == 'final':
+         arms = {'RB1-01', 'RB1-02', 'RB1-08', 'RB1-09', s_star}
+         if set(spec.get('intervention_runs', {})) != arms:
+@@ -221,6 +261,8 @@ def analyze(spec, stage='final'):
+             modes = ('iv_swap',) if arm == 'RB1-01' else MODES
+             if set(conditions) != {'normal', 'Base_same_allocation', *modes}:
+                 raise ValueError(f'{arm}: incomplete intervention condition grid')
++            agreement[arm] = normal_training_agreement(conditions['normal']['predictions'], rows[arm],
++                training[arm]['metrics'].get('hardware', 'unknown'), provenance.get('hardware', 'unknown'))
+             for mode, condition in conditions.items():
+                 label = f'{arm}/{mode}'
+                 condition_rows = validate_rows(condition['predictions'], label, rows['Base'])
+@@ -258,8 +300,8 @@ def analyze(spec, stage='final'):
+             raise ValueError('incomplete RB1 latency run')
+         if guard.get('passed') is not True or guard.get('profile') != '2g.24gb':
+             raise ValueError('comparative latency was not measured on required 2g profile')
+-        expected = {'RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07', 'RB1-07-merged'}
+-        if set(latency['measurements']) not in (expected, expected | {'Base'}):
++        expected_labels = {'RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07', 'RB1-07-merged'}
++        if set(latency['measurements']) not in (expected_labels, expected_labels | {'Base'}):
+             raise ValueError('latency grid differs from E-0021')
+         for label, value in latency['measurements'].items():
+             verified_latency(value)
+@@ -275,9 +317,10 @@ def analyze(spec, stage='final'):
+             Path(path).name for path in spec['intervention_runs'].values()} | {Path(spec['latency_run']).name}
+         if not required_cost <= {row['attempt'] for row in report['cost']['rows']}:
+             raise ValueError('measured usage is missing for a required training/intervention/latency attempt')
+-    report.update(contract='E-0021@1', stage=stage, sources=sources, common_training=common,
++    report.update(contract='E-0021@1', stage=stage, expected=release_pins, sources=sources, common_training=common,
+                   performance=performance, learning_curves=curves, training_runtime=runtime,
+                   interventions=intervention_tables, read_diagnostics=read_tables,
++                  interventions_normal_vs_training=agreement,
+                   decision_authority='Screening facts and pre-registered gates only; coordinator conclusion review precedes any hypothesis status or release.')
+     finite_tree(report)
+     return report
+@@ -295,6 +338,12 @@ def markdown(report):
+     for name, rule in report['rules'].items():
+         lines.append(f'- {name}: `{json.dumps(rule, ensure_ascii=False, sort_keys=True)}`')
+     if report['stage'] == 'final':
++        lines.extend(['', '## Repeated normal evaluation agreement', '',
++                      '| Arm | Prediction mismatches | Max absolute candidate-score difference | Normal minus training macro pp | Training hardware | Intervention hardware |',
++                      '| --- | ---: | ---: | ---: | --- | --- |'])
++        for arm, value in report['interventions_normal_vs_training'].items():
++            lines.append(f'| {arm} | {value["prediction_mismatches"]} | {value["max_abs_score_difference"]:.8g} | {value["macro_accuracy_difference"]*100:.3f} | {value["training_hardware"]} | {value["intervention_hardware"]} |')
++        lines.extend(['', 'Agreement is descriptive; hardware profiles are metadata under D-0018/D-0019.', ''])
+         lines.extend(['', '## Frozen side-history interventions', '',
+                       '| Arm | Intervention | PIQA difference pp | BoolQ difference pp | Macro difference pp [95% descriptive interval] |',
+                       '| --- | --- | ---: | ---: | ---: |'])
+@@ -302,6 +351,15 @@ def markdown(report):
+             for mode, results in modes.items():
+                 macro = results['macro_accuracy']; lo, hi = macro['ci95']
+                 lines.append(f'| {arm} | {mode} | {results["piqa_accuracy"]["difference"]*100:.3f} | {results["boolq_accuracy"]["difference"]*100:.3f} | {macro["difference"]*100:.3f} [{lo*100:.3f}, {hi*100:.3f}] |')
++        lines.extend(['', '## Read distributions at answer-predicting positions', '',
++                      'n_eff, entropy and relative n_eff below condition on nonempty reads. Current-token weight retains zero for an empty read. All-valid-input summaries and both denominator conventions are retained in JSON.', '',
++                      '| Condition | Task | Layer | Read step | Empty / queries | Current weight | n_eff (nonempty) | Entropy (nonempty) | Relative n_eff (nonempty) |',
++                      '| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |'])
++        for label, records in report['read_diagnostics'].items():
++            for record in records:
++                if record['scope'] == 'answer_prediction':
++                    conditional = record['nonempty_means']
++                    lines.append(f'| {label} | {record["task"]} | {record["layer"]} | {record["step"]} | {record["empty_reads"]} / {record["count"]} | {record["means"]["current_weight"]} | {conditional["n_eff"]} | {conditional["entropy"]} | {conditional["relative_n_eff"]} |')
+         lines.extend(['', 'Differences use each intervention run\'s own normal condition. iv_off and Base are independently checked in the same allocation; T0 swap is a no-op.', '',
+                       '## Training and persistent side state', '',
+                       '| Arm | Stored / trainable / with gradient | Steps | Input / loss / padded tokens | Train seconds | Peak CUDA GiB | M+c bytes |',
+diff --git a/src/rb1_artifacts.py b/src/rb1_artifacts.py
+index fc18683..2e6acc9 100644
+--- a/src/rb1_artifacts.py
++++ b/src/rb1_artifacts.py
+@@ -12,6 +12,8 @@ from rb_train import FAMILIES, PARAMETERS
+ CONTRACT = 'E-0021@1'
+ LOCK_CONTRACT = 'E-0020@1'
+ TOKEN_BUDGET = 2_000_000
++ACCEPTED_LR_LOCK_SHA256 = '38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d'
++ACCEPTED_TRAINING_SOURCE_COMMIT = '7bf091d4af24c2a9fdc666a5f885c31817b97174'
+ 
+ 
+ def read(path):
+@@ -58,6 +60,43 @@ def _require_finite(value, name, *, positive=False, nonnegative=False):
+         raise ValueError(f'{name} must be nonnegative')
+ 
+ 
++def verify_lr_lock(path, expected_sha256=ACCEPTED_LR_LOCK_SHA256):
++    """Verify T-0024's accepted lock and reconstruct it from pinned inputs."""
++    from rb_train import lock_lrs
++
++    path = Path(path).resolve()
++    data = read(path)
++    actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
++    if actual_sha256 != expected_sha256:
++        raise ValueError('LR lock SHA256 differs from the accepted T-0024 lock')
++    inputs = data.get('inputs')
++    if not isinstance(inputs, list) or not inputs:
++        raise ValueError('LR lock has no calibration input references')
++    for index, ref in enumerate(inputs):
++        if not isinstance(ref, dict) or set(ref) != {'path', 'sha256', 'bytes'}:
++            raise ValueError(f'LR lock input reference {index} has an unexpected schema')
++        artifact = Path(ref['path']).resolve()
++        if not artifact.is_file():
++            raise ValueError(f'LR lock input artifact is missing: {artifact}')
++        actual_ref = reference(artifact)
++        if ref['sha256'] != actual_ref['sha256'] or ref['bytes'] != actual_ref['bytes']:
++            raise ValueError(f'LR lock input hash/size mismatch: {artifact}')
++    try:
++        rebuilt = lock_lrs([ref['path'] for ref in inputs])
++    except (AssertionError, KeyError, TypeError, ValueError) as exc:
++        raise ValueError('LR lock cannot be reconstructed from calibration inputs') from exc
++    order_hashes = {read(ref['path']).get('metrics', {}).get('plan.order_sha256') for ref in inputs}
++    if len(order_hashes) != 1 or None in order_hashes:
++        raise ValueError('calibration inputs do not share one plan-order hash')
++    order_hash = next(iter(order_hashes))
++    if data.get('plan_order_sha256') != order_hash:
++        raise ValueError('LR lock plan-order hash differs from calibration inputs')
++    rebuilt['plan_order_sha256'] = order_hash
++    if json.loads(json.dumps(rebuilt)) != data:
++        raise ValueError('LR lock differs from reconstructed calibration choices')
++    return data
++
++
+ def validate_formal_run(run_dir, arm):
+     """Validate a final RB1 producer run; return manifest, refs, adapter path."""
+     if arm not in PARAMETERS:
+@@ -97,6 +136,8 @@ def validate_formal_run(run_dir, arm):
+     for key, length in (('source.commit', 40), ('plan.order_sha256', 64)):
+         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
+             raise ValueError(f'{arm}: missing or invalid {key}')
++    if metrics['source.commit'] != ACCEPTED_TRAINING_SOURCE_COMMIT:
++        raise ValueError(f'{arm}: source commit differs from covered RB1 training release')
+     expected_params = PARAMETERS[arm]
+     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
+         if metrics.get(key) != expected_params:
+@@ -113,7 +154,7 @@ def validate_formal_run(run_dir, arm):
+     lock_path, split_path = Path(lock_value).resolve(), Path(split_value).resolve()
+     if not lock_path.is_file() or not split_path.is_file():
+         raise ValueError(f'{arm}: LR lock or split manifest file is missing')
+-    lock = read(lock_path)
++    lock = verify_lr_lock(lock_path)
+     lock_hash = reference(lock_path)['sha256']
+     split_hash = reference(split_path)['sha256']
+     if lock.get('experiment') != LOCK_CONTRACT or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:
+diff --git a/src/rb1_rules.py b/src/rb1_rules.py
+index 5946439..e62867b 100644
+--- a/src/rb1_rules.py
++++ b/src/rb1_rules.py
+@@ -272,8 +272,11 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
+         'probe_budget': 'at most one capacity or feature probe' if rule9 else None,
+     }
+ 
++    pilot = bool(g0 and not gl and gc and c_star)
+     if not g0:
+         progression = 'stop_at_implementation_and_learnability_check'
++    elif pilot:
++        progression = 'C_S1_S4_pilot_then_draft_RB5_and_review_conclusion'
+     elif gr or gc:
+         progression = 'draft_RB5_and_review_conclusion'
+     elif rule9:
+@@ -308,6 +311,11 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
+             rb5_matrix.extend(['RB5-03', 'RB5-06', 'RB5-07', 'RB5-09'])
+             if gl:
+                 rb5_matrix.append('RB5-04')
++    rb5_matrix_status = 'pending_C_S1_S4_pilot' if pilot else 'final'
++    pilot_s4_alternative = ('all nine RB5 groups at fixed S4'
++                            if pilot else None)
++    pilot_s1_alternative = ('retain provisional S1 matrix'
++                            if pilot else None)
+     rules = {
+         '1_G0_positive_control': {'passed': g0, 'margin': _json_fraction(g0_margin),
+                                   'threshold': 'RB1-07 >= Base + 1 pp'},
+@@ -334,9 +342,13 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
+         '7_RB5_release': {'passed': bool(rb5_released),
+                           'gate_condition_met': bool(rb5_gate_condition),
+                           'matrix': rb5_matrix,
++                          'matrix_status': rb5_matrix_status,
++                          'if_pilot_C_S4_minus_C_S1_ge_1pp': pilot_s4_alternative,
++                          'if_pilot_C_S4_minus_C_S1_lt_1pp': pilot_s1_alternative,
+                           'loop_depth': 1 if not gl else (2 if s_star == 'RB1-03' else 4)},
+-        '8_C_S1_S4_pilot': {'gate_condition_met': bool(g0 and not gl and gc_raw),
+-                            'triggered': bool(g0 and not gl and gc and c_star),
++        '8_C_S1_S4_pilot': {'raw_gate_condition_met': bool(g0 and not gl and gc_raw),
++                            'gate_condition_met': bool(g0 and not gl and gc and c_star),
++                            'triggered': pilot,
+                             'blocked_without_C_star': bool(g0 and not gl and gc_raw and c_star is None),
+                             'pilot_result': None, 'condition': 'C*_RB+KernelMatrix C-S4 minus C-S1 >= 1 pp'},
+         '9_no_residual_or_concat_signal': rule9_trigger,
+@@ -356,7 +368,10 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
+         'raw_gates': {'G0': g0, 'GR': gr, 'GH': gh, 'GL': gl, 'GC': gc_raw},
+         'resolved_gates': {'G0': g0, 'GR': gr, 'GL': gl, 'GC': gc},
+         'resolved_actions': {'progression': progression, 'RB5_matrix': rb5_matrix,
+-                             'C_S1_S4_pilot': bool(g0 and not gl and gc and c_star)},
++                             'RB5_matrix_status': rb5_matrix_status,
++                             'if_pilot_C_S4_minus_C_S1_ge_1pp': pilot_s4_alternative,
++                             'if_pilot_C_S4_minus_C_S1_lt_1pp': pilot_s1_alternative,
++                             'C_S1_S4_pilot': pilot},
+         'selection': {'S_F_star': s_star, 'C_star_RB': c_star,
+                       'effective_concat_arms': effective_concat,
+                       'near_best_effective_concat_arms': near_best},
+diff --git a/src/rb_read_diagnostics.py b/src/rb_read_diagnostics.py
+index 40d8e94..0b2b32e 100644
+--- a/src/rb_read_diagnostics.py
++++ b/src/rb_read_diagnostics.py
+@@ -101,8 +101,19 @@ class ReadSummary:
+                             total['sums'][name] = total['sums'].get(name, 0.) + float(value[mask].double().sum())
+ 
+     def finish(self):
+-        return [{'task': task, 'layer': layer, 'step': step, 'scope': scope,
+-                 'count': value['count'], 'empty_reads': value['empty_reads'],
+-                 'means': {name: total/value['count'] if value['count'] else None
+-                           for name, total in value['sums'].items()}}
+-                for (task, layer, step, scope), value in sorted(self.totals.items())]
++        summaries = []
++        for (task, layer, step, scope), value in sorted(self.totals.items()):
++            nonempty_count = value['count'] - value['empty_reads']
++            summaries.append({
++                'task': task, 'layer': layer, 'step': step, 'scope': scope,
++                'count': value['count'], 'empty_reads': value['empty_reads'],
++                # Keep the original means for report compatibility. Empty reads
++                # stay zero here, including for current_weight.
++                'means': {name: total/value['count'] if value['count'] else None
++                          for name, total in value['sums'].items()},
++                'nonempty_means': {
++                    name: total/nonempty_count if nonempty_count else None
++                    for name, total in value['sums'].items()
++                },
++            })
++        return summaries
+diff --git a/src/test_rb1_analysis.py b/src/test_rb1_analysis.py
+index 7ba0071..d76cbdf 100644
+--- a/src/test_rb1_analysis.py
++++ b/src/test_rb1_analysis.py
+@@ -1,6 +1,7 @@
+ """Synthetic full-grid analysis and pairing/provenance failure paths."""
+ import copy
+ import json
++from pathlib import Path
+ 
+ import pytest
+ 
+@@ -37,24 +38,16 @@ def full_grid(tmp_path, monkeypatch):
+     base_rows = predictions(500)
+     for name in ('manifest.json', 'config.json', 'predictions.json', 'split-map.json', 'data-metadata.json'):
+         write(base/name, {'fixture': name})
++    (base/'manifest.json').write_bytes(Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1/manifest.json').read_bytes())
+     monkeypatch.setattr(analysis, '_read_run', lambda *args: (base_rows, {'metrics': metrics(base_rows)}))
+-    lock = tmp_path/'lock.json'
+-    split = tmp_path/'split.json'
+-    write(split, {'fixture': 'split'})
+-    write(lock, {'experiment': 'E-0020@1', 'locked_lrs': {f: .001 for f in ('RBc-R', 'RBc-T', 'RBc-L', 'RBc-C')},
+-                 'split_manifest_sha256': reference(split)['sha256']})
+     successes = dict(zip(ARM_IDS, (580, 600, 605, 620, 602, 610, 610, 640, 635)))
+     roots, manifests = {}, {}
+     for arm in ARM_IDS:
+         root = _formal_run(tmp_path/'training', arm)
+         roots[arm] = str(root)
+-        config = read(root/'config.json')
+-        config.update(lr_lock=str(lock), split_manifest=str(split))
+-        write(root/'config.json', config)
+         manifest = read(root/'manifest.json')
+         m = manifest['metrics']
+-        m.update({'lr_lock.sha256': reference(lock)['sha256'],
+-                  'split_manifest.sha256': reference(split)['sha256'], 'plan.order_sha256': 'a'*64})
++        m['plan.order_sha256'] = 'a'*64
+         layers = {str(i): {'writes': 0 if arm == 'RB1-01' else m['train.input_tokens'],
+                            'reads': 0 if arm == 'RB1-01' else m['train.input_tokens']*(2 if arm == 'RB1-03' else 4 if arm in ('RB1-04', 'RB1-05', 'RB1-06') else 1),
+                            'valid_tokens': m['train.input_tokens'], 'attention': m['train.examples'],
+@@ -82,6 +75,8 @@ def full_grid(tmp_path, monkeypatch):
+                            'n_eff': 1., 'entropy': 0., 'relative_n_eff': 1., 'readable_positions': 1.}}
+                 for task in TASKS for layer in (6, 13, 20, 27) for step in steps
+                 for scope in ('all_valid_input', 'answer_prediction')]
++            for record in records:
++                record['nonempty_means'] = dict(record['means'])
+             return {'predictions': rows, 'metrics': metrics(rows), 'read_diagnostics': records}
+         conditions = {'normal': condition(normal), 'Base_same_allocation': condition(base_rows)}
+         for mode in (('iv_swap',) if arm == 'RB1-01' else analysis.MODES):
+@@ -107,11 +102,22 @@ def full_grid(tmp_path, monkeypatch):
+     write(costs, [{'attempt_id': attempt, 'execution_state': 'ended', 'usage': {
+         'basis': 'measured', 'accounting_ref': f'fixture:{attempt}', 'quantity': .01,
+         'unit': 'mig_instance_hours', 'source_ref': 'synthetic scheduler fixture'}} for attempt in attempts])
+-    return {'training_runs': roots, 'base_run': str(base), 'intervention_runs': interventions,
++    return {'expected': {'source_commit': analysis.ACCEPTED_TRAINING_SOURCE_COMMIT,
++                         'lr_lock_sha256': analysis.ACCEPTED_LR_LOCK_SHA256,
++                         'base_manifest_sha256': analysis.ACCEPTED_BASE_MANIFEST_SHA256},
++            'training_runs': roots, 'base_run': str(base), 'intervention_runs': interventions,
+             'latency_run': str(latency_root), 'observations': [str(costs)]}
+ 
+ 
+-def test_full_synthetic_grid_has_exact_rules_interventions_and_locked_bootstrap(full_grid):
++@pytest.mark.parametrize('flipped', [False, True])
++def test_full_synthetic_grid_has_exact_rules_interventions_and_locked_bootstrap(full_grid, flipped):
++    if flipped:
++        path = Path(full_grid['intervention_runs']['RB1-02'])/'conditions.json'
++        conditions = read(path)
++        row = conditions['normal']['predictions'][0]
++        row.update(prediction=1, scores=[-2., -1.])
++        conditions['normal']['metrics'] = metrics(conditions['normal']['predictions'])
++        write(path, conditions)
+     report = analysis.analyze(full_grid)
+     assert report['selection']['S_F_star'] == 'RB1-04'
+     assert report['selection']['C_star_RB'] == 'RB1-09'
+@@ -119,12 +125,33 @@ def test_full_synthetic_grid_has_exact_rules_interventions_and_locked_bootstrap(
+     assert report['bootstrap']['seed'] == 20261101
+     assert report['rules']['4_GH_side_history']['passed'] is True
+     assert report['rules']['4_GH_side_history']['normal_reference'] == 'RB1-02/normal'
+-    assert report['interventions']['RB1-02']['iv_swap']['macro_accuracy']['difference'] == pytest.approx(-.02)
++    assert report['interventions']['RB1-02']['iv_swap']['macro_accuracy']['difference'] == pytest.approx(-.0195 if flipped else -.02)
++    agreement = report['interventions_normal_vs_training']['RB1-02']
++    assert agreement['prediction_mismatches'] == int(flipped)
++    assert agreement['max_abs_score_difference'] == (2 if flipped else 0)
++    assert agreement['macro_accuracy_difference'] == pytest.approx(-.0005 if flipped else 0)
+     assert len(report['training_runtime']) == 9
+     assert report['cost']['node_h'] == pytest.approx(15*.01*.25)
+     assert 'Single-seed dev screening' in analysis.markdown(report)
+ 
+ 
++@pytest.mark.parametrize('pin', ['source_commit', 'lr_lock_sha256', 'base_manifest_sha256'])
++def test_expected_release_rejects_nonadmitted_binding_before_reading_results(full_grid, pin):
++    full_grid['expected'][pin] = '0'*(40 if pin == 'source_commit' else 64)
++    with pytest.raises(ValueError, match='pre-result RB1 release pins'):
++        analysis.analyze(full_grid, stage='select')
++
++
++def test_source_binding_rejects_consistent_but_unreviewed_training(full_grid):
++    for root in full_grid['training_runs'].values():
++        path = Path(root)/'manifest.json'
++        value = read(path)
++        value['metrics']['source.commit'] = 'c'*40
++        write(path, value)
++    with pytest.raises(ValueError, match='covered RB1 training release'):
++        analysis.analyze(full_grid, stage='select')
++
++
+ @pytest.mark.parametrize('failure,match', [('duplicate', 'duplicate'), ('order', 'paired'),
+                                         ('gold', 'gold score'), ('score', 'tie rule'), ('partial', '1000-row')])
+ def test_prediction_boundary_rejects_invalid_pairing(failure, match):
+diff --git a/src/test_rb1_artifacts.py b/src/test_rb1_artifacts.py
+index 1ba9a1d..a0375d9 100644
+--- a/src/test_rb1_artifacts.py
++++ b/src/test_rb1_artifacts.py
+@@ -1,10 +1,12 @@
+ """Formal-budget and provenance checks for RB1 producer artifacts."""
+ import json
++from pathlib import Path
+ 
+ import pytest
+ 
+-from rb1_artifacts import validate_formal_run, verified_latency
+-from test_rb1_latency import _formal_run
++from rb1_artifacts import (ACCEPTED_LR_LOCK_SHA256, validate_formal_run,
++                           verified_latency, verify_lr_lock)
++from test_rb1_latency import _digest, _formal_run
+ from v1_run import lr_factor
+ 
+ 
+@@ -36,13 +38,39 @@ def test_rejects_wrong_parameter_accounting(tmp_path, key, value):
+ 
+ 
+ def test_rejects_lock_family_split_or_learning_rate_mismatch(tmp_path):
+-    run = _formal_run(tmp_path, 'RB1-01')
+-    lock = run / 'lock.json'
+-    value = json.loads(lock.read_text())
+-    value['locked_lrs']['RBc-T'] = .003
++    lock = tmp_path / 'lock-choice.json'
++    source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
++    value = json.loads(source.read_text())
++    value['locked_lrs']['RBc-T'] = .001
+     lock.write_text(json.dumps(value))
+-    with pytest.raises(ValueError, match='LR lock family/value'):
+-        validate_formal_run(run, 'RB1-01')
++    with pytest.raises(ValueError, match='reconstructed calibration choices'):
++        verify_lr_lock(lock, expected_sha256=_digest(lock))
++
++
++def test_rejects_changed_lock_against_accepted_pin(tmp_path):
++    source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
++    lock = tmp_path / 'wrong-lock-hash.json'
++    lock.write_bytes(source.read_bytes() + b' ')
++    with pytest.raises(ValueError, match='accepted T-0024 lock'):
++        verify_lr_lock(lock)
++
++
++def test_rejects_changed_input_reference_hash(tmp_path):
++    source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
++    lock = tmp_path / 'wrong-input-ref.json'
++    value = json.loads(source.read_text())
++    value['inputs'][0]['sha256'] = '0' * 64
++    lock.write_text(json.dumps(value))
++    with pytest.raises(ValueError, match='input hash/size mismatch'):
++        verify_lr_lock(lock, expected_sha256=_digest(lock))
++
++
++def test_accepted_lock_is_reconstructed_from_calibration_manifests():
++    lock = Path(__file__).resolve().parents[1] / 'research/artifacts/T-0024/lr-lock.json'
++    assert _digest(lock) == ACCEPTED_LR_LOCK_SHA256
++    verified = verify_lr_lock(lock)
++    assert verified['locked_lrs'] == {'RBc-T': .003, 'RBc-L': .0003,
++                                     'RBc-R': .003, 'RBc-C': .001}
+ 
+ 
+ def test_rejects_actual_split_file_change(tmp_path):
+@@ -56,10 +84,11 @@ def test_rejects_crossing_two_million_before_final_step(tmp_path):
+     run = _formal_run(tmp_path, 'RB1-01')
+     steps_path = run / 'steps.jsonl'
+     rows = [json.loads(line) for line in steps_path.read_text().splitlines()]
++    learning_rate = json.loads((run / 'config.json').read_text())['lr']
+     rows.append({'step': 1955, 'example_mean_nll': 2.4, 'preclip_norm': .4,
+-                 'lr': .001 * lr_factor(1954, 1955), 'seconds': 1., 'input_tokens': 1})
++                 'lr': learning_rate * lr_factor(1954, 1955), 'seconds': 1., 'input_tokens': 1})
+     for index, row in enumerate(rows, 1):
+-        row['lr'] = .001 * lr_factor(index - 1, 1955)
++        row['lr'] = learning_rate * lr_factor(index - 1, 1955)
+     steps_path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+     _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(
+         **{'plan.steps': 1955, 'train.steps': 1955, 'plan.examples': 3910,
+@@ -73,12 +102,13 @@ def test_accepts_natural_three_epoch_stop_below_two_million(tmp_path):
+     run = _formal_run(tmp_path, 'RB1-01')
+     config_path = run / 'config.json'
+     config = json.loads(config_path.read_text())
++    learning_rate = config['lr']
+     config['three_epochs'] = False
+     config_path.write_text(json.dumps(config))
+     rows = []
+     for step in range(1, 4):
+         rows.append({'step': step, 'example_mean_nll': 2.4, 'preclip_norm': .2,
+-                     'lr': .001 * lr_factor(step - 1, 3), 'seconds': 1., 'input_tokens': 100})
++                     'lr': learning_rate * lr_factor(step - 1, 3), 'seconds': 1., 'input_tokens': 100})
+     (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+     _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(
+         **{'plan.steps': 3, 'train.steps': 3, 'plan.input_tokens': 300,
+diff --git a/src/test_rb1_latency.py b/src/test_rb1_latency.py
+index dfef7d1..4715cdc 100644
+--- a/src/test_rb1_latency.py
++++ b/src/test_rb1_latency.py
+@@ -22,13 +22,17 @@ def _formal_run(root, arm):
+     adapter = run / 'adapter'
+     adapter.mkdir(parents=True)
+     split = run / 'split.json'
+-    split.write_text('{"split":"fixture"}')
++    repo = Path(__file__).resolve().parents[1]
++    accepted_lock_path = repo / 'research/artifacts/T-0024/lr-lock.json'
++    accepted_split_path = repo / 'research/artifacts/T-0022/rb-confirmation.json'
++    split.write_bytes(accepted_split_path.read_bytes())
+     lock = run / 'lock.json'
++    lock.write_bytes(accepted_lock_path.read_bytes())
++    accepted_lock = json.loads(lock.read_text())
++    learning_rate = accepted_lock['locked_lrs'][FAMILIES[arm]]
+     split_hash = _digest(split)
+-    lock.write_text(json.dumps({'experiment': 'E-0020@1',
+-        'locked_lrs': {FAMILIES[arm]: .001}, 'split_manifest_sha256': split_hash}))
+     training_config = {'arm': arm, 'phase': 'R1', 'seed': 0, 'stage': 'train',
+-                       'lr': .001, 'lr_lock': str(lock), 'split_manifest': str(split),
++                       'lr': learning_rate, 'lr_lock': str(lock), 'split_manifest': str(split),
+                        'eval_limit': None, 'smoke_steps': None, 'three_epochs': False}
+     (run / 'config.json').write_text(json.dumps(training_config))
+     model_config = (LoRAConfig(layers=(6, 13, 20, 27), rank=7, alpha=7)
+@@ -41,7 +45,7 @@ def _formal_run(root, arm):
+         checkpoint[name] = {'path': str(path), 'sha256': _digest(path), 'bytes': path.stat().st_size}
+     (run / 'checkpoint.json').write_text(json.dumps(checkpoint))
+     steps = [{'step': index, 'example_mean_nll': 2.4, 'preclip_norm': .4,
+-              'lr': .001 * lr_factor(index - 1, 1954), 'seconds': 1.,
++              'lr': learning_rate * lr_factor(index - 1, 1954), 'seconds': 1.,
+               'input_tokens': 1024 if index < 1954 else 128}
+              for index in range(1, 1955)]
+     (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in steps))
+@@ -49,12 +53,13 @@ def _formal_run(root, arm):
+     metrics = {'failed': False, 'reload.identical': True, 'params.stored': params,
+         'model_revision': REVISION, 'tokenizer_revision': REVISION,
+         'environment.lock_sha256': _digest(Path(__file__).resolve().parents[1]/'uv.lock'),
+-        'source.commit': 'c'*40, 'plan.order_sha256': 'a'*64,
++        'source.commit': '7bf091d4af24c2a9fdc666a5f885c31817b97174',
+         'params.trainable': params, 'params.with_grad': params,
+-        'learning_rate': .001, 'lr_lock.sha256': _digest(lock),
++        'learning_rate': learning_rate, 'lr_lock.sha256': _digest(lock),
+         'split_manifest.sha256': split_hash, 'plan.steps': 1954, 'train.steps': 1954,
+         'plan.input_tokens': 2_000_000, 'train.input_tokens': 2_000_000,
+-        'plan.examples': 3908, 'train.examples': 3908, 'train.last_epoch': 0}
++        'plan.examples': 3908, 'train.examples': 3908, 'train.last_epoch': 0,
++        'plan.order_sha256': accepted_lock['plan_order_sha256']}
+     (run / 'manifest.json').write_text(json.dumps({
+         'status': 'complete', 'contract': latency.CONTRACT, 'arm': arm, 'family': FAMILIES[arm],
+         'phase': 'R1', 'seed': 0, 'stage': 'train',
+diff --git a/src/test_rb1_rules.py b/src/test_rb1_rules.py
+index 52519de..d923c32 100644
+--- a/src/test_rb1_rules.py
++++ b/src/test_rb1_rules.py
+@@ -122,6 +122,27 @@ def test_raw_gc_without_effective_concat_does_not_release_or_trigger_pilot():
+     assert report['screening_directions']['concat'] == 'supports'
+ 
+ 
++def test_gc_without_gl_routes_through_pilot_before_provisional_rb5_matrix():
++    counts = _counts(**{
++        'RB1-07': {'piqa': (540, 1000), 'boolq': (500, 1000)},
++        'RB1-02': {'piqa': (500, 1000), 'boolq': (500, 1000)},
++        'RB1-08': {'piqa': (540, 1000), 'boolq': (500, 1000)},
++    })
++    report = _report(counts)
++    assert report['selection']['C_star_RB'] == 'RB1-08'
++    assert report['rules']['6_GC_concat']['resolved_gate_met'] is True
++    assert report['rules']['5_GL_loop']['passed'] is False
++    assert report['rules']['8_C_S1_S4_pilot']['triggered'] is True
++    assert report['progression'] == 'C_S1_S4_pilot_then_draft_RB5_and_review_conclusion'
++    assert report['rules']['7_RB5_release']['matrix'] == [
++        'RB5-01', 'RB5-05', 'RB5-08', 'RB5-03', 'RB5-06', 'RB5-07', 'RB5-09']
++    assert report['rules']['7_RB5_release']['matrix_status'] == 'pending_C_S1_S4_pilot'
++    assert report['rules']['7_RB5_release']['if_pilot_C_S4_minus_C_S1_ge_1pp'] == \
++        'all nine RB5 groups at fixed S4'
++    assert report['resolved_actions']['C_S1_S4_pilot'] is True
++    assert report['resolved_actions']['RB5_matrix_status'] == 'pending_C_S1_S4_pilot'
++
++
+ def test_rule10_includes_base_minus_one_but_excludes_base_plus_one():
+     counts = _counts(**{
+         'RB1-01': {'piqa': (480, 1000), 'boolq': (500, 1000)},
+diff --git a/src/test_rb_read_diagnostics.py b/src/test_rb_read_diagnostics.py
+index 34544d2..f079bc0 100644
+--- a/src/test_rb_read_diagnostics.py
++++ b/src/test_rb_read_diagnostics.py
+@@ -104,6 +104,28 @@ def test_gold_answer_query_scope_excludes_padding_and_uses_preceding_position():
+     assert report['answer_prediction']['means']['readable_positions'] == 2
+ 
+ 
++def test_read_summary_reports_nonempty_means_without_changing_original_means():
++    valid = torch.tensor([[1, 1, 1]], dtype=torch.bool)
++    labels = torch.full((1, 3), -100)
++    record = {
++        'step': 1,
++        'current_weight': torch.tensor([[0., 0., 0.]]),
++        'n_eff': torch.tensor([[0., 1., 2.]]),
++        'entropy': torch.tensor([[0., 0., .69314718]]),
++        'relative_n_eff': torch.tensor([[0., 1., 1.]]),
++        'readable_positions': torch.tensor([[0., 1., 2.]]),
++    }
++    summary = ReadSummary()
++    summary.add('piqa', {6: {'read_metrics': [record]}}, valid, labels)
++    result = summary.finish()[0]
++    assert result['count'] == 3
++    assert result['empty_reads'] == 1
++    assert result['means']['n_eff'] == 1
++    assert result['nonempty_means']['n_eff'] == 1.5
++    assert result['means']['current_weight'] == 0
++    assert result['nonempty_means']['current_weight'] == 0
++
++
+ @pytest.mark.parametrize('steps,mode,fixed', [(1, 'inclusive', False), (4, 'strict', False), (4, 'inclusive', True)])
+ def test_default_prefix_outputs_and_training_gradients_bitwise_match_reviewed_pre_observer_source(steps, mode, fixed):
+     path = Path('/work/xg24i002/x10041/bypass-lora/snapshots/6df9e479b229feb3d5edfac588b06264612c7839/src/bypass_core.py')
