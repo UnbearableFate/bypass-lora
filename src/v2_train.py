@@ -77,7 +77,8 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
 
     Diagnostic scalar means are weighted by valid question tokens, matching the
     offline evaluator's all-valid-question scope. EM/NLL and strata are episode
-    means. Denominator percentiles remain explicitly per-batch diagnostics.
+    means. Reconstruction error uses the maximum across batches; denominator
+    percentiles remain explicitly per-batch diagnostics.
     """
     if split not in ('dev', 'calibration') or len(rows) < 2:
         raise ValueError('evaluate only released dev/calibration with >=2 owners')
@@ -92,6 +93,7 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
         if mode not in CONTROLS:
             raise ValueError('invalid control')
         records, diag_sum, diag_weight, batch_percentiles = [], defaultdict(float), defaultdict(int), []
+        diag_max = {}
         for start in range(0, len(rows), EVAL_BATCH_SIZE):
             selected = rows[start:start+EVAL_BATCH_SIZE]
             batch = collate(selected, pad_id, device)
@@ -121,6 +123,9 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
                     continue
                 if key.startswith('read.denominator.p'):
                     continue
+                if key == 'read.reconstruction_max_abs':
+                    diag_max[key] = max(diag_max.get(key, 0.), float(value))
+                    continue
                 diag_sum[key] += float(value)*weight
                 diag_weight[key] += weight
             batch_percentiles.append({k: v for k, v in details.items() if k.startswith('read.denominator.p')})
@@ -133,7 +138,8 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
                 groups[str(record[axis])].append(record)
             metrics['strata'][axis] = {name: _summary(group, prior_token) for name, group in sorted(groups.items())}
         metrics['diagnostics'] = {k: diag_sum[k]/diag_weight[k] for k in diag_sum}
-        metrics['diagnostic_weighting'] = 'valid_question_tokens'
+        metrics['diagnostics'].update(diag_max)
+        metrics['diagnostic_weighting'] = 'valid_question_tokens; read.reconstruction_max_abs is split maximum'
         metrics['denominator_percentiles_by_batch'] = batch_percentiles
         if mode == 'shuffled':
             metrics['donor_rule'] = 'global ordered split: recipient i receives support (i-1) modulo split size'

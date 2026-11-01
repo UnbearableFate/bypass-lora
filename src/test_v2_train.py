@@ -116,6 +116,7 @@ def test_formal_evaluation_uses_global_donors_across_batch_16_boundary(monkeypat
                       [r['episode_id'] for r in donor_batch.rows]))
         logits = torch.tensor([[2., -1.]]).repeat(len(batch.rows), 1)
         return {'read.raw_norm': 2., 'address.entropy': .5,
+                'read.reconstruction_max_abs': 1e-5 if len(calls) == 1 else 3e-5,
                 'read.normalized_error': 99., 'read.target_norm': 99.,
                 'read.direction_error': 99., 'read.denominator.p50': 3.}, logits
 
@@ -137,6 +138,7 @@ def test_formal_evaluation_uses_global_donors_across_batch_16_boundary(monkeypat
     assert result['answer_ne_subject']['count'] == 16
     assert sum(group['count'] for group in result['strata']['target_fact_position'].values()) == 17
     assert result['diagnostics']['read.raw_norm'] == 2.
+    assert result['diagnostics']['read.reconstruction_max_abs'] == 3e-5
     assert result['diagnostics']['address.target_available'] is False
     for key in ('read.normalized_error', 'read.direction_error', 'read.target_norm'):
         assert result['diagnostics'][key] == 99.
