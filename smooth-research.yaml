@@ -25,14 +25,14 @@
 version: 1
 models:
   researcher:
-  - codex:gpt-6-astra@high
+  - codex:gpt-6-astra@medium
   - claude:claude-opus-5-5@high
   reviewer:
-  - claude:claude-opus-5-5@high
+  - claude:claude-opus-5-5@xhigh
   - codex:gpt-6-astra@high
   advisor:
   - codex:gpt-6-astra@max
-  - claude:claude-fable-5-1@high
+  - claude:claude-fable-5-1@max
 advice:
   max_rounds: 3
 agents:
@@ -46,11 +46,8 @@ agents:
 usage:
   switch_left_percent: 10
   coordinator_host_left_percent: 20
-context:
-  work_target_tokens: 4000
-  advice_target_tokens: 10000
 manuscript:
-  latex: null
+  latex: pdftotext
 compute:
   coordinator: login
   default: miyabi
