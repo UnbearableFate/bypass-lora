@@ -1,0 +1,630 @@
+diff --git a/research/notes/T-0003-release.md b/research/notes/T-0003-release.md
+index 2ff2ae2..f07e433 100644
+--- a/research/notes/T-0003-release.md
++++ b/research/notes/T-0003-release.md
+@@ -38,3 +38,9 @@ Every arm reproduced the full schedule: 13,077 steps, 2,000,040 input tokens (40
+ Ledger measured cost ATT-0022-1: 442 seconds, 0.122778 MIG instance-h = 0.0306945 node-h. Prior failed fixture job: 21 seconds, manual usage U-0034 recorded 0.005833333333333333 MIG instance-h; ledger later confirmed rounded 0.005833. The prior cost is counted once; its matching ledger observation is archived without re-importing a second usage accounting ref. Combined observed cost is about 0.032153 node-h. No formal E-0003 training run or full Base rerun has yet executed.
+ 
+ Authorship: parent Codex model identity not externally observed (unknown); data/analysis/smoke helper used gpt-6-luna at high reasoning. Parent inspected helper edits; PBS performed all runtime validation. Code-review scope includes analysis decision rules and unchanged adapter/LoRA dependencies. Formal runs remain gated on review.
++
++## RV-0007 remediation
++
++RV-0007 accepted the data/evaluation/training/selection mechanics and existing smoke evidence, but found one medium issue: the study analysis could accept smoke, mislabeled or duplicated run directories. The correction makes the public analysis entry point validate configuration, unique resolved paths, actual completed schedule, expected adapter parameter counts, locked full split-map and source identity, full ordered dev membership, and common train order before emitting any selection. Base must be an actual untrained full-evaluation Base. Small numerical fixtures use a separately named internal analysis helper; the CLI has no validation bypass. The formal analysis comparison rules and bootstrap definition remain unchanged. Regression execution and recheck are pending.
++
++RV-0007 fix validated in ATT-0023-1 / RES-0023: source e55eea3fd42b942e0e163a673eff10c390871b8a, PBS 3759481.opbs on mg1098, 145 tests passed with zero failures/errors/skips. Actual ATT-0022 smoke artifacts and duplicated-path reproducer are rejected; complete fixtures tied to the locked full split map are accepted. Wrong actual arm, missing config, limited evaluation, short actual training with a full plan, wrong split/source/order, wrong parameter counts, incorrect membership despite full row count, incomplete row count and trained/smoke Base are rejected. Numerical boundary/bootstrap tests remain passing. PBS walltime 28 seconds = 0.007778 MIG instance-h (six-decimal ledger convention) = 0.0019445 node-h. No new training tokens. Training and evaluation source files remain byte-identical to the successful eight-arm smoke. Recheck requested after recording this evidence; no formal runs started.
+diff --git a/src/test_v1_analysis.py b/src/test_v1_analysis.py
+index fff33ad..3dcf499 100644
+--- a/src/test_v1_analysis.py
++++ b/src/test_v1_analysis.py
+@@ -1,5 +1,7 @@
+ """CPU tests for E-0003 run pairing and bootstrap analysis."""
+ import json
++from pathlib import Path
++import shutil
+ 
+ import pytest
+ 
+@@ -41,9 +43,74 @@ def _input_runs(tmp_path, **kwargs):
+     return run_paths, base
+ 
+ 
++def _analyze_numeric(run_paths, base, **kwargs):
++    """Exercise selection/bootstrap math without treating tiny rows as formal input."""
++    paths = {arm: Path(path) for arm, path in run_paths.items()}
++    paths['Base'] = Path(base)
++    loaded = {}
++    for arm, path in paths.items():
++        loaded[arm] = (json.loads((path / 'predictions.json').read_text()),
++                       json.loads((path / 'manifest.json').read_text()))
++    return v1_analysis._analyze_loaded(loaded, paths, **kwargs)
++
++
++LOCKED_ARTIFACT = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0022-1/F_out')
++
++
++def _formal_runs(tmp_path):
++    """Build full-size formal evidence from the saved locked split artifacts."""
++    split_map = json.loads((LOCKED_ARTIFACT / 'split-map.json').read_text())
++    run_paths = {}
++    all_ids = (*v1_analysis.ARM_IDS, 'Base')
++    for run_id in all_ids:
++        path = tmp_path / run_id
++        path.mkdir(parents=True)
++        shutil.copyfile(LOCKED_ARTIFACT / 'split-map.json', path / 'split-map.json')
++        shutil.copyfile(LOCKED_ARTIFACT / 'data-metadata.json', path / 'data-metadata.json')
++        actual_arm = 'base' if run_id == 'Base' else v1_analysis.CONFIG_ARMS[run_id]
++        (path / 'config.json').write_text(json.dumps({
++            'arm': actual_arm, 'lr': .0003, 'tokens': 2000000, 'batch': 2,
++            'eval_limit': None, 'smoke_steps': None, 'e3': True,
++            'data_dir': '/locked/test/data', 'output': str(path),
++        }))
++        metrics = {
++            'plan.steps': v1_analysis.FULL_STEPS,
++            'plan.input_tokens': v1_analysis.FULL_INPUT_TOKENS,
++            'plan.order_sha256': v1_analysis.TRAIN_ORDER_SHA256,
++            'reload.identical': True, 'train.diverged': False,
++        }
++        if run_id == 'Base':
++            metrics.update({'params.trainable': 0, 'params.adapter_stored': 0,
++                            'params.with_grad': 0})
++        else:
++            expected = v1_analysis.TRAINABLE_PARAMS[run_id]
++            metrics.update({'train.steps': v1_analysis.FULL_STEPS,
++                            'train.input_tokens': v1_analysis.FULL_INPUT_TOKENS,
++                            'train.examples': v1_analysis.FULL_EXAMPLES,
++                            'params.trainable': expected, 'params.adapter_stored': expected,
++                            'params.with_grad': expected})
++        (path / 'manifest.json').write_text(json.dumps({
++            'status': 'complete', 'validator': {'passed': True}, 'metrics': metrics,
++        }))
++        predictions = []
++        for task in v1_analysis.TASKS:
++            for index, row_id in enumerate(split_map[task]['dev']):
++                gold = index % 2
++                predictions.append({'task': task, 'split': 'dev', 'id': row_id,
++                                    'gold': gold, 'prediction': gold,
++                                    'scores': [-1.0, -2.0], 'gold_nll_sum': 1.0,
++                                    'gold_loss_tokens': 1})
++        (path / 'predictions.json').write_text(json.dumps(predictions))
++        if run_id == 'Base':
++            base_path = path
++        else:
++            run_paths[run_id] = path
++    return run_paths, base_path
++
++
+ def test_analysis_uses_identical_task_stratified_row_draws_for_every_arm(tmp_path):
+     run_paths, base = _input_runs(tmp_path)
+-    report = v1_analysis.analyze(run_paths, base, repeats=40, seed=13, chunk_size=7)
++    report = _analyze_numeric(run_paths, base, repeats=40, seed=13, chunk_size=7)
+ 
+     assert report['bootstrap']['seed'] == 13
+     assert report['arms']['V1-01']['metrics']['macro_accuracy'] == 1.0
+@@ -65,25 +132,23 @@ def test_analysis_rejects_dev_id_gold_or_order_mismatch(tmp_path, kwargs):
+     run_paths['V1-02'] = changed
+ 
+     with pytest.raises(v1_analysis.AnalysisError, match='rows or order differ'):
+-        v1_analysis.analyze(run_paths, base, repeats=5)
++        _analyze_numeric(run_paths, base, repeats=5)
+ 
+ 
+ def test_analysis_rejects_nonfinite_dev_candidate_score(tmp_path):
+-    run_paths, base = _input_runs(tmp_path)
+-    broken = tmp_path / 'broken'
+-    _write_run(broken)
++    run_paths, base = _formal_runs(tmp_path)
++    broken = run_paths['V1-01']
+     rows = json.loads((broken / 'predictions.json').read_text())
+     rows[0]['scores'][0] = float('nan')
+     (broken / 'predictions.json').write_text(json.dumps(rows))
+-    run_paths['V1-01'] = broken
+ 
+     with pytest.raises(v1_analysis.AnalysisError, match='finite'):
+-        v1_analysis.analyze(run_paths, base, repeats=5)
++        v1_analysis.analyze(run_paths, base, repeats=1)
+ 
+ 
+ def test_c_star_is_none_when_no_concat_arm_is_effective(tmp_path):
+     run_paths, base = _input_runs(tmp_path)
+-    report = v1_analysis.analyze(run_paths, base, repeats=5)
++    report = _analyze_numeric(run_paths, base, repeats=5)
+ 
+     assert report['selection']['C_star'] is None
+     assert report['selection']['C_effective'] == []
+@@ -120,7 +185,7 @@ def _many_runs(tmp_path, counts, nll=None):
+ def test_effectiveness_threshold_is_inclusive_at_exactly_one_percentage_point(tmp_path):
+     counts = {'V1-03': (52, 50)}  # macro 0.51 vs Base 0.50
+     run_paths, base = _many_runs(tmp_path, counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+ 
+     assert selection['C_effective'] == ['V1-03']
+     assert selection['C_star'] == 'V1-03'
+@@ -129,7 +194,7 @@ def test_effectiveness_threshold_is_inclusive_at_exactly_one_percentage_point(tm
+ def test_one_task_half_point_gain_is_below_effectiveness_threshold(tmp_path):
+     counts = {'V1-03': (51, 50)}  # macro +0.005
+     run_paths, base = _many_runs(tmp_path, counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+ 
+     assert selection['C_effective'] == []
+     assert selection['C_star'] is None
+@@ -138,7 +203,7 @@ def test_one_task_half_point_gain_is_below_effectiveness_threshold(tmp_path):
+ def test_c_star_prefers_fewer_parameters_among_strictly_near_best_effective_arms(tmp_path):
+     counts = {'V1-03': (53, 50), 'V1-04': (52, 50), 'V1-05': (54, 50)}
+     run_paths, base = _many_runs(tmp_path, counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+ 
+     # Gate is 0.005 below the dual best and has fewer parameters; up is exactly
+     # 0.01 below best and is excluded by the strict near-best boundary.
+@@ -150,23 +215,23 @@ def test_c_star_prefers_fewer_parameters_among_strictly_near_best_effective_arms
+ def test_gate_up_ties_use_macro_accuracy_then_nll_then_gate(tmp_path):
+     higher = {'V1-03': (52, 50), 'V1-04': (53, 50)}
+     run_paths, base = _many_runs(tmp_path / 'higher-macro', higher)
+-    assert v1_analysis.analyze(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-04'
++    assert _analyze_numeric(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-04'
+ 
+     counts = {'V1-03': (53, 50), 'V1-04': (53, 50)}
+     nll = {'V1-03': {'piqa': 1.2}, 'V1-04': {'piqa': 1.0}}
+     run_paths, base = _many_runs(tmp_path / 'nll', counts, nll)
+-    assert v1_analysis.analyze(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-04'
++    assert _analyze_numeric(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-04'
+ 
+     tied = tmp_path / 'equal-nll'
+     run_paths, base = _many_runs(tied, counts)
+-    assert v1_analysis.analyze(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-03'
++    assert _analyze_numeric(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-03'
+ 
+ 
+ def test_concat_win_and_dual_decisions_use_inclusive_exact_one_point_boundaries(tmp_path):
+     counts = {'V1-01': (50, 50), 'V1-02': (50, 50),
+               'V1-03': (50, 50), 'V1-04': (50, 50), 'V1-05': (52, 50)}
+     run_paths, base = _many_runs(tmp_path, counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+     assert selection['C_star'] == 'V1-05'
+     assert selection['concat_wins'] is True
+     assert selection['C_dual_better_than_C_gate'] is True
+@@ -180,7 +245,7 @@ def test_concat_cannot_win_without_c_star_even_when_raw_concat_score_is_high(tmp
+     # task counts, so construct it explicitly while retaining the aligned rows.
+     all_counts = dict(counts, Base=(55, 55))
+     run_paths, base = _many_runs(tmp_path / 'high-base', all_counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+     assert selection['C_star'] is None
+     assert selection['concat_wins'] is False
+ 
+@@ -190,21 +255,186 @@ def test_f_star_uses_exact_one_point_boundary(tmp_path):
+     # as near-equal and selects F_out.
+     counts = {'V1-01': (50, 50), 'V1-02': (52, 50)}
+     run_paths, base = _many_runs(tmp_path, counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+     assert selection['F_star']['selected'] == 'V1-02'
+ 
+     close = tmp_path / 'close'
+     counts = {'V1-01': (50, 50), 'V1-02': (51, 50)}
+     run_paths, base = _many_runs(close, counts)
+-    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    selection = _analyze_numeric(run_paths, base, repeats=2)['selection']
+     assert selection['F_star']['selected'] == 'V1-01'
+ 
+ 
+ @pytest.mark.parametrize('reload_identical,diverged', [(False, False), (True, True)])
+ def test_analysis_rejects_unverified_or_diverged_run(tmp_path, reload_identical, diverged):
+-    run_paths, base = _input_runs(tmp_path)
+-    bad = tmp_path / 'bad-run'
+-    _write_run(bad, reload_identical=reload_identical, diverged=diverged)
+-    run_paths['V1-01'] = bad
++    run_paths, base = _formal_runs(tmp_path)
++    manifest_path = run_paths['V1-01'] / 'manifest.json'
++    manifest = json.loads(manifest_path.read_text())
++    manifest['metrics']['reload.identical'] = reload_identical
++    manifest['metrics']['train.diverged'] = diverged
++    manifest_path.write_text(json.dumps(manifest))
++    with pytest.raises(v1_analysis.AnalysisError):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_accepts_correctly_mapped_full_fixture(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    report = v1_analysis.analyze(run_paths, base, repeats=1, chunk_size=1)
++
++    assert report['arms']['V1-01']['dev_examples'] == {'piqa': 1000, 'boolq': 1000}
++    assert report['arms']['V1-07']['manifest_metrics']['train.steps'] == v1_analysis.FULL_STEPS
++
++
++def test_formal_analysis_rejects_aliased_resolved_run_paths(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    alias = tmp_path / 'alias'
++    alias.symlink_to(run_paths['V1-01'], target_is_directory=True)
++    run_paths['V1-02'] = alias
++
++    with pytest.raises(v1_analysis.AnalysisError, match='unique resolved'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_review_reproducer_same_f_out_path_for_all_labels_and_base_is_rejected(tmp_path):
++    smoke = LOCKED_ARTIFACT
++    run_paths = {run_id: smoke for run_id in v1_analysis.ARM_IDS}
++
++    with pytest.raises(v1_analysis.AnalysisError, match='unique resolved'):
++        v1_analysis.analyze(run_paths, smoke, repeats=1)
++
++
++def test_distinct_att0022_smoke_paths_are_rejected_by_actual_smoke_config(tmp_path):
++    root = LOCKED_ARTIFACT.parent
++    run_paths = {run_id: root / actual_arm
++                 for run_id, actual_arm in v1_analysis.CONFIG_ARMS.items()}
++    _, base = _formal_runs(tmp_path)
++
++    with pytest.raises(v1_analysis.AnalysisError, match='smoke_steps and eval_limit'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_rejects_wrong_actual_arm_and_missing_config(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    config_path = run_paths['V1-01'] / 'config.json'
++    config = json.loads(config_path.read_text())
++    config['arm'] = 'F_pre'
++    config_path.write_text(json.dumps(config))
++    with pytest.raises(v1_analysis.AnalysisError, match='config arm'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++    run_paths, base = _formal_runs(tmp_path / 'missing')
++    (run_paths['V1-01'] / 'config.json').unlink()
++    with pytest.raises(v1_analysis.AnalysisError, match='config.json'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++@pytest.mark.parametrize(('key', 'value'), [('smoke_steps', 20), ('eval_limit', 32)])
++def test_formal_analysis_rejects_smoke_or_limited_evaluation(tmp_path, key, value):
++    run_paths, base = _formal_runs(tmp_path)
++    config_path = run_paths['V1-01'] / 'config.json'
++    config = json.loads(config_path.read_text())
++    config[key] = value
++    config_path.write_text(json.dumps(config))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='smoke_steps and eval_limit'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_rejects_short_actual_training_with_full_plan(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    manifest_path = run_paths['V1-01'] / 'manifest.json'
++    manifest = json.loads(manifest_path.read_text())
++    manifest['metrics']['train.steps'] = 20
++    manifest_path.write_text(json.dumps(manifest))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='train.steps'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++@pytest.mark.parametrize('artifact', ['order', 'split_hash', 'source_hash'])
++def test_formal_analysis_rejects_locked_order_or_data_mismatch(tmp_path, artifact):
++    run_paths, base = _formal_runs(tmp_path)
++    path = run_paths['V1-01']
++    if artifact == 'order':
++        file = path / 'manifest.json'
++        content = json.loads(file.read_text())
++        content['metrics']['plan.order_sha256'] = 'wrong-order'
++    elif artifact == 'split_hash':
++        file = path / 'data-metadata.json'
++        content = json.loads(file.read_text())
++        content['split_mapping_sha256'] = 'wrong-split'
++    else:
++        file = path / 'data-metadata.json'
++        content = json.loads(file.read_text())
++        content['source_files']['piqa']['sha256'] = 'wrong-source'
++    file.write_text(json.dumps(content))
++
+     with pytest.raises(v1_analysis.AnalysisError):
+-        v1_analysis.analyze(run_paths, base, repeats=2)
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++@pytest.mark.parametrize('metric', ['params.adapter_stored', 'params.trainable', 'params.with_grad'])
++def test_formal_analysis_rejects_unexpected_parameter_counts(tmp_path, metric):
++    run_paths, base = _formal_runs(tmp_path)
++    manifest_path = run_paths['V1-08'] / 'manifest.json'
++    manifest = json.loads(manifest_path.read_text())
++    manifest['metrics'][metric] += 1
++    manifest_path.write_text(json.dumps(manifest))
++
++    with pytest.raises(v1_analysis.AnalysisError, match=metric):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_rejects_1000_dev_rows_with_wrong_membership(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    predictions_path = run_paths['V1-04'] / 'predictions.json'
++    predictions = json.loads(predictions_path.read_text())
++    predictions[0]['id'] = -1
++    predictions_path.write_text(json.dumps(predictions))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='IDs/membership/order'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_rejects_fewer_than_1000_dev_rows_per_task(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    predictions_path = run_paths['V1-04'] / 'predictions.json'
++    predictions = json.loads(predictions_path.read_text())
++    predictions.pop(0)
++    predictions_path.write_text(json.dumps(predictions))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='IDs/membership/order'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_rejects_base_training_consumption(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    manifest_path = base / 'manifest.json'
++    manifest = json.loads(manifest_path.read_text())
++    manifest['metrics']['train.steps'] = 1
++    manifest_path.write_text(json.dumps(manifest))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='Base: unexpected training'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_requires_base_e3_configuration(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    config_path = base / 'config.json'
++    config = json.loads(config_path.read_text())
++    config['e3'] = False
++    config_path.write_text(json.dumps(config))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='Base: config must have e3=true'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
++
++
++def test_formal_analysis_rejects_smoke_base_configuration(tmp_path):
++    run_paths, base = _formal_runs(tmp_path)
++    config_path = base / 'config.json'
++    config = json.loads(config_path.read_text())
++    config['smoke_steps'] = 20
++    config_path.write_text(json.dumps(config))
++
++    with pytest.raises(v1_analysis.AnalysisError, match='Base: smoke_steps and eval_limit'):
++        v1_analysis.analyze(run_paths, base, repeats=1)
+diff --git a/src/v1_analysis.py b/src/v1_analysis.py
+index 80509b9..e91a9de 100644
+--- a/src/v1_analysis.py
++++ b/src/v1_analysis.py
+@@ -3,6 +3,7 @@ from __future__ import annotations
+ 
+ import argparse
+ from fractions import Fraction
++import hashlib
+ import json
+ import math
+ from pathlib import Path
+@@ -22,31 +23,125 @@ TRAINABLE_PARAMS = {
+     'V1-03': 524288, 'V1-04': 524288, 'V1-05': 917504,
+     'V1-06': 917504, 'V1-07': 901120, 'V1-08': 1261568,
+ }
++CONFIG_ARMS = {
++    'V1-01': 'F_out', 'V1-02': 'F_pre', 'V1-03': 'C_gate', 'V1-04': 'C_up',
++    'V1-05': 'C_dual', 'V1-06': 'linear', 'V1-07': 'lora', 'V1-08': 'lora28',
++}
+ TASKS = ('piqa', 'boolq')
+ BOOTSTRAP_SEED = 20261029
+ BOOTSTRAP_REPEATS = 10000
+ NEAR_TIE = .01
++LOCKED_SPLIT_SHA256 = '47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7f20ded98571b'
++TRAIN_ORDER_SHA256 = 'fcfed383efd9a1672f6e210b8eb52fc2a6039db5c6d868926fb2ddec0e49d376'
++FULL_STEPS = 13077
++FULL_INPUT_TOKENS = 2000040
++FULL_EXAMPLES = 26154
++SOURCE_HASHES = {
++    'piqa': 'f805f9c96518d7b59f2f870d90f712457cda949979469d9fa3fd706ce22e0a1a',
++    'piqa_labels': 'df8ae080c41f02f88e81f6932d425f4b7ee72f433ad552e6a30d45e358e8f8bb',
++    'boolq': '4f028e992c0bd4df30b9f056f4946b64f5c23028034ff0ed5ea467d8538cc623',
++}
++SOURCE_METADATA = {
++    'piqa': {'repo': 'ybisk/ybisk.github.io', 'revision': '21edab439af693b961be2f069e8690a88d3b4e37'},
++    'boolq': {'repo': 'google/boolq', 'revision': '35b264d03638db9f4ce671b711558bf7ff0f80d5'},
++}
+ 
+ 
+ class AnalysisError(ValueError):
+     """Input runs cannot support a paired comparison."""
+ 
+ 
+-def _read_run(path: Path, run_id: str) -> tuple[list[dict], dict]:
++def _read_json(path: Path, run_id: str, label: str):
+     try:
+-        manifest = json.loads((path / 'manifest.json').read_text())
+-        rows = json.loads((path / 'predictions.json').read_text())
++        return json.loads(path.read_text())
+     except (OSError, json.JSONDecodeError) as exc:
+-        raise AnalysisError(f'{run_id}: cannot read manifest/predictions in {path}: {exc}') from exc
++        raise AnalysisError(f'{run_id}: cannot read {label} at {path}: {exc}') from exc
++
++
++def _validate_formal_artifacts(path: Path, run_id: str, expected_arm: str):
++    config = _read_json(path / 'config.json', run_id, 'config.json')
++    metadata = _read_json(path / 'data-metadata.json', run_id, 'data-metadata.json')
++    split_ids = _read_json(path / 'split-map.json', run_id, 'split-map.json')
++    if not isinstance(config, dict) or not isinstance(metadata, dict) or not isinstance(split_ids, dict):
++        raise AnalysisError(f'{run_id}: config, metadata and split-map must be JSON objects')
++    if config.get('arm') != expected_arm:
++        raise AnalysisError(f'{run_id}: config arm {config.get("arm")!r} != expected {expected_arm!r}')
++    if config.get('e3') is not True:
++        raise AnalysisError(f'{run_id}: config must have e3=true')
++    if config.get('smoke_steps') is not None or config.get('eval_limit') is not None:
++        raise AnalysisError(f'{run_id}: smoke_steps and eval_limit must be unset')
++    if config.get('batch') != 2 or config.get('tokens') != 2000000:
++        raise AnalysisError(f'{run_id}: config batch/tokens do not match E-0003 full run')
++    if run_id != 'Base' and config.get('lr') != .0003:
++        raise AnalysisError(f'{run_id}: config learning rate must be 0.0003')
++
++    try:
++        canonical_split = json.dumps(split_ids, ensure_ascii=False, sort_keys=True,
++                                     separators=(',', ':')).encode('utf-8')
++    except (TypeError, ValueError) as exc:
++        raise AnalysisError(f'{run_id}: split-map is not canonical JSON data') from exc
++    split_hash = hashlib.sha256(canonical_split).hexdigest()
++    if split_hash != LOCKED_SPLIT_SHA256:
++        raise AnalysisError(f'{run_id}: split-map hash is not the locked E-0003 mapping')
++    if metadata.get('split_mapping_sha256') != LOCKED_SPLIT_SHA256:
++        raise AnalysisError(f'{run_id}: metadata split_mapping_sha256 is not locked')
++    if metadata.get('split_ids') != split_ids:
++        raise AnalysisError(f'{run_id}: metadata split_ids differ from split-map.json')
++    if metadata.get('source_files', {}) == {}:
++        raise AnalysisError(f'{run_id}: metadata source_files is missing')
++    actual_source_hashes = {name: metadata.get('source_files', {}).get(name, {}).get('sha256')
++                            for name in SOURCE_HASHES}
++    if actual_source_hashes != SOURCE_HASHES:
++        raise AnalysisError(f'{run_id}: source file hashes differ from v1_run.prepare')
++    if metadata.get('source_metadata') != SOURCE_METADATA:
++        raise AnalysisError(f'{run_id}: source repository revisions differ from v1_run.prepare')
++    if metadata.get('dev_size') != 1000:
++        raise AnalysisError(f'{run_id}: metadata dev_size must be 1000')
++    for task in TASKS:
++        if len(split_ids.get(task, {}).get('dev', [])) != 1000:
++            raise AnalysisError(f'{run_id}: split map must contain 1000 {task} dev IDs')
++    return config, metadata, split_ids
++
++
++def _read_run(path: Path, run_id: str, expected_arm: str) -> tuple[list[dict], dict]:
++    config, metadata, split_ids = _validate_formal_artifacts(path, run_id, expected_arm)
++    manifest = _read_json(path / 'manifest.json', run_id, 'manifest.json')
++    rows = _read_json(path / 'predictions.json', run_id, 'predictions.json')
++    if not isinstance(manifest, dict):
++        raise AnalysisError(f'{run_id}: manifest.json must contain an object')
+     if manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True:
+         raise AnalysisError(f'{run_id}: run is not complete and validator-passed')
+-    if manifest.get('metrics', {}).get('reload.identical') is not True:
++    metrics = manifest.get('metrics', {})
++    if not isinstance(metrics, dict):
++        raise AnalysisError(f'{run_id}: manifest metrics must be an object')
++    if metrics.get('reload.identical') is not True:
+         raise AnalysisError(f'{run_id}: reload.identical must be true')
+-    if manifest.get('metrics', {}).get('train.diverged') is True or manifest.get('metrics', {}).get('run.failed_lr') is True:
++    if metrics.get('train.diverged') is True or metrics.get('run.failed_lr') is True:
+         raise AnalysisError(f'{run_id}: training diverged or failed its learning rate')
+-    for key, value in manifest.get('metrics', {}).items():
++    for key, value in metrics.items():
+         if isinstance(value, (int, float)) and not math.isfinite(value):
+             raise AnalysisError(f'{run_id}: manifest metric {key} is nonfinite')
++    for key, expected in (('plan.steps', FULL_STEPS), ('plan.input_tokens', FULL_INPUT_TOKENS),
++                          ('plan.order_sha256', TRAIN_ORDER_SHA256)):
++        if metrics.get(key) != expected:
++            raise AnalysisError(f'{run_id}: {key} does not match the locked full schedule')
++    if run_id == 'Base':
++        for key in ('train.steps', 'train.input_tokens', 'train.examples'):
++            if metrics.get(key, 0) not in (0, None):
++                raise AnalysisError(f'Base: unexpected training consumption {key}={metrics[key]}')
++        if metrics.get('params.trainable') != 0:
++            raise AnalysisError('Base: params.trainable must be zero')
++        for key in ('params.adapter_stored', 'params.with_grad'):
++            if metrics.get(key, 0) not in (0, None):
++                raise AnalysisError(f'Base: {key} must be zero when present')
++    else:
++        for key, expected in (('train.steps', FULL_STEPS), ('train.input_tokens', FULL_INPUT_TOKENS),
++                              ('train.examples', FULL_EXAMPLES),
++                              ('params.adapter_stored', TRAINABLE_PARAMS[run_id]),
++                              ('params.trainable', TRAINABLE_PARAMS[run_id]),
++                              ('params.with_grad', TRAINABLE_PARAMS[run_id])):
++            if metrics.get(key) != expected:
++                raise AnalysisError(f'{run_id}: {key}={metrics.get(key)!r}, expected {expected}')
+     if not isinstance(rows, list):
+         raise AnalysisError(f'{run_id}: predictions.json must contain a list')
+     dev = [row for row in rows if row.get('split') == 'dev']
+@@ -72,6 +167,10 @@ def _read_run(path: Path, run_id: str) -> tuple[list[dict], dict]:
+         raise AnalysisError(f'{run_id}: duplicate (task, id) in dev predictions')
+     if set(row['task'] for row in dev) != set(TASKS):
+         raise AnalysisError(f'{run_id}: dev rows must contain both tasks')
++    for task in TASKS:
++        actual_ids = [row['id'] for row in dev if row['task'] == task]
++        if actual_ids != split_ids[task]['dev']:
++            raise AnalysisError(f'{run_id}: {task} dev IDs/membership/order differ from locked split map')
+     return dev, manifest
+ 
+ 
+@@ -157,7 +256,7 @@ def _paired_bootstrap(arrays: list[dict], repeats: int, seed: int, chunk_size: i
+ def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
+             repeats: int = BOOTSTRAP_REPEATS, seed: int = BOOTSTRAP_SEED,
+             chunk_size: int = 128) -> dict:
+-    """Analyze eight V1 run directories and the E-0002 Base reference directory."""
++    """Validate formal E-0003 artifacts, then analyze the eight arms and Base."""
+     missing = set(ARM_IDS) - set(run_paths)
+     extra = set(run_paths) - set(ARM_IDS)
+     if missing or extra:
+@@ -165,7 +264,25 @@ def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
+     ordered_ids = (*ARM_IDS, 'Base')
+     paths = {arm: Path(run_paths[arm]) for arm in ARM_IDS}
+     paths['Base'] = Path(base_path)
+-    loaded = {arm: _read_run(paths[arm], arm) for arm in ordered_ids}
++    try:
++        resolved = {arm: paths[arm].resolve(strict=True) for arm in ordered_ids}
++    except OSError as exc:
++        raise AnalysisError(f'run path does not exist or cannot be resolved: {exc}') from exc
++    if len(set(resolved.values())) != len(ordered_ids):
++        raise AnalysisError('each V1 arm and Base must use a unique resolved run directory')
++    if any(not path.is_dir() for path in resolved.values()):
++        raise AnalysisError('all run paths must resolve to directories')
++    loaded = {arm: _read_run(resolved[arm], arm,
++                             'base' if arm == 'Base' else CONFIG_ARMS[arm])
++              for arm in ordered_ids}
++    return _analyze_loaded(loaded, resolved, repeats=repeats, seed=seed, chunk_size=chunk_size)
++
++
++def _analyze_loaded(loaded: Mapping[str, tuple[list[dict], dict]], paths: Mapping[str, Path], *,
++                    repeats: int = BOOTSTRAP_REPEATS, seed: int = BOOTSTRAP_SEED,
++                    chunk_size: int = 128) -> dict:
++    """Numerical analysis for already-loaded rows; internal fixture helper, no I/O validation."""
++    ordered_ids = (*ARM_IDS, 'Base')
+     reference_rows = loaded[ARM_IDS[0]][0]
+     reference_identity = [(row['task'], row['id'], row['gold']) for row in reference_rows]
+     for arm in ordered_ids[1:]:
+diff --git a/src/v1_analysis_check.py b/src/v1_analysis_check.py
+new file mode 100644
+index 0000000..5231882
+--- /dev/null
++++ b/src/v1_analysis_check.py
+@@ -0,0 +1,41 @@
++"""PBS regression entry point for the RV-0007 formal-input validation fix."""
++import json
++import os
++from pathlib import Path
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++import pytest
++
++
++def main():
++    out = Path(sys.argv[1]).resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    src = Path(__file__).resolve().parent
++    start = time.monotonic()
++    passed = False
++    metrics = {'train.input_tokens': 0}
++    try:
++        code = pytest.main(['-v', '-p', 'no:cacheprovider',
++                            '--basetemp='+str(out/'tmp'), '--junitxml='+str(out/'checks.xml'),
++                            *[str(src/name) for name in ('test_core.py','test_model.py',
++                              'test_v1_data.py','test_v1_lora.py','test_v1_run.py',
++                              'test_v1_analysis.py')]])
++        metrics['pytest.exit_code'] = int(code)
++        suite = ET.parse(out/'checks.xml').getroot().find('testsuite')
++        metrics.update({'pytest.'+key: int(suite.attrib[key])
++                        for key in ('tests','failures','errors','skipped')})
++        passed = code == 0
++    finally:
++        metrics['elapsed_s'] = time.monotonic()-start
++        (out/'manifest.json').write_text(json.dumps({
++            'status':'complete' if passed else 'partial',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'], 'metrics':metrics,
++            'artifacts':[{'path':str(out/'checks.xml'),'role':'pytest_results'}],
++            'validator':{'name':'v1_analysis_regression','passed':passed}},indent=2)+'\n')
++    return 0 if passed else 1
++
++
++if __name__ == '__main__':
++    sys.exit(main())

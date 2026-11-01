@@ -1,0 +1,1227 @@
+diff --git a/research/notes/T-0003-release.md b/research/notes/T-0003-release.md
+new file mode 100644
+index 0000000..2ff2ae2
+--- /dev/null
++++ b/research/notes/T-0003-release.md
+@@ -0,0 +1,40 @@
++# T-0003 implementation and preregistered analysis
++
++E-0003 uses the sealed task contract and the E-0002 locked environment (uv.lock blob 3c916b51337de3cba594d645e606a31d4f39c443; cuda/12.8). No official validation is accessed.
++
++Implementation: optional E-0003 train exclusion audit, followed by removal after each task's deterministic shuffle and before alternation. Original split map remains unchanged. Any per-task exclusion fraction strictly above 1% stops the run. Each run archives excluded row task/id/candidate token lengths/reason. The planned full schedule must reproduce 13,077 steps, 2,000,040 input tokens, and dev points 3270/6539/9808. Final checkpoint is the only primary result. Intermediate dev evaluation restores all module modes and Python/NumPy/Torch CPU/CUDA RNG states; it does not touch the optimizer or data iterator.
++
++All eight arms use LR 3e-4, batch 2, microbatch 1. Parameter reporting distinguishes total stored model parameters (including frozen Base), adapter stored parameters, trainable parameters, and parameters with an allocated gradient observed during training (zero-valued gradients count as gradients). Adapter stored/trainable/with-gradient counts must equal the contract. Smoke checks exact zero-exit initialization and exact checkpoint reload for every arm. Evaluation now accepts explicit split names; therefore Base will be rerun, and its dev predictions checked against ATT-0011-2 before using the reference.
++
++Before any formal run: bootstrap uses 10,000 replicates, NumPy default_rng seed 20261029, sampling with replacement within each task (1,000 rows each). Every replicate shares task row indices across all arms and Base. Report two-sided percentile 95% intervals for paired macro-accuracy differences, with raw per-task accuracy and token-weighted task NLL and their macro means. No seed-level uncertainty or confirmatory significance claim is inferred. F* uses the contract's <1 pp equivalence rule with F_out preferred. The exact operational definition of an "effective" C candidate and the equal-parameter C_gate/C_up tie remain for coordinator clarification before formal runs.
++
++Smoke timing is measured after the first 10 of 20 steps for all eight arms. Requested walltime will use measured training/evaluation/save/load durations times 1.5; MIG usage is reported both as instance-hours and node-hours (multiply by .25). E-0003 total ceiling is 10 node-hours including tests and diagnostics.
++
++Status: implementation in progress; no T-0003 PBS checks or formal runs have yet executed.
++
++## E-0003@2 clarification before formal runs (MSG-0063)
++
++Effective means dev macro accuracy at least 1 pp above the rerun Base. Among effective C arms, retain those strictly less than 1 pp below the best effective C arm, then prefer fewer parameters. Equal parameter counts use higher macro accuracy, then lower dev macro NLL, then C_gate. No effective C arm means no C*. Concat wins only when C* exists and the highest scoring concat arm is at least 1 pp above F*. C_dual improves on C_gate only at a difference of at least 1 pp. All decisions use point estimates; bootstrap intervals remain descriptive. This supersedes the unresolved definition above. Formal registrations use E-0003@2.
++
++ATT-0021-1 / RES-0021: 116 tests passed, one new test fixture failed before any smoke training. The fixture supplied one invalid row out of one, correctly triggering the >1% guard while expecting an audit record. Corrected to one invalid row out of 100; the production guard is unchanged. Also corrected the held-out comparison dictionary to key by task and split so both dev and calibration are checked. PBS 3759153.opbs, mg1098, Exit_status 1, 21 s = 0.005833333333333333 MIG instance-h = 0.0014583333333333333 node-h; zero training tokens. Retest pending.
++
++## Successful pre-review PBS validation
++
++ATT-0022-1 / RES-0022 executed immutable b933e23cc64514fe4145e4bad6f49e19c52c15cc under E-0003@2 / DOC-0040@2. PBS 3759211.opbs on GH200 MIG 2g.24gb: 126/126 tests passed; all eight real 20-step smokes passed, including exact initial logits against Base, intermediate dev at steps 5/10/15, finite final dev, exact reload, and adapter stored/trainable/with-gradient counts matching the contract. Each consumed 3,862 input tokens and 590 supervised tokens; aggregate 30,896 input tokens. These tiny dev measurements are engineering checks, not interface evidence.
++
++Every arm reproduced the full schedule: 13,077 steps, 2,000,040 input tokens (40 overshoot), dev points 3270/6539/9808, and order SHA256 fcfed383efd9a1672f6e210b8eb52fc2a6039db5c6d868926fb2ddec0e49d376. Every exclusion artifact contains only PIQA id 5528 with candidate lengths [537,537].
++
++| Arm | Adapter stored = trainable = with gradient | Total model stored | Steady step seconds (last 10) | Final 32/task dev seconds | Reload seconds |
++| --- | ---: | ---: | ---: | ---: | ---: |
++| F_out | 262144 | 596312064 | .203224 | 4.811680 | 5.088158 |
++| F_pre | 262144 | 596312064 | .223815 | 5.485355 | 5.804770 |
++| C_gate | 524288 | 596574208 | .207837 | 5.125572 | 5.425015 |
++| C_up | 524288 | 596574208 | .205219 | 4.914017 | 5.076872 |
++| C_dual | 917504 | 596967424 | .210398 | 5.166461 | 5.683372 |
++| linear | 917504 | 596967424 | .217786 | 5.012502 | 5.252097 |
++| LoRA4 | 901120 | 596951040 | .223529 | 4.879263 | 5.293577 |
++| LoRA28 | 1261568 | 597311488 | .435291 | 8.368681 | 8.515534 |
++
++Ledger measured cost ATT-0022-1: 442 seconds, 0.122778 MIG instance-h = 0.0306945 node-h. Prior failed fixture job: 21 seconds, manual usage U-0034 recorded 0.005833333333333333 MIG instance-h; ledger later confirmed rounded 0.005833. The prior cost is counted once; its matching ledger observation is archived without re-importing a second usage accounting ref. Combined observed cost is about 0.032153 node-h. No formal E-0003 training run or full Base rerun has yet executed.
++
++Authorship: parent Codex model identity not externally observed (unknown); data/analysis/smoke helper used gpt-6-luna at high reasoning. Parent inspected helper edits; PBS performed all runtime validation. Code-review scope includes analysis decision rules and unchanged adapter/LoRA dependencies. Formal runs remain gated on review.
+diff --git a/src/test_v1_analysis.py b/src/test_v1_analysis.py
+new file mode 100644
+index 0000000..fff33ad
+--- /dev/null
++++ b/src/test_v1_analysis.py
+@@ -0,0 +1,210 @@
++"""CPU tests for E-0003 run pairing and bootstrap analysis."""
++import json
++
++import pytest
++
++import v1_analysis
++
++
++def _write_run(path, *, boolq_id='b0', reverse=False, correct=True,
++               reload_identical=True, diverged=False):
++    path.mkdir()
++    rows = [
++        {'task': 'piqa', 'split': 'dev', 'id': 'p0', 'gold': 0,
++         'prediction': 0 if correct else 1, 'scores': [-1.0, -2.0],
++         'gold_nll_sum': 2.0, 'gold_loss_tokens': 2},
++        {'task': 'piqa', 'split': 'dev', 'id': 'p1', 'gold': 1,
++         'prediction': 1, 'scores': [-2.0, -1.0],
++         'gold_nll_sum': 3.0, 'gold_loss_tokens': 3},
++        {'task': 'boolq', 'split': 'dev', 'id': boolq_id, 'gold': 1,
++         'prediction': 1, 'scores': [-2.0, -1.0],
++         'gold_nll_sum': 4.0, 'gold_loss_tokens': 1},
++    ]
++    if reverse:
++        rows.reverse()
++    (path / 'predictions.json').write_text(json.dumps(rows))
++    (path / 'manifest.json').write_text(json.dumps({
++        'status': 'complete', 'validator': {'passed': True},
++        'metrics': {'reload.identical': reload_identical, 'train.diverged': diverged,
++                    'dev.piqa.accuracy': .5},
++    }))
++
++
++def _input_runs(tmp_path, **kwargs):
++    run_paths = {}
++    for run_id in v1_analysis.ARM_IDS:
++        path = tmp_path / run_id
++        _write_run(path, **kwargs)
++        run_paths[run_id] = path
++    base = tmp_path / 'base'
++    _write_run(base, **kwargs)
++    return run_paths, base
++
++
++def test_analysis_uses_identical_task_stratified_row_draws_for_every_arm(tmp_path):
++    run_paths, base = _input_runs(tmp_path)
++    report = v1_analysis.analyze(run_paths, base, repeats=40, seed=13, chunk_size=7)
++
++    assert report['bootstrap']['seed'] == 13
++    assert report['arms']['V1-01']['metrics']['macro_accuracy'] == 1.0
++    # Identical row outcomes imply every paired replicate difference is exactly zero.
++    diff = report['comparisons']['V1-01 - Base']['macro_accuracy']
++    assert diff['difference'] == 0.0
++    assert diff['ci95'] == [0.0, 0.0]
++
++
++@pytest.mark.parametrize('kwargs', [
++    {'boolq_id': 'different'},
++    {'reverse': True},
++])
++def test_analysis_rejects_dev_id_gold_or_order_mismatch(tmp_path, kwargs):
++    run_paths, base = _input_runs(tmp_path)
++    # Keep the first run as reference and alter one comparator.
++    changed = tmp_path / 'changed'
++    _write_run(changed, **kwargs)
++    run_paths['V1-02'] = changed
++
++    with pytest.raises(v1_analysis.AnalysisError, match='rows or order differ'):
++        v1_analysis.analyze(run_paths, base, repeats=5)
++
++
++def test_analysis_rejects_nonfinite_dev_candidate_score(tmp_path):
++    run_paths, base = _input_runs(tmp_path)
++    broken = tmp_path / 'broken'
++    _write_run(broken)
++    rows = json.loads((broken / 'predictions.json').read_text())
++    rows[0]['scores'][0] = float('nan')
++    (broken / 'predictions.json').write_text(json.dumps(rows))
++    run_paths['V1-01'] = broken
++
++    with pytest.raises(v1_analysis.AnalysisError, match='finite'):
++        v1_analysis.analyze(run_paths, base, repeats=5)
++
++
++def test_c_star_is_none_when_no_concat_arm_is_effective(tmp_path):
++    run_paths, base = _input_runs(tmp_path)
++    report = v1_analysis.analyze(run_paths, base, repeats=5)
++
++    assert report['selection']['C_star'] is None
++    assert report['selection']['C_effective'] == []
++    assert report['selection']['concat_wins'] is False
++
++
++def _many_runs(tmp_path, counts, nll=None):
++    """Write matched 100-row/task fixtures; counts maps IDs to (PIQA, BoolQ)."""
++    nll = nll or {}
++    all_counts = {arm: counts.get(arm, (50, 50)) for arm in (*v1_analysis.ARM_IDS, 'Base')}
++    paths = {}
++    for arm, task_counts in all_counts.items():
++        path = tmp_path / f'many-{arm}'
++        path.mkdir(parents=True)
++        rows = []
++        for task, correct_count in zip(v1_analysis.TASKS, task_counts):
++            loss = nll.get(arm, {}).get(task, 1.0)
++            for index in range(100):
++                gold = index % 2
++                prediction = gold if index < correct_count else 1 - gold
++                rows.append({'task': task, 'split': 'dev', 'id': f'{task}-{index}',
++                             'gold': gold, 'prediction': prediction,
++                             'scores': [-1.0, -2.0], 'gold_nll_sum': loss,
++                             'gold_loss_tokens': 1})
++        (path / 'predictions.json').write_text(json.dumps(rows))
++        (path / 'manifest.json').write_text(json.dumps({
++            'status': 'complete', 'validator': {'passed': True},
++            'metrics': {'reload.identical': True, 'dev.piqa.accuracy': .5},
++        }))
++        paths[arm] = path
++    return {arm: paths[arm] for arm in v1_analysis.ARM_IDS}, paths['Base']
++
++
++def test_effectiveness_threshold_is_inclusive_at_exactly_one_percentage_point(tmp_path):
++    counts = {'V1-03': (52, 50)}  # macro 0.51 vs Base 0.50
++    run_paths, base = _many_runs(tmp_path, counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++
++    assert selection['C_effective'] == ['V1-03']
++    assert selection['C_star'] == 'V1-03'
++
++
++def test_one_task_half_point_gain_is_below_effectiveness_threshold(tmp_path):
++    counts = {'V1-03': (51, 50)}  # macro +0.005
++    run_paths, base = _many_runs(tmp_path, counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++
++    assert selection['C_effective'] == []
++    assert selection['C_star'] is None
++
++
++def test_c_star_prefers_fewer_parameters_among_strictly_near_best_effective_arms(tmp_path):
++    counts = {'V1-03': (53, 50), 'V1-04': (52, 50), 'V1-05': (54, 50)}
++    run_paths, base = _many_runs(tmp_path, counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++
++    # Gate is 0.005 below the dual best and has fewer parameters; up is exactly
++    # 0.01 below best and is excluded by the strict near-best boundary.
++    assert selection['C_effective_near_best_within_1pp'] == ['V1-03', 'V1-05']
++    assert selection['C_simplest_effective_near_best'] == ['V1-03']
++    assert selection['C_star'] == 'V1-03'
++
++
++def test_gate_up_ties_use_macro_accuracy_then_nll_then_gate(tmp_path):
++    higher = {'V1-03': (52, 50), 'V1-04': (53, 50)}
++    run_paths, base = _many_runs(tmp_path / 'higher-macro', higher)
++    assert v1_analysis.analyze(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-04'
++
++    counts = {'V1-03': (53, 50), 'V1-04': (53, 50)}
++    nll = {'V1-03': {'piqa': 1.2}, 'V1-04': {'piqa': 1.0}}
++    run_paths, base = _many_runs(tmp_path / 'nll', counts, nll)
++    assert v1_analysis.analyze(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-04'
++
++    tied = tmp_path / 'equal-nll'
++    run_paths, base = _many_runs(tied, counts)
++    assert v1_analysis.analyze(run_paths, base, repeats=2)['selection']['C_star'] == 'V1-03'
++
++
++def test_concat_win_and_dual_decisions_use_inclusive_exact_one_point_boundaries(tmp_path):
++    counts = {'V1-01': (50, 50), 'V1-02': (50, 50),
++              'V1-03': (50, 50), 'V1-04': (50, 50), 'V1-05': (52, 50)}
++    run_paths, base = _many_runs(tmp_path, counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    assert selection['C_star'] == 'V1-05'
++    assert selection['concat_wins'] is True
++    assert selection['C_dual_better_than_C_gate'] is True
++
++
++def test_concat_cannot_win_without_c_star_even_when_raw_concat_score_is_high(tmp_path):
++    counts = {'V1-01': (50, 50), 'V1-02': (50, 50),
++              'V1-03': (50, 50), 'V1-04': (50, 50), 'V1-05': (52, 50)}
++    # Raising Base above all concat arms removes C* while the best raw concat is
++    # still above F*. For this fixture Base can be raised only by changing both
++    # task counts, so construct it explicitly while retaining the aligned rows.
++    all_counts = dict(counts, Base=(55, 55))
++    run_paths, base = _many_runs(tmp_path / 'high-base', all_counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    assert selection['C_star'] is None
++    assert selection['concat_wins'] is False
++
++
++def test_f_star_uses_exact_one_point_boundary(tmp_path):
++    # F_pre exactly 1 pp above F_out wins; a strict sub-1pp advantage is treated
++    # as near-equal and selects F_out.
++    counts = {'V1-01': (50, 50), 'V1-02': (52, 50)}
++    run_paths, base = _many_runs(tmp_path, counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    assert selection['F_star']['selected'] == 'V1-02'
++
++    close = tmp_path / 'close'
++    counts = {'V1-01': (50, 50), 'V1-02': (51, 50)}
++    run_paths, base = _many_runs(close, counts)
++    selection = v1_analysis.analyze(run_paths, base, repeats=2)['selection']
++    assert selection['F_star']['selected'] == 'V1-01'
++
++
++@pytest.mark.parametrize('reload_identical,diverged', [(False, False), (True, True)])
++def test_analysis_rejects_unverified_or_diverged_run(tmp_path, reload_identical, diverged):
++    run_paths, base = _input_runs(tmp_path)
++    bad = tmp_path / 'bad-run'
++    _write_run(bad, reload_identical=reload_identical, diverged=diverged)
++    run_paths['V1-01'] = bad
++    with pytest.raises(v1_analysis.AnalysisError):
++        v1_analysis.analyze(run_paths, base, repeats=2)
+diff --git a/src/test_v1_data.py b/src/test_v1_data.py
+index 49a6d9d..bea3742 100644
+--- a/src/test_v1_data.py
++++ b/src/test_v1_data.py
+@@ -1,7 +1,9 @@
+ import json
++import copy
+ 
+ from v1_data import (
+     build_training_stream,
++    audit_training_exclusions,
+     collate_encoded,
+     derive_seed,
+     encode_candidates,
+@@ -58,6 +60,83 @@ def test_interleaving_balances_task_order_and_changes_by_epoch():
+     assert stream != build_training_stream(splits, epoch=1)
+ 
+ 
++def test_training_exclusions_filter_after_shuffle_and_preserve_heldout():
++    splits = {
++        "piqa": {"train": [{"task": "piqa", "id": i} for i in range(8)],
++                 "dev": [{"task": "piqa", "id": "dev"}],
++                 "calibration": [{"task": "piqa", "id": "cal"}]},
++        "boolq": {"train": [{"task": "boolq", "id": i} for i in range(5)],
++                  "dev": [{"task": "boolq", "id": "dev"}],
++                  "calibration": [{"task": "boolq", "id": "cal"}]},
++    }
++    before = copy.deepcopy(splits)
++    baseline = build_training_stream(splits, epoch=3)
++    filtered = build_training_stream(splits, epoch=3, excluded={("piqa", 3), ("boolq", 1)})
++
++    for task, excluded_id in (("piqa", 3), ("boolq", 1)):
++        baseline_task_ids = [row["id"] for row in baseline if row["task"] == task]
++        filtered_task_ids = [row["id"] for row in filtered if row["task"] == task]
++        assert filtered_task_ids == [i for i in baseline_task_ids if i != excluded_id]
++    assert len(filtered) == len(baseline) - 2
++    assert splits == before
++
++
++def test_audit_reports_known_encoding_failure_and_leaves_nontrain_splits_untouched():
++    splits = {
++        "piqa": {"train": [{"task": "piqa", "id": 0, "goal": "g",
++                             "solutions": ["ok", "x" * 536], "label": 0}],
++                 "dev": [{"task": "piqa", "id": 42, "preserve": True}],
++                 "calibration": [{"task": "piqa", "id": 43, "preserve": True}]},
++        "boolq": {"train": [], "dev": [{"task": "boolq", "id": 42, "preserve": True}],
++                  "calibration": [{"task": "boolq", "id": 43, "preserve": True}]},
++    }
++    # Exactly one percent is permitted; two percent is covered separately.
++    splits['piqa']['train'].extend(
++        {'task':'piqa','id':i,'goal':'g','solutions':['ok','fine'],'label':0}
++        for i in range(1,100))
++    before_heldout = {(task,name): copy.deepcopy(splits[task][name])
++                      for task in ("piqa", "boolq")
++                      for name in ("dev", "calibration")}
++
++    excluded = audit_training_exclusions(splits, CharacterTokenizer())
++
++    assert excluded == [{"task": "piqa", "id": 0, "candidate_lengths": [3, 537],
++                        "reason": "a complete candidate exceeds max_length"}]
++    assert {(task,name): splits[task][name] for task in ("piqa", "boolq")
++            for name in ("dev", "calibration")} == before_heldout
++
++
++def test_audit_rejects_more_than_one_percent_exclusions():
++    rows = [{"task": "piqa", "id": i, "goal": "g", "solutions": ["ok", "fine"], "label": 0}
++            for i in range(98)]
++    rows.extend({"task": "piqa", "id": i, "goal": "g", "solutions": ["ok", "x" * 536], "label": 0}
++                for i in range(98, 100))
++    splits = {"piqa": {"train": rows}, "boolq": {"train": []}}
++
++    try:
++        audit_training_exclusions(splits, CharacterTokenizer())
++    except ValueError as exc:
++        assert "piqa training exclusions exceed 1%: 2/100 rows" in str(exc)
++    else:
++        raise AssertionError("expected exclusion-rate rejection")
++
++
++def test_audit_propagates_unrelated_tokenizer_value_errors():
++    class BrokenTokenizer:
++        def encode(self, text, add_special_tokens=False):
++            raise ValueError("tokenizer backend failure")
++
++    splits = {"piqa": {"train": [{"task": "piqa", "id": 1, "goal": "g",
++                                    "solutions": ["a", "b"], "label": 0}]},
++              "boolq": {"train": []}}
++    try:
++        audit_training_exclusions(splits, BrokenTokenizer())
++    except ValueError as exc:
++        assert str(exc) == "tokenizer backend failure"
++    else:
++        raise AssertionError("expected tokenizer failure to propagate")
++
++
+ def test_candidate_encoding_uses_shared_prompt_and_completion_only_loss():
+     tokenizer = CharacterTokenizer()
+     example = {"task": "piqa", "id": 7, "goal": "abcdefghijklmnop",
+diff --git a/src/test_v1_run.py b/src/test_v1_run.py
+index 4e10760..d663d56 100644
+--- a/src/test_v1_run.py
++++ b/src/test_v1_run.py
+@@ -371,3 +371,58 @@ def test_valid_smoke_requires_complete_finite_evaluation_and_exact_reload():
+ 
+     assert all(not v1_smoke.valid_smoke(candidate, steps=5)
+                for candidate in invalid_manifests)
++
++
++def test_intermediate_evaluation_preserves_training_trajectory(monkeypatch, tmp_path):
++    import random
++    import numpy as np
++    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
++    monkeypatch.setattr(v1_run, 'batch_tensors', lambda encoded, pad_id: tensor_batch(encoded))
++
++    class StochasticModel(TinyCausalModel):
++        def forward(self, input_ids, **kwargs):
++            logits = super().forward(input_ids).logits
++            return SimpleNamespace(logits=F.dropout(logits, p=.3, training=self.training))
++
++    states, schedules, random_next = [], [], []
++    for with_evaluation in (False, True):
++        torch.manual_seed(123)
++        random.seed(456)
++        np.random.seed(789)
++        model = StochasticModel()
++        model.embedding.eval()  # A mixed mode must survive an evaluation callback.
++        output = tmp_path / str(with_evaluation)
++        output.mkdir()
++        batches = [[{'input_ids':[1,2,3], 'labels':[-100,2,3], 'epoch':0}]]*8
++        points = []
++
++        def callback(step, current):
++            points.append(step)
++            current.eval()
++            torch.rand(37)
++            random.random()
++            np.random.rand(19)
++
++        v1_run.train(model, batches, MainTokenizer(), .001, output,
++                     intermediate=callback if with_evaluation else None)
++        assert model.training
++        assert points == ([2,4,6] if with_evaluation else [])
++        states.append({key:value.detach().clone() for key,value in model.state_dict().items()})
++        schedules.append([{k:v for k,v in json.loads(line).items() if k != 'seconds'}
++                          for line in (output/'steps.jsonl').read_text().splitlines()])
++        random_next.append((torch.rand(1).item(),random.random(),np.random.rand()))
++    assert schedules[0] == schedules[1]
++    assert random_next[0] == random_next[1]
++    for key in states[0]:
++        assert torch.equal(states[0][key],states[1][key])
++
++
++def test_preserved_evaluation_restores_mixed_modes_on_exception():
++    model = TinyCausalModel().train()
++    model.embedding.eval()
++    modes = [module.training for module in model.modules()]
++    with pytest.raises(RuntimeError):
++        with v1_run.preserved_evaluation_state(model):
++            model.eval()
++            raise RuntimeError('evaluation failed')
++    assert [module.training for module in model.modules()] == modes
+diff --git a/src/v1_analysis.py b/src/v1_analysis.py
+new file mode 100644
+index 0000000..80509b9
+--- /dev/null
++++ b/src/v1_analysis.py
+@@ -0,0 +1,281 @@
++"""Read-only paired analysis for the eight E-0003 V1 runs."""
++from __future__ import annotations
++
++import argparse
++from fractions import Fraction
++import json
++import math
++from pathlib import Path
++from typing import Mapping
++
++import numpy as np
++
++
++ARM_IDS = tuple(f'V1-{index:02d}' for index in range(1, 9))
++ARM_NAMES = {
++    'V1-01': 'F_out', 'V1-02': 'F_pre',
++    'V1-03': 'C_gate', 'V1-04': 'C_up', 'V1-05': 'C_dual',
++    'V1-06': 'linear', 'V1-07': 'lora4_r10', 'V1-08': 'lora28_r2',
++}
++TRAINABLE_PARAMS = {
++    'V1-01': 262144, 'V1-02': 262144,
++    'V1-03': 524288, 'V1-04': 524288, 'V1-05': 917504,
++    'V1-06': 917504, 'V1-07': 901120, 'V1-08': 1261568,
++}
++TASKS = ('piqa', 'boolq')
++BOOTSTRAP_SEED = 20261029
++BOOTSTRAP_REPEATS = 10000
++NEAR_TIE = .01
++
++
++class AnalysisError(ValueError):
++    """Input runs cannot support a paired comparison."""
++
++
++def _read_run(path: Path, run_id: str) -> tuple[list[dict], dict]:
++    try:
++        manifest = json.loads((path / 'manifest.json').read_text())
++        rows = json.loads((path / 'predictions.json').read_text())
++    except (OSError, json.JSONDecodeError) as exc:
++        raise AnalysisError(f'{run_id}: cannot read manifest/predictions in {path}: {exc}') from exc
++    if manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True:
++        raise AnalysisError(f'{run_id}: run is not complete and validator-passed')
++    if manifest.get('metrics', {}).get('reload.identical') is not True:
++        raise AnalysisError(f'{run_id}: reload.identical must be true')
++    if manifest.get('metrics', {}).get('train.diverged') is True or manifest.get('metrics', {}).get('run.failed_lr') is True:
++        raise AnalysisError(f'{run_id}: training diverged or failed its learning rate')
++    for key, value in manifest.get('metrics', {}).items():
++        if isinstance(value, (int, float)) and not math.isfinite(value):
++            raise AnalysisError(f'{run_id}: manifest metric {key} is nonfinite')
++    if not isinstance(rows, list):
++        raise AnalysisError(f'{run_id}: predictions.json must contain a list')
++    dev = [row for row in rows if row.get('split') == 'dev']
++    if not dev:
++        raise AnalysisError(f'{run_id}: no dev prediction rows')
++    for row in dev:
++        if row.get('task') not in TASKS:
++            raise AnalysisError(f'{run_id}: unexpected task {row.get("task")!r}')
++        for key in ('id', 'gold', 'prediction', 'gold_nll_sum', 'gold_loss_tokens'):
++            if key not in row:
++                raise AnalysisError(f'{run_id}: dev row missing {key}')
++        if row['gold'] not in (0, 1) or row['prediction'] not in (0, 1):
++            raise AnalysisError(f'{run_id}: gold and prediction must be binary')
++        if not isinstance(row['gold_loss_tokens'], int) or row['gold_loss_tokens'] <= 0:
++            raise AnalysisError(f'{run_id}: gold_loss_tokens must be a positive integer')
++        if not math.isfinite(float(row['gold_nll_sum'])) or float(row['gold_nll_sum']) < 0:
++            raise AnalysisError(f'{run_id}: gold_nll_sum must be finite and nonnegative')
++        if not isinstance(row.get('scores'), list) or not row['scores'] or any(
++                not math.isfinite(float(score)) for score in row['scores']):
++            raise AnalysisError(f'{run_id}: candidate scores must be a nonempty finite list')
++    identities = [(row['task'], row['id'], row['gold']) for row in dev]
++    if len(set((task, ident) for task, ident, _ in identities)) != len(identities):
++        raise AnalysisError(f'{run_id}: duplicate (task, id) in dev predictions')
++    if set(row['task'] for row in dev) != set(TASKS):
++        raise AnalysisError(f'{run_id}: dev rows must contain both tasks')
++    return dev, manifest
++
++
++def _arrays(rows: list[dict]) -> dict[str, dict[str, np.ndarray]]:
++    result = {}
++    for task in TASKS:
++        subset = [row for row in rows if row['task'] == task]
++        result[task] = {
++            'correct': np.asarray([row['prediction'] == row['gold'] for row in subset], dtype=np.float64),
++            'nll_sum': np.asarray([row['gold_nll_sum'] for row in subset], dtype=np.float64),
++            'tokens': np.asarray([row['gold_loss_tokens'] for row in subset], dtype=np.float64),
++        }
++    return result
++
++
++def _point_metrics(data: Mapping[str, Mapping[str, np.ndarray]]) -> dict[str, float]:
++    result = {}
++    for task in TASKS:
++        result[f'{task}_accuracy'] = float(data[task]['correct'].mean())
++        result[f'{task}_nll'] = float(data[task]['nll_sum'].sum() / data[task]['tokens'].sum())
++    result['macro_accuracy'] = (result['piqa_accuracy'] + result['boolq_accuracy']) / 2
++    result['macro_nll'] = (result['piqa_nll'] + result['boolq_nll']) / 2
++    return result
++
++
++def _macro_accuracy_fraction(data: Mapping[str, Mapping[str, np.ndarray]]) -> Fraction:
++    """Exact macro accuracy from integer correct counts and task sample sizes."""
++    task_scores = [Fraction(int(data[task]['correct'].sum()), len(data[task]['correct']))
++                   for task in TASKS]
++    return sum(task_scores, Fraction()) / len(TASKS)
++
++
++def _paired_bootstrap(arrays: list[dict], repeats: int, seed: int, chunk_size: int) -> dict:
++    """Paired, task-stratified row bootstrap; every arm gets the same sampled indices."""
++    if repeats <= 0 or chunk_size <= 0:
++        raise ValueError('repeats and chunk_size must be positive')
++    pair_indices = [(left, right) for left in range(len(arrays)) for right in range(left + 1, len(arrays))]
++    metric_names = ('macro_accuracy', 'piqa_accuracy', 'boolq_accuracy',
++                    'piqa_nll', 'boolq_nll', 'macro_nll')
++    boot_diffs = np.empty((repeats, len(pair_indices), len(metric_names)), dtype=np.float64)
++    rng = np.random.default_rng(seed)
++    sizes = {task: len(arrays[0][task]['correct']) for task in TASKS}
++    for idx, data in enumerate(arrays):
++        for task in TASKS:
++            if len(data[task]['correct']) != sizes[task]:
++                raise AnalysisError('paired bootstrap arrays have inconsistent task sizes')
++    for begin in range(0, repeats, chunk_size):
++        end = min(repeats, begin + chunk_size)
++        count = end - begin
++        sampled = {task: rng.integers(0, sizes[task], size=(count, sizes[task])) for task in TASKS}
++        # At most one chunk of sampled indices and its metrics live in memory.
++        values = np.empty((len(arrays), count, len(metric_names)), dtype=np.float64)
++        for arm_index, data in enumerate(arrays):
++            task_accuracy = {}
++            task_nll = {}
++            for task in TASKS:
++                ix = sampled[task]
++                task_accuracy[task] = data[task]['correct'][ix].mean(axis=1)
++                numerator = data[task]['nll_sum'][ix].sum(axis=1)
++                denominator = data[task]['tokens'][ix].sum(axis=1)
++                task_nll[task] = numerator / denominator
++            values[arm_index, :, :] = np.column_stack((
++                (task_accuracy['piqa'] + task_accuracy['boolq']) / 2,
++                task_accuracy['piqa'], task_accuracy['boolq'],
++                task_nll['piqa'], task_nll['boolq'],
++                (task_nll['piqa'] + task_nll['boolq']) / 2,
++            ))
++        for pair_index, (left, right) in enumerate(pair_indices):
++            boot_diffs[begin:end, pair_index, :] = values[left] - values[right]
++    comparisons = {}
++    for pair_index, (left, right) in enumerate(pair_indices):
++        comparison = {}
++        for metric_index, metric in enumerate(metric_names):
++            samples = boot_diffs[:, pair_index, metric_index]
++            comparison[metric] = {
++                'difference': float(_point_metrics(arrays[left])[metric] - _point_metrics(arrays[right])[metric]),
++                'ci95': [float(v) for v in np.quantile(samples, [.025, .975])],
++            }
++        comparisons[f'{left}:{right}'] = comparison
++    return comparisons
++
++
++def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
++            repeats: int = BOOTSTRAP_REPEATS, seed: int = BOOTSTRAP_SEED,
++            chunk_size: int = 128) -> dict:
++    """Analyze eight V1 run directories and the E-0002 Base reference directory."""
++    missing = set(ARM_IDS) - set(run_paths)
++    extra = set(run_paths) - set(ARM_IDS)
++    if missing or extra:
++        raise AnalysisError(f'run IDs must be exactly {ARM_IDS}; missing={sorted(missing)}, extra={sorted(extra)}')
++    ordered_ids = (*ARM_IDS, 'Base')
++    paths = {arm: Path(run_paths[arm]) for arm in ARM_IDS}
++    paths['Base'] = Path(base_path)
++    loaded = {arm: _read_run(paths[arm], arm) for arm in ordered_ids}
++    reference_rows = loaded[ARM_IDS[0]][0]
++    reference_identity = [(row['task'], row['id'], row['gold']) for row in reference_rows]
++    for arm in ordered_ids[1:]:
++        identity = [(row['task'], row['id'], row['gold']) for row in loaded[arm][0]]
++        if identity != reference_identity:
++            raise AnalysisError(f'{arm}: dev task/id/gold rows or order differ from {ARM_IDS[0]}')
++    arrays = [_arrays(loaded[arm][0]) for arm in ordered_ids]
++    metrics = {arm: _point_metrics(data) for arm, data in zip(ordered_ids, arrays)}
++    comparisons = _paired_bootstrap(arrays, repeats, seed, chunk_size)
++    # Pair labels are IDs in stable input order, avoiding opaque list-index references.
++    comparisons = {
++        f'{ordered_ids[int(pair.split(":")[0])]} - {ordered_ids[int(pair.split(":")[1])]}': value
++        for pair, value in comparisons.items()
++    }
++
++    exact_scores = {arm: _macro_accuracy_fraction(data) for arm, data in zip(ordered_ids, arrays)}
++    one_pp = Fraction(1, 100)
++    f_delta = exact_scores['V1-01'] - exact_scores['V1-02']
++    f_star = 'V1-01' if abs(f_delta) < one_pp or f_delta > 0 else 'V1-02'
++    c_ids = ('V1-03', 'V1-04', 'V1-05')
++    c_scores = {arm: metrics[arm]['macro_accuracy'] for arm in c_ids}
++    c_best_exact = max(exact_scores[arm] for arm in c_ids)
++    c_near_best = [arm for arm in c_ids if c_best_exact - exact_scores[arm] < one_pp]
++    effective = [arm for arm in c_ids if exact_scores[arm] >= exact_scores['Base'] + one_pp]
++    effective_best_exact = max((exact_scores[arm] for arm in effective), default=None)
++    effective_near_best = ([arm for arm in effective
++                            if effective_best_exact - exact_scores[arm] < one_pp]
++                           if effective_best_exact is not None else [])
++    smallest_params = min((TRAINABLE_PARAMS[arm] for arm in effective_near_best), default=None)
++    simplest_effective = ([arm for arm in effective_near_best
++                           if TRAINABLE_PARAMS[arm] == smallest_params]
++                          if smallest_params is not None else [])
++    # Sequential deterministic tie rules: highest exact macro accuracy, then lower
++    # point-estimate macro NLL, then C_gate. The parameter filter above precedes them.
++    c_star = (min(simplest_effective,
++                  key=lambda arm: (-exact_scores[arm], metrics[arm]['macro_nll'],
++                                   0 if arm == 'V1-03' else 1))
++              if simplest_effective else None)
++    best_concat = max(exact_scores[arm] for arm in c_ids)
++    concat_wins = c_star is not None and best_concat >= exact_scores[f_star] + one_pp
++    dual_better_than_gate = exact_scores['V1-05'] >= exact_scores['V1-03'] + one_pp
++    base_piqa_accuracy = Fraction(int(arrays[-1]['piqa']['correct'].sum()),
++                                  len(arrays[-1]['piqa']['correct']))
++    piqa_no_discrimination = all(
++        abs(Fraction(int(data['piqa']['correct'].sum()), len(data['piqa']['correct']))
++            - base_piqa_accuracy) <= one_pp
++        for data in arrays[:-1])
++    return {
++        'experiment': 'E-0003', 'arms': {arm: {'name': ARM_NAMES.get(arm, 'Base'),
++            'path': str(paths[arm]), 'metrics': metrics[arm],
++            'manifest_metrics': loaded[arm][1].get('metrics', {}),
++            'dev_examples': {task: len(arrays[index][task]['correct']) for task in TASKS}}
++            for index, arm in enumerate(ordered_ids)},
++        'comparisons': comparisons,
++        'bootstrap': {'method': 'paired task-stratified row resampling', 'repeats': repeats,
++                      'seed': seed, 'interval': 'percentile 95%', 'chunk_size': chunk_size,
++                      'difference_sign': 'left arm minus right arm'},
++        'selection': {
++            'near_tie_threshold': NEAR_TIE,
++            'PIQA_no_discrimination': piqa_no_discrimination,
++            'PIQA_no_discrimination_rule': 'true iff every training arm PIQA accuracy is within inclusive ±1 pp of Base',
++            'F_star': {'selected': f_star, 'rule': 'higher macro accuracy; if within 1 pp select F_out'},
++            'C_star': c_star,
++            'C_effective': effective,
++            'C_effectiveness_rule': 'macro accuracy >= Base + 1 pp',
++            'C_scores': c_scores,
++            'C_near_best_within_1pp': c_near_best,
++            'C_effective_near_best_within_1pp': effective_near_best,
++            'C_simplest_effective_near_best': simplest_effective,
++            'C_parameter_counts': {arm: TRAINABLE_PARAMS[arm] for arm in c_ids},
++            'C_star_tie_rules': ['among effective arms, macro accuracy within strictly <1 pp of the best',
++                                 'fewest trainable parameters', 'higher macro accuracy',
++                                 'lower macro NLL', 'C_gate'],
++            'concat_wins': concat_wins,
++            'concat_wins_rule': 'C_star exists and best concat macro accuracy >= F_star + 1 pp',
++            'C_dual_better_than_C_gate': dual_better_than_gate,
++            'C_dual_better_rule': 'C_dual macro accuracy >= C_gate + 1 pp',
++            'decision_accuracy_arithmetic': 'exact rational correct-count/sample-size fractions; thresholds are inclusive unless stated strictly <1 pp',
++        },
++        'notes': ['Single-seed screening results; bootstrap intervals describe paired dev-row variation and are not confirmatory.',
++                  'Task NLL is total gold NLL sum divided by total gold loss tokens, matching v1_run metrics.'],
++    }
++
++
++def _parse_run(value: str) -> tuple[str, Path]:
++    if '=' not in value:
++        raise argparse.ArgumentTypeError('expected ID=PATH')
++    run_id, path = value.split('=', 1)
++    if run_id not in ARM_IDS or not path:
++        raise argparse.ArgumentTypeError(f'expected one of {ARM_IDS}=PATH')
++    return run_id, Path(path)
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--base', type=Path, required=True, help='Base run directory')
++    parser.add_argument('--run', action='append', type=_parse_run, required=True, help='V1-ID=run-directory (repeat 8 times)')
++    parser.add_argument('--output', type=Path, help='write JSON report here; defaults to stdout')
++    parser.add_argument('--repeats', type=int, default=BOOTSTRAP_REPEATS)
++    parser.add_argument('--seed', type=int, default=BOOTSTRAP_SEED)
++    parser.add_argument('--chunk-size', type=int, default=128)
++    args = parser.parse_args()
++    run_paths = dict(args.run)
++    report = analyze(run_paths, args.base, repeats=args.repeats, seed=args.seed, chunk_size=args.chunk_size)
++    rendered = json.dumps(report, indent=2, allow_nan=False) + '\n'
++    if args.output:
++        args.output.write_text(rendered)
++    else:
++        print(rendered, end='')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/v1_data.py b/src/v1_data.py
+index 5b8ff54..66a8443 100644
+--- a/src/v1_data.py
++++ b/src/v1_data.py
+@@ -137,11 +137,16 @@ def make_v1_splits(
+                                           for name, path in sorted((source_files or {}).items())}}}
+ 
+ 
+-def build_training_stream(splits: Mapping[str, Any], epoch: int = 0) -> list[dict[str, Any]]:
++def build_training_stream(
++    splits: Mapping[str, Any],
++    epoch: int = 0,
++    excluded: Iterable[tuple[str, Any]] | None = None,
++) -> list[dict[str, Any]]:
+     """Shuffle each task's train rows then alternate tasks while both have rows.
+ 
+     Every example appears once per epoch. The epoch RNG seed is the fixed V1
+-    training seed plus the zero-based epoch index.
++    training seed plus the zero-based epoch index. ``excluded`` contains
++    ``(task, id)`` pairs to remove after each task's shuffle and before mixing.
+     """
+     if epoch < 0:
+         raise ValueError("epoch must be non-negative")
+@@ -150,6 +155,10 @@ def build_training_stream(splits: Mapping[str, Any], epoch: int = 0) -> list[dic
+     rng = random.Random(derive_seed(*_SEED_PREFIX, "train", 0) + epoch)
+     for values in task_rows.values():
+         rng.shuffle(values)
++    excluded_ids = set(excluded or ())
++    for task, values in task_rows.items():
++        task_rows[task] = [row for row in values
++                           if (task, row.get("id")) not in excluded_ids]
+     stream: list[dict[str, Any]] = []
+     positions = {task: 0 for task in _TASKS}
+     while any(positions[t] < len(task_rows[t]) for t in _TASKS):
+@@ -186,6 +195,14 @@ def _prompt_tokens(tokenizer: Any, example: Mapping[str, Any], budget: int) -> l
+     raise ValueError(f"unknown task: {example['task']!r}")
+ 
+ 
++class _CandidateEncodingError(ValueError):
++    """A known, data-dependent reason a complete candidate cannot be encoded."""
++
++    def __init__(self, reason: str, candidate_lengths: Sequence[int] = ()) -> None:
++        super().__init__(reason)
++        self.candidate_lengths = list(candidate_lengths)
++
++
+ def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: int = 512) -> list[dict[str, Any]]:
+     """Encode every candidate against one shared truncated prompt prefix.
+ 
+@@ -202,12 +219,18 @@ def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: in
+     else:
+         raise ValueError(f"unknown task: {example['task']!r}")
+     completion_ids = [_encode(tokenizer, text) for text in completions]
++    candidate_lengths = [len(ids) for ids in completion_ids]
+     reserve = max(map(len, completion_ids), default=0)
+     if reserve >= max_length or any(not ids for ids in completion_ids):
+-        raise ValueError("a complete candidate exceeds max_length")
+-    prompt = _prompt_tokens(tokenizer, example, max_length - reserve)
++        raise _CandidateEncodingError("a complete candidate exceeds max_length", candidate_lengths)
++    try:
++        prompt = _prompt_tokens(tokenizer, example, max_length - reserve)
++    except ValueError as exc:
++        if str(exc) == "BoolQ question/template exceeds prompt token budget":
++            raise _CandidateEncodingError(str(exc), candidate_lengths) from exc
++        raise
+     if not prompt:
+-        raise ValueError('completion requires a preceding prompt token')
++        raise _CandidateEncodingError('completion requires a preceding prompt token', candidate_lengths)
+     result = []
+     for text, suffix in zip(completions, completion_ids):
+         input_ids = prompt + suffix
+@@ -218,6 +241,39 @@ def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: in
+     return result
+ 
+ 
++def audit_training_exclusions(
++    splits: Mapping[str, Any],
++    tok: Any,
++    max_length: int = 512,
++) -> list[dict[str, Any]]:
++    """Find unencodable train rows and reject exclusion rates above one percent.
++
++    Candidate lengths are completion token lengths, matching the budget that
++    must be reserved before prompt truncation. Only known data-dependent
++    ``encode_candidates`` failures are exclusions; tokenizer and other faults
++    propagate to the caller.
++    """
++    train_data = splits.get("splits", splits)
++    excluded: list[dict[str, Any]] = []
++    for task in _TASKS:
++        rows = list(train_data[task]["train"])
++        task_excluded = []
++        for row in rows:
++            try:
++                encode_candidates(tok, row, max_length=max_length)
++            except _CandidateEncodingError as exc:
++                task_excluded.append({"task": task, "id": row.get("id"),
++                                      "candidate_lengths": list(exc.candidate_lengths),
++                                      "reason": str(exc)})
++        if rows and len(task_excluded) / len(rows) > 0.01:
++            raise ValueError(
++                f"{task} training exclusions exceed 1%: "
++                f"{len(task_excluded)}/{len(rows)} rows"
++            )
++        excluded.extend(task_excluded)
++    return excluded
++
++
+ def encode_training_example(tokenizer: Any, example: Mapping[str, Any], max_length: int = 512) -> dict[str, Any]:
+     """Encode the gold PIQA solution or BoolQ yes/no completion for CE training."""
+     candidates = encode_candidates(tokenizer, example, max_length=max_length)
+diff --git a/src/v1_e3_smoke.py b/src/v1_e3_smoke.py
+new file mode 100644
+index 0000000..1704bf6
+--- /dev/null
++++ b/src/v1_e3_smoke.py
+@@ -0,0 +1,177 @@
++"""Aggregate E-0003 eight-arm smoke, including the analysis regression suite."""
++import json
++import math
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++
++import pytest
++
++
++ARMS = ('F_out', 'F_pre', 'C_gate', 'C_up', 'C_dual', 'linear', 'lora', 'lora28')
++EXPECTED_PARAMS = {
++    'F_out': 262144,
++    'F_pre': 262144,
++    'C_gate': 524288,
++    'C_up': 524288,
++    'C_dual': 917504,
++    'linear': 917504,
++    'lora': 901120,
++    'lora28': 1261568,
++}
++EXPECTED_PLAN_STEPS = 13077
++EXPECTED_PLAN_TOKENS = 2000040
++SMOKE_STEPS = 20
++DEV_POINTS = (math.ceil(.25 * SMOKE_STEPS), 10, 15)
++
++
++def _finite_number(value):
++    return isinstance(value, (int, float)) and math.isfinite(value)
++
++
++def _metric(metrics, *keys):
++    """Return a metric from flat or nested metric dictionaries."""
++    for key in keys:
++        if key in metrics:
++            return metrics[key]
++        value = metrics
++        for part in key.split('.'):
++            if not isinstance(value, dict) or part not in value:
++                break
++            value = value[part]
++        else:
++            return value
++    return None
++
++
++def valid_e3_smoke(manifest, arm, steps=SMOKE_STEPS, intermediate_dir=None):
++    """Validate the E3 contract; this run intentionally evaluates dev only."""
++    metrics = manifest.get('metrics', {})
++    if (manifest.get('status') != 'complete'
++            or not manifest.get('validator', {}).get('passed')
++            or metrics.get('train.diverged')
++            or metrics.get('run.failed_lr')
++            or metrics.get('train.steps') != steps
++            or metrics.get('reload.identical') is not True
++            or metrics.get('init.identical') is not True
++            or metrics.get('plan.steps') != EXPECTED_PLAN_STEPS
++            or metrics.get('plan.input_tokens') != EXPECTED_PLAN_TOKENS):
++        return False
++
++    expected = EXPECTED_PARAMS[arm]
++    stored = _metric(metrics, 'params.stored')
++    if not isinstance(stored, int) or stored < expected:
++        return False
++    for name in ('adapter_stored', 'trainable', 'with_grad'):
++        if _metric(metrics, f'params.{name}') != expected:
++            return False
++
++    # E3's evaluation is dev-only. Calibration metrics indicate the wrong mode.
++    if any(key.startswith('calibration.') for key in metrics):
++        return False
++    for task in ('piqa', 'boolq'):
++        for name in ('nll', 'accuracy'):
++            if not _finite_number(_metric(metrics, f'dev.{task}.{name}')):
++                return False
++    if not _finite_number(_metric(metrics, 'dev.nll')):
++        return False
++
++    for point in DEV_POINTS:
++        if intermediate_dir is None:
++            return False
++        point_path = Path(intermediate_dir)/f'dev-step-{point}.json'
++        if not point_path.is_file():
++            return False
++        try:
++            point_record = json.loads(point_path.read_text())
++        except (OSError, json.JSONDecodeError):
++            return False
++        if point_record.get('step') != point:
++            return False
++        point_metrics = point_record.get('metrics', {})
++        for task in ('piqa', 'boolq'):
++            for name in ('nll', 'accuracy'):
++                value = _metric(point_metrics, f'dev.{task}.{name}', f'{task}.{name}')
++                if not _finite_number(value):
++                    return False
++        if not _finite_number(_metric(point_metrics, 'dev.nll', 'nll')):
++            return False
++    return True
++
++
++def main():
++    out = Path(sys.argv[1]).resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    src = Path(__file__).resolve().parent
++    start = time.monotonic()
++    metrics = {}
++    artifacts = []
++    passed = False
++    try:
++        test_files = ('test_core.py', 'test_model.py', 'test_v1_data.py',
++                      'test_v1_lora.py', 'test_v1_run.py', 'test_v1_analysis.py')
++        code = pytest.main(['-v', '-p', 'no:cacheprovider', '--basetemp=' + str(out/'tmp'),
++                            '--junitxml=' + str(out/'checks.xml'),
++                            *[str(src/name) for name in test_files]])
++        metrics['pytest.exit_code'] = int(code)
++        artifacts.append({'path': str(out/'checks.xml'), 'role': 'pytest_results'})
++        if code:
++            raise RuntimeError('V0/V1/E3 analysis regression tests failed')
++
++        run_start = time.monotonic()
++        order_digest = None
++        for arm in ARMS:
++            arm_out = out/arm
++            command = [sys.executable, str(src/'v1_run.py'), '--arm', arm, '--e3',
++                       '--tokens', '2000000', '--lr', '.0003', '--smoke-steps', str(SMOKE_STEPS),
++                       '--eval-limit', '32', '--check-init', '--data-dir',
++                       '/work/xg24i002/x10041/bypass-lora/data/v1', '--output', str(arm_out)]
++            arm_start = time.monotonic()
++            result = subprocess.run(command)
++            arm_elapsed = time.monotonic() - arm_start
++            manifest_path = arm_out/'manifest.json'
++            if not manifest_path.is_file():
++                raise RuntimeError(f'{arm} produced no manifest')
++            manifest = json.loads(manifest_path.read_text())
++            arm_metrics = manifest.get('metrics', {})
++            excluded = json.loads((arm_out/'excluded-train.json').read_text())
++            assert [(row['task'],row['id'],row['candidate_lengths']) for row in excluded] == [('piqa',5528,[537,537])]
++            assert arm_metrics.get('plan.dev_steps') == [3270,6539,9808]
++            if order_digest is None:
++                order_digest = arm_metrics['plan.order_sha256']
++            assert arm_metrics.get('plan.order_sha256') == order_digest
++            metrics[f'{arm}.smoke.elapsed_s'] = arm_elapsed
++            for key, value in arm_metrics.items():
++                metrics[f'{arm}.{key}'] = value
++            usage_path = arm_out/'usage.json'
++            if usage_path.is_file():
++                usage = json.loads(usage_path.read_text())
++                for key, value in usage.items():
++                    metrics[f'{arm}.usage.{key}'] = value
++            artifacts.append({'path': str(manifest_path), 'role': f'{arm}_manifest'})
++            if result.returncode or not valid_e3_smoke(manifest, arm, intermediate_dir=arm_out):
++                raise RuntimeError(f'{arm} E3 smoke failed (exit {result.returncode})')
++        metrics['arms.elapsed_s'] = time.monotonic() - run_start
++        passed = True
++    finally:
++        metrics['elapsed_s'] = time.monotonic() - start
++        metrics['train.input_tokens'] = sum(
++            metrics.get(f'{arm}.train.input_tokens', 0) for arm in ARMS)
++        metrics['train.loss_tokens'] = sum(
++            metrics.get(f'{arm}.train.loss_tokens', 0) for arm in ARMS)
++        metrics['train.examples'] = sum(
++            metrics.get(f'{arm}.train.examples', 0) for arm in ARMS)
++        (out/'manifest.json').write_text(json.dumps({
++            'status': 'complete' if passed else 'partial',
++            'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
++            'metrics': metrics,
++            'artifacts': artifacts,
++            'validator': {'name': 'v1_e3_smoke', 'passed': passed},
++        }, indent=2) + '\n')
++    return 0 if passed else 1
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/src/v1_run.py b/src/v1_run.py
+index 9988464..b46edc8 100644
+--- a/src/v1_run.py
++++ b/src/v1_run.py
+@@ -5,6 +5,8 @@ import hashlib
+ import json
+ import math
+ import os
++import random
++from contextlib import contextmanager
+ from pathlib import Path
+ import time
+ 
+@@ -17,6 +19,7 @@ from v1_lora import LoRAConfig, LoRAModel
+ from v1_data import (read_piqa_train, read_boolq_train, make_v1_splits,
+                      build_training_stream, encode_candidates, encode_training_example,
+                      collate_encoded, derive_seed)
++from v1_data import audit_training_exclusions
+ 
+ SOURCES = {
+     'piqa': {'repo': 'ybisk/ybisk.github.io', 'revision': '21edab439af693b961be2f069e8690a88d3b4e37'},
+@@ -98,10 +101,12 @@ def lr_factor(step, total):
+     return .5 * (1 + math.cos(math.pi * (step-warm+1) / max(1,total-warm)))
+ 
+ 
+-def plan_batches(splits, tok, budget, batch_size, max_epochs=3):
++def plan_batches(splits, tok, budget, batch_size, max_epochs=3, excluded=None):
+     batches, pending, tokens = [], [], 0
+     for epoch in range(max_epochs):
+-        for row in build_training_stream(splits, epoch):
++        stream = (build_training_stream(splits, epoch) if excluded is None else
++                  build_training_stream(splits, epoch, excluded=excluded))
++        for row in stream:
+             encoded = encode_training_example(tok, row)
+             encoded['epoch'] = epoch
+             pending.append(encoded)
+@@ -118,10 +123,10 @@ def plan_batches(splits, tok, budget, batch_size, max_epochs=3):
+ 
+ 
+ @torch.no_grad()
+-def evaluate(model, splits, tok, limit=None):
++def evaluate(model, splits, tok, limit=None, split_names=('calibration', 'dev')):
+     model.eval()
+     metrics, predictions = {}, []
+-    for split in ('calibration', 'dev'):
++    for split in split_names:
+         task_nll = []
+         for task in ('piqa', 'boolq'):
+             total, count, correct = 0., 0, 0
+@@ -160,12 +165,30 @@ def evaluate(model, splits, tok, limit=None):
+     return metrics, predictions
+ 
+ 
+-def train(model, batches, tok, lr, output):
++@contextmanager
++def preserved_evaluation_state(model):
++    """Evaluation must not perturb training modes or any active RNG stream."""
++    import numpy as np
++    modes = [(module, module.training) for module in model.modules()]
++    python_state, numpy_state = random.getstate(), np.random.get_state()
++    try:
++        with torch.random.fork_rng():
++            yield
++    finally:
++        random.setstate(python_state)
++        np.random.set_state(numpy_state)
++        for module, mode in modes:
++            module.training = mode
++
++
++def train(model, batches, tok, lr, output, intermediate=None):
+     model.train()
+     params = [p for p in model.parameters() if p.requires_grad]
+     optimizer = torch.optim.AdamW(params, lr=lr, betas=(.9,.999), eps=1e-8, weight_decay=.01)
+     totals = {'train.input_tokens':0, 'train.loss_tokens':0, 'train.padded_tokens':0, 'train.examples':0}
+     step_times = []
++    evaluation_seconds = 0.
++    grad_seen = set()
+     start = time.monotonic()
+     with (output/'steps.jsonl').open('w') as log:
+         for step, examples in enumerate(batches):
+@@ -185,6 +208,7 @@ def train(model, batches, tok, lr, output):
+                 example_mean_objective(loss, len(examples)).backward()
+                 summed += loss.detach().mean().item()
+             norm = torch.nn.utils.clip_grad_norm_(params, 1., error_if_nonfinite=False).item()
++            grad_seen.update(id(p) for p in params if p.grad is not None)
+             if not math.isfinite(norm):
+                 raise TrainingDiverged('nonfinite gradient norm', dict(totals))
+             rate = lr * lr_factor(step, len(batches))
+@@ -198,10 +222,19 @@ def train(model, batches, tok, lr, output):
+             log.write(json.dumps({'step':step+1,'example_mean_nll':summed/len(examples),'preclip_norm':norm,
+                                   'lr':rate,'seconds':duration,'input_tokens':tokens})+'\n')
+             log.flush()
++            if intermediate is not None and step+1 in {math.ceil(len(batches)*f) for f in (.25,.5,.75)}:
++                tick = time.monotonic()
++                with preserved_evaluation_state(model):
++                    intermediate(step+1, model)
++                torch.cuda.synchronize()
++                evaluation_seconds += time.monotonic()-tick
+     totals.update({'train.steps':len(batches),'train.seconds':time.monotonic()-start,
+                    'train.steady_step_seconds':sum(step_times[10:])/len(step_times[10:]) if len(step_times)>10 else None,
+                    'train.last_epoch':batches[-1][-1]['epoch'],
+                    'train.peak_cuda_bytes':torch.cuda.max_memory_allocated()})
++    totals['intermediate.seconds'] = evaluation_seconds
++    totals['params.with_grad'] = sum(p.numel() for p in params if id(p) in grad_seen)
++    totals['train.seconds'] -= evaluation_seconds
+     totals['train.tokens_per_second'] = totals['train.input_tokens']/totals['train.seconds']
+     return totals
+ 
+@@ -214,6 +247,8 @@ def main():
+     parser.add_argument('--batch', type=int, default=2)
+     parser.add_argument('--eval-limit', type=int)
+     parser.add_argument('--smoke-steps', type=int)
++    parser.add_argument('--e3', action='store_true')
++    parser.add_argument('--check-init', action='store_true')
+     parser.add_argument('--data-dir', required=True)
+     parser.add_argument('--output', type=Path, required=True)
+     args = parser.parse_args()
+@@ -230,12 +265,23 @@ def main():
+         (out/'split-map.json').write_text(mapping)
+         (out/'data-metadata.json').write_text(json.dumps(splits['metadata'],indent=2)+'\n')
+         (out/'config.json').write_text(json.dumps(vars(args),default=str,indent=2)+'\n')
+-        batches = plan_batches(splits,tok,args.tokens,args.batch)
++        excluded = None
++        if args.e3:
++            excluded = audit_training_exclusions(splits,tok)
++            (out/'excluded-train.json').write_text(json.dumps(excluded,indent=2)+'\n')
++            excluded = [(row['task'],row['id']) for row in excluded]
++        batches = plan_batches(splits,tok,args.tokens,args.batch,excluded=excluded)
+         metrics['plan.steps'] = len(batches)
+         metrics['plan.input_tokens'] = sum(len(e['input_ids']) for batch in batches for e in batch)
+         metrics['plan.token_threshold'] = args.tokens
+         metrics['plan.token_overshoot'] = max(0, metrics['plan.input_tokens']-args.tokens)
+         metrics['plan.order_sha256'] = hashlib.sha256(json.dumps([(e['task'],e['id'],e['epoch']) for batch in batches for e in batch]).encode()).hexdigest()
++        if args.e3:
++            metrics['plan.dev_steps'] = [math.ceil(len(batches)*f) for f in (.25,.5,.75)]
++            if args.arm != 'base':
++                assert args.tokens == 2000000 and args.batch == 2 and args.lr == .0003
++                assert metrics['plan.steps'] == 13077 and metrics['plan.input_tokens'] == 2000040
++                assert metrics['plan.dev_steps'] == [3270,6539,9808]
+         if args.smoke_steps:
+             batches = batches[:args.smoke_steps]
+         elif args.arm != 'base':
+@@ -244,15 +290,49 @@ def main():
+         model = make_model(args.arm)
+         torch.cuda.synchronize()
+         metrics['load.seconds'] = time.monotonic()-tick
++        if args.e3:
++            metrics['params.stored'] = sum(p.numel() for p in model.parameters())
++            metrics['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
++            adapter_params = (model.adapter_parameters() if hasattr(model,'adapter_parameters') else
++                              (p for layer in model.adapters().values() for p in layer.side.parameters())) if args.arm != 'base' else []
++            metrics['params.adapter_stored'] = sum(p.numel() for p in adapter_params)
++            if args.arm != 'base':
++                assert metrics['params.adapter_stored'] == metrics['params.trainable'] == EXPECTED[args.arm]
++        if args.check_init:
++            with preserved_evaluation_state(model), torch.no_grad():
++                model.eval()
++                batch = batch_tensors([batches[0][0]],tok.pad_token_id)
++                inputs = {k:v for k,v in batch.items() if k != 'labels'}
++                logits = model(**inputs,use_cache=False).logits
++                base = make_model('base')
++                base.eval()
++                reference = base(**inputs,use_cache=False).logits
++                metrics['init.identical'] = torch.equal(logits,reference)
++                assert metrics['init.identical'], 'initial adapter output differs from Base'
++                del base, logits, reference
++                gc.collect()
++                torch.cuda.empty_cache()
+         if args.arm != 'base':
+-            metrics.update(train(model,batches,tok,args.lr,out))
++            evaluation_stage = 'training'
++            if args.e3:
++                def intermediate(step, current):
++                    nonlocal evaluation_stage
++                    evaluation_stage = 'intermediate_evaluation'
++                    values, preds = evaluate(current,splits,tok,args.eval_limit,split_names=('dev',))
++                    (out/f'dev-step-{step}.json').write_text(json.dumps({'step':step,'metrics':values,'predictions':preds})+'\n')
++                    evaluation_stage = 'training'
++                metrics.update(train(model,batches,tok,args.lr,out,intermediate=intermediate))
++                assert metrics['params.with_grad'] == EXPECTED[args.arm]
++            else:
++                metrics.update(train(model,batches,tok,args.lr,out))
+             metrics['train.token_overshoot'] = max(0, metrics['train.input_tokens']-args.tokens)
+             tick = time.monotonic()
+             model.export_adapter(out/'adapter')
+             metrics['save.seconds'] = time.monotonic()-tick
+         tick = time.monotonic()
+         evaluation_stage = 'evaluation'
+-        eval_metrics, predictions = evaluate(model,splits,tok,args.eval_limit)
++        eval_kwargs = {'split_names':('dev',)} if args.e3 else {}
++        eval_metrics, predictions = evaluate(model,splits,tok,args.eval_limit,**eval_kwargs)
+         metrics.update(eval_metrics)
+         metrics['eval.seconds'] = time.monotonic()-tick
+         (out/'predictions.json').write_text(json.dumps(predictions)+'\n')
+@@ -263,7 +343,7 @@ def main():
+         tick = time.monotonic()
+         model = make_model(args.arm, None if args.arm=='base' else out/'adapter')
+         evaluation_stage = 'reload_evaluation'
+-        repeat_metrics, repeat = evaluate(model,splits,tok,args.eval_limit)
++        repeat_metrics, repeat = evaluate(model,splits,tok,args.eval_limit,**eval_kwargs)
+         metrics['reload.seconds'] = time.monotonic()-tick
+         metrics['reload.identical'] = repeat == predictions and repeat_metrics == eval_metrics
+         assert metrics['reload.identical'], 'checkpoint/repeated Base evaluation is not identical'
+@@ -271,7 +351,7 @@ def main():
+     except EvaluationNonfinite as exc:
+         metrics['failure.stage'] = evaluation_stage
+         metrics['failure.reason'] = str(exc)
+-        if args.arm == 'base' or evaluation_stage == 'reload_evaluation':
++        if args.arm == 'base' or evaluation_stage in ('reload_evaluation','intermediate_evaluation'):
+             metrics['error'] = repr(exc)
+             raise
+         metrics['train.diverged'] = True
+@@ -292,6 +372,9 @@ def main():
+         passed = False
+         raise
+     finally:
++        if (out/'usage.json').exists():
++            for key,value in json.loads((out/'usage.json').read_text()).items():
++                metrics.setdefault(key,value)
+         metrics['elapsed_s'] = time.monotonic()-start
+         (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
+             'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':metrics,
