@@ -19,7 +19,7 @@ Like every Python workload of this project it runs in a PBS job, never on the lo
 
 Decisions:
   keep       never deleted by this tool: records, ledger, data, worktrees, small metadata and result files,
-             predictions, generated data, files no rule covers.
+             predictions, generated data, files an evidence record cites, files no rule covers.
   hold       of a deletable type, but still needed: an unfinished attempt, an open experiment or task, a
              lock, a contract, a reopen condition or a start checkpoint names it. Each hold names the
              event after which it may go.
@@ -91,6 +91,7 @@ KEEP_RULES = {
     "recent-snapshot": "snapshot staged in the last 24 h that no attempt references yet",
     "snapshot-no-commit": "its commit is not in the git repository: this snapshot is the only copy",
     "other": "not an attempt, snapshot or environment directory",
+    "evidence": "an evidence record cites this path or a path inside it: a conclusion argues from it",
 }
 RULE_IDS = {name: f"C{i}-{name}" for i, name in enumerate(CLASSES, 1)}
 RULE_IDS.update({name: f"K{i}-{name}" for i, name in enumerate(KEEP_RULES, 1)})
@@ -351,6 +352,11 @@ class Model:
             for item in list(manifest.get("artifacts") or []) + list(res.get("verification") or []):
                 if isinstance(item, dict) and isinstance(item.get("path"), str):
                     self.cited[self._abs(item["path"])].add(f"{res_id} ({item.get('role', '?')})")
+        self.evidence_cited = defaultdict(set)  # absolute path -> {"EV-x"}: what evidence records cite
+        for ev_id, ev in records.label("Evidence").items():
+            for p in self.paths_named(_text(ev)):  # artifact_refs and paths in the summary
+                if len(p.parts) - len(self.root.parts) >= 2:  # not a whole area ("runs/..." in prose)
+                    self.evidence_cited[str(p)].add(ev_id)
         self.snapshot_names = sorted(p.name for p in self._children("snapshots") if SNAPSHOT_DIR.fullmatch(p.name))
         self.env_names = sorted(p.name for p in self._children("envs") if ENV_DIR.fullmatch(p.name))
         self.attempt_holds = defaultdict(list)  # a hold always covers the whole run directory of the attempt
@@ -390,6 +396,13 @@ class Model:
             return path.is_file() and path.stat().st_size <= LOCK_MAX_BYTES
         except OSError:
             return False
+
+    def evidence_for(self, path: Path) -> list:
+        """The evidence records that cite this path, a path inside it, or a directory that contains it."""
+        key = str(path)
+        return sorted({ev for cited, evs in self.evidence_cited.items()
+                       if cited == key or cited.startswith(key + os.sep) or key.startswith(cited + os.sep)
+                       for ev in evs})
 
     def attempt_finished(self, a: str) -> bool:
         return self.attempts[a].get("execution_state") in FINISHED_ATTEMPT_STATES
@@ -676,8 +689,11 @@ class Planner:
         return {"bytes": st.st_size, "freed": freed_bytes(st), "files": 1, "fingerprint": {"stat": stat_fingerprint(st)}}
 
     def _decide(self, entry: dict, holds: list, checked: list):
+        evidence = self.model.evidence_for(Path(entry["path"]))
+        if evidence and entry["class"] in DELETABLE:
+            entry["class"] = "evidence"
         cls = entry["class"]
-        entry["checked"] = checked
+        entry["checked"] = checked + [f"named by evidence {ev}" for ev in evidence]
         if cls not in DELETABLE:
             entry.update(decision=KEEP, rule=RULE_IDS[cls], reason=KEEP_RULES[cls], holds=[])
             return

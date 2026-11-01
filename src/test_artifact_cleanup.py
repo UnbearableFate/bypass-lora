@@ -68,7 +68,7 @@ def write(path: Path, data="x", size=None):
     return path
 
 
-def export(path: Path, root: Path, data_version=1, tasks=None):
+def export(path: Path, root: Path, data_version=1, tasks=None, evidence=None):
     """An `rl export` snapshot.json: nodes per label (nested values as JSON text), edges with upper-case names."""
     tasks = tasks or {"T-0001": "accepted", "T-0002": "active", "T-0003": "accepted", "T-0004": "accepted",
                       "T-0005": "accepted"}
@@ -90,6 +90,7 @@ def export(path: Path, root: Path, data_version=1, tasks=None):
                     for a, (_, state, _, sha) in ATTEMPTS.items()],
         "Result": [{"id": "RES-0001", "attempt_id": "ATT-0001-1", "manifest": {"artifacts": [
             {"path": str(root / "runs/ATT-0001-1/adapter/adapter.pt"), "role": "checkpoint"}]}, "verification": []}],
+        "Evidence": [{"id": ev, **props} for ev, props in (evidence or {}).items()],
     }
     for rows in nodes.values():
         for row in rows:
@@ -290,6 +291,21 @@ def test_whole_project_plan_classifies_every_area(project):
     assert decision[".miyabi-mcp/ledger.jsonl"] == ("keep", "ledger")
     assert decision["../proj-worktrees/researcher-1"] == ("keep", "worktree")
     assert all(x["fingerprint"].get("sha256") for x in e.values() if x["decision"] == "candidate")
+
+
+def test_files_that_evidence_cites_are_kept(project):
+    """A conclusion argues from what its evidence cites: that stays whatever its type; its siblings may still go."""
+    root = project.root
+    records = export(project.tmp / "evidence.json", root, evidence={"EV-0001": {
+        "artifact_refs": [str(root / "runs/ATT-0001-1/train.log")],
+        "summary": "reload checked by runs/ATT-0001-1/tmp/test_reload0/adapter/adapter.pt; logs in runs/..."}})
+    e = by_path(project.plan("H-0002", records=records), root)
+    for rel in ("runs/ATT-0001-1/train.log", "runs/ATT-0001-1/tmp/test_reload0"):  # a file; a dir holding one
+        assert (e[rel]["decision"], e[rel]["class"], e[rel]["rule"]) == ("keep", "evidence", "K15-evidence")
+        assert "named by evidence EV-0001" in e[rel]["checked"]
+    # "runs/..." in prose names no file: the rest of the attempt is decided as before
+    assert sorted(rel for rel, x in e.items() if x["decision"] == "candidate") == sorted(
+        set(H2_CANDIDATES) - {"runs/ATT-0001-1/train.log", "runs/ATT-0001-1/tmp/test_reload0"})
 
 
 def test_unknown_commit_presence_never_makes_a_candidate(project):
