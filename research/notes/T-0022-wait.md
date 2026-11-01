@@ -1,4 +1,53 @@
-# T-0022 continuation: waiting for coordinator on three BF16 checks
+# T-0022 current continuation: D0026/D0027 implemented; ATT0188 running
+
+This section supersedes the historical waiting instructions below. The questions
+were answered by D0026/D0027;do not ask for another per-case rounding ruling.
+Task is not delivered. No formal RBc/RB1/RB5 training or heldout evaluation.
+
+Current immutable source:70a49714777960922fee7d03410faeaffe7acabf.
+ATT0188-1/PBS3767999.opbs runs full397-check suite then20+4step startup per case.
+Output:/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/.
+Source is a read-only snapshot. Existing2g timing guard applies because the
+job includes comparable step timing. Submitted/running observations imported.
+Notification N-20261102-022413-8eaa,sealed1job,daemon running. Coordinator listener:
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-022413-8eaa --notifier miyabi-g2
+
+Resume on its completion:verify application and all required gates,import ended
+observation/result/exact usage once. If passed,inspect startup timings and size
+the full20+100step benchmark/512prefill/128decode/full-dev/save job from those
+measurements;then required code review and diagnostic evidence/delivery.
+If a genuine FP32/state/causal/gradient failure remains,fix and PBS recheck.
+Do not mark the BF16 cross-shape observations as resolved numerically:retain
+their actual exceedances as D0027 diagnostics with the unchanged0.50002 bound.
+
+D0026 changes in bd03c9d:
+exact output identity plus Ui==norm_i(Xi+oi) at all4layers;subtraction diagnostics
+<=0.5ulp_bf16(Y). FreshFP32fourlayerS4 tests full/chunk3/token and state-clear
+negative under E0019 normwise mixed1e-5+1e-4*scale gate. BF16chunk3 and
+prefix/reference token agreement remain gated at0.50002;chunk1 excess recorded.
+Also T0 rejects non-KernelMatrix backend(no dead temperature);researcher3 notified.
+
+ATT0187-1/PBS3767969/RES0182 partial:395/397passed,2failed,0skips. These new
+D0026 gates passed. MaxFP32full/token logits0.00019454956,relative1.10723e-5;
+both state-clear variants rejected;all4topology subtraction metrics0.5ulp.
+Newly reached BF16 B2->B3 expanded-batch comparison failed identically for
+prefix/reference at0.857421875>0.50002. Benchmark never started.102MIGs imported.
+
+D0027/MSG0569 general rule now applies:no tolerance/fixture changes. A BF16
+comparison across a GEMM shape change with identical excess in the unchanged
+reference is diagnostic;the same comparison in FP32(TF32off) is decisive.
+Same-shape BF16 comparisons still gate at0.50002. Latest code adds a true same-B
+permutation gate,FP32B2->B3 expansion plus fork ownership,and BF16prefix/reference
+expanded-batch agreement. Original BF16 expansion is retained as namedD0027
+error/bound-pass diagnostics in JUnit/manifest/PBS log. No passing assertion removed.
+
+Completed imported T0022 usage:38+96+102=236MIGseconds=0.01638889node_h.
+ATT0188 usage pending,not zero. E0019 ceiling1node_h. No code review yet.
+All earlier results/artifacts and implementation inventory below remain historical.
+
+---
+
+# Historical continuation before D0026/D0027
 
 Task T0022,branch sr/researcher-2/T-0022. All source changes are committed at
 1514f7057e7eb4696285899ec4aa0e1893843bea. No formal RBc/RB1/RB5 training
