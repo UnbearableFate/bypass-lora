@@ -60,3 +60,14 @@ families each scored with both backends so score margins are comparable).
   all ten trained L4 geometry paths on the 64 cached smoke dev episodes and the
   unchanged L3 path at its full 4096/2048 shape. These are cost/plumbing checks,
   not evidence interpreted before the full L0 gate.
+- `ATT-0095-1` / `RES-0096`: PBS `3763092.opbs`, confirmed `mg1098`, exit 0.
+  Full-shape benchmark completed in 57.9269 pipeline seconds / 66 measured MIG
+  walltime seconds (0.004583 node·h). It exercised all ten trained geometry paths,
+  including soft_slot/C_up/C_dual, on 64 dev episodes and the unchanged L3 probe
+  on 4096 train / 2048 calibration episodes. Observed environment matches the
+  assigned torch 2.10.0+cu128, CUDA 12.8, Python 3.13.13, GH200 MIG 2g.24gb.
+- Cost components from full-shape benchmark: extrapolated extraction 42.811 s,
+  softmax fits 236.960 s, bilinear fits 111.335 s, ten L3 calls 555.481 s.
+  A 20% allowance gives 1136 expected seconds (0.0789 node·h); 1.5x requests
+  1704 seconds = 28m24s in debug-mig. Including the two checks, the expected
+  E-0012 total is approximately 0.0868 node·h, below the 0.5 node·h ceiling.
