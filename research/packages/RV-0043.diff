@@ -1,0 +1,238 @@
+diff --git a/src/test_v2r_diagnostics.py b/src/test_v2r_diagnostics.py
+index c8d4cd8..081e09e 100644
+--- a/src/test_v2r_diagnostics.py
++++ b/src/test_v2r_diagnostics.py
+@@ -114,7 +114,7 @@ def test_magnitudes_by_fact_position():
+     m = diag.magnitudes({'context': part, 'isolated': part, 'positions': torch.tensor([0, 1, 3, 4])})
+     assert m['values.context']['0'] == {'n': 1, 'l2_mean': 5., 'l2_median': 5., 'max_abs_mean': 5., 'max_abs_median': 5.,
+                                         'max_abs_max': 5., 'argmax_dimension_mode': 2, 'argmax_dimension_share': 1.}
+-    assert m['features.isolated']['1-3']['n'] == 2 and m['features.isolated']['1-3']['l2_mean'] == 6.
++    assert m['features.isolated']['1-3']['n'] == 2 and m['features.isolated']['1-3']['l2_mean'] == 3.
+     assert m['values.context']['>=4']['argmax_dimension_mode'] == 0
+ 
+ 
+@@ -309,3 +309,54 @@ def test_released_rows_isolated_tokens_follow_e1_format(tok):
+                 assert item['delimiter'] == len(item['ids']) - 1
+     assert checks[1]['context_fact_tokens_differ_from_isolated'] == 0
+     print(json.dumps(checks))
++
++
++# ---- rule evaluation (RV-0042) ------------------------------------------------------
++
++def synthetic_summaries(tmp_path, edit):
++    from types import SimpleNamespace
++    modes = diag.CONTROLS_MULTI + SWEEP_CONTROLS
++    probe_names = ('Pv.context', 'Pv.isolated', 'Pf.context', 'Pf.isolated', 'Pz.normal', 'Pz.oracle_value')
++    tmp_path.mkdir(parents=True, exist_ok=True)
++    paths = []
++    for label in diag.CHECKPOINTS:
++        splits = {}
++        for facts in diag.FACT_COUNTS:
++            controls = {m: {'em': .05, 'nll': 5., 'prior_em': .02,
++                            'target_position': {'0': {'em': .05}, '>=1': {'em': .05}}} for m in modes}
++            probes = {n: {'accuracy': .5, 'baseline_answer_prior': {'accuracy': .02},
++                          'baseline_label_shuffle': {'accuracy': .02}, 'unseen_label_count': 0, 'by_position': {}}
++                      for n in probe_names}
++            splits[f'e{facts}'] = {'controls': controls, 'probes': probes, 'feature_sha256': {'x': 'same'},
++                                   'isolated_minus_context_value_max_abs': 0., 'magnitudes': {}}
++        summary = {'checkpoint': label, 'limit': 0, 'splits': splits, 'wall_seconds': 1.,
++                   'reload': {'e16': {'normal': {'same_episode_order': True, 'prediction_mismatches': 0}}},
++                   'tokenization': {}}
++        edit(label, summary['splits'])
++        path = tmp_path / f'{label}.json'
++        path.write_text(json.dumps(summary))
++        paths.append(f'{label}={path}')
++    out = tmp_path / 'analysis.json'
++    diag.analyze(SimpleNamespace(summary=paths, output=out))
++    return json.loads(out.read_text())['rules']
++
++
++def test_rule4_is_em_drop_without_nll_and_rule6_covers_r2_r5_at_e4_and_e16(tmp_path):
++    def rule4(label, splits):
++        for split in ('e1', 'e4', 'e16'):
++            splits[split]['probes']['Pf.context']['accuracy'] = .95
++        if label == 'R1':
++            splits['e1']['controls']['oracle_value'].update(em=.85, nll=3.)
++            # E=4/16 oracle_value 35+ pp lower but with LOWER NLL: rule 4 still holds.
++            for split in ('e4', 'e16'):
++                splits[split]['controls']['oracle_value'].update(em=.4, nll=2.)
++    assert synthetic_summaries(tmp_path / 'a', rule4)['4']['holds'] is True
++    for label, split in (('R2', 'e16'), ('R5', 'e4'), ('R2', 'e4'), ('R5', 'e16')):
++        def rule6(name, splits, label=label, split=split):
++            if name == label:
++                splits[split]['controls']['iso_v'].update(em=.2, nll=4.)
++        rules = synthetic_summaries(tmp_path / f'{label}{split}', rule6)
++        assert rules['6']['holds'] is True, (label, split)
++        assert {(v['checkpoint'], v['split']) for v in rules['6']['values']} == {
++            ('R2', 'e4'), ('R2', 'e16'), ('R5', 'e4'), ('R5', 'e16')}
++    assert synthetic_summaries(tmp_path / 'none', lambda *a: None)['8']['holds'] is True
+diff --git a/src/v2r_diagnostics.py b/src/v2r_diagnostics.py
+index 870a38c..4b9679c 100644
+--- a/src/v2r_diagnostics.py
++++ b/src/v2r_diagnostics.py
+@@ -388,10 +388,10 @@ RULES = {
+     2: 'value 内容丢失：Pv < 50%，而 Pf ≥ 90%（按 checkpoint × split 列出成立处）。',
+     3: '非末位混合读取干扰：R2@E=4 或 R5@E=16 上，last_only − normal ≥ 10 pp 或 oracle_last_only − oracle_value ≥ 10 pp，'
+        'NLL 同向改善，且 last_only_shuffled 不出现同样的提升（last_only_shuffled − shuffled < 10 pp 或 NLL 不同向改善）。',
+-    4: '跨上下文迁移失败：R1 的 oracle_value 在 E=4 与 E=16 上各比 E=1 低 ≥ 30 pp 且 NLL 更高，该 split 的 Pf ≥ 90%。',
++    4: '跨上下文迁移失败：R1 的 oracle_value 在 E=4 与 E=16 上各比 E=1 低 ≥ 30 pp（EM 条件，无 NLL 条件），该 split 的 Pf ≥ 90%。',
+     5: '上下文迁移确认：R1@E=16 的 iso_oracle_value 在目标第 0 条与第 ≥1 条都 ≥ 70%；上下文 oracle_value 只在第 0 条高'
+        '（第 0 条 ≥ 70%，第 ≥1 条 < 70%）；iso_wrong_oracle 接近先验（EM ≤ 答案先验 EM + 5 pp）。',
+-    6: 'R2@E=4 或 R5@E=16 的 iso_v 比其 normal 高 ≥ 10 pp，且 NLL 同向改善。',
++    6: 'R2 或 R5（E=4 与 E=16 各一格）的 iso_v 比其 normal 高 ≥ 10 pp，且 NLL 同向改善。',
+     7: '幅度：R2@E=4 或 R5@E=16 上某个 α < 1 使 EM 比同读取方式的 α=1 高 ≥ 10 pp 且 NLL 同向改善，'
+        '同时 R1@E=1 在同一 α、同一方式下 EM ≥ 50%。',
+     8: '以上都不成立。',
+@@ -455,7 +455,9 @@ def analyze(args):
+                        'holds': (a['holds'] or b['holds']) and not negative['holds']})
+     rules[3] = {'holds': any(v['holds'] for v in values), 'values': values}
+     r1 = {s: control('R1', s, 'oracle_value') for s in ('e1', 'e4', 'e16')}
+-    drops = {s: gain(r1['e1'], r1[s], .3) for s in ('e4', 'e16')}
++    # Rule 4 is an EM-drop rule (>= 30 pp) with Pf >= 90%; it has no NLL condition.
++    drops = {s: {'em_difference': r1['e1']['em'] - r1[s]['em'], 'nll_difference': r1['e1']['nll'] - r1[s]['nll'],
++                 'holds': r1['e1']['em'] - r1[s]['em'] >= .3} for s in ('e4', 'e16')}
+     pf = {s: accuracy('R1', s, 'Pf.context') for s in ('e4', 'e16')}
+     rules[4] = {'holds': all(drops[s]['holds'] and pf[s] >= .9 for s in ('e4', 'e16')),
+                 'values': {'R1_oracle_value_em': {s: r1[s]['em'] for s in r1}, 'e1_minus_split': drops,
+@@ -467,8 +469,9 @@ def analyze(args):
+     rules[5] = {'holds': iso['0'] >= .7 and iso['>=1'] >= .7 and ctx['0'] >= .7 and ctx['>=1'] < .7 and near_prior,
+                 'values': {'iso_oracle_value': iso, 'oracle_value': ctx, 'iso_wrong_oracle_em': wrong['em'],
+                            'answer_prior_em': wrong['prior_em']}}
++    # Rule 6 covers R2 and R5 at both multi-fact splits (E=4 and E=16).
+     values = [{'checkpoint': c, 'split': s, **gain(control(c, s, 'iso_v'), control(c, s, 'normal'), .1)}
+-              for c, s in TRAINED_SPLIT.items()]
++              for c in ('R2', 'R5') for s in ('e4', 'e16')]
+     rules[6] = {'holds': any(v['holds'] for v in values), 'values': values}
+     values = []
+     for c, s in TRAINED_SPLIT.items():
+diff --git a/src/v2r_reload_check.py b/src/v2r_reload_check.py
+new file mode 100644
+index 0000000..557dbe7
+--- /dev/null
++++ b/src/v2r_reload_check.py
+@@ -0,0 +1,125 @@
++"""E-0015 reload diagnostic (MSG-0402): redo the E=16 dev reload check of V2-03 and R1
++in one process, with the recorded evaluator settings, and log device and batching.
++
++Order: V2-03, R1, V2-03 again, then the Base model alone (the zero control does not
++depend on the adapter). Run in an allocated GPU job; never on a login node.
++"""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import os
++from pathlib import Path
++import subprocess
++
++import torch
++import torch.nn.functional as F
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION, load_base
++from v2_memory import collate
++from v2_schedule import load_data
++from v2_train import EVAL_BATCH_SIZE, adapted, evaluate, write_json
++from v2r_diagnostics import ARM, CHECKPOINTS, compare_recorded
++
++CONTROLS = ('normal', 'zero')
++
++
++def device_info():
++    info = {'cuda_visible_devices': os.environ.get('CUDA_VISIBLE_DEVICES'),
++            'device_name': torch.cuda.get_device_name(0), 'capability': torch.cuda.get_device_capability(0),
++            'multi_processor_count': torch.cuda.get_device_properties(0).multi_processor_count,
++            'total_memory': torch.cuda.get_device_properties(0).total_memory,
++            'torch': torch.__version__, 'cuda': torch.version.cuda, 'cudnn': torch.backends.cudnn.version(),
++            'tf32_matmul': torch.backends.cuda.matmul.allow_tf32,
++            'bf16_reduced_precision_reduction': torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction,
++            'deterministic': torch.are_deterministic_algorithms_enabled()}
++    try:
++        info['nvidia_smi_L'] = subprocess.run(['nvidia-smi', '-L'], capture_output=True, text=True, timeout=30).stdout
++    except Exception as exc:  # diagnostic only
++        info['nvidia_smi_L'] = repr(exc)
++    return info
++
++
++@torch.no_grad()
++def base_zero(base, rows, pad_id, device):
++    """Base-only answer logits per episode, batched exactly as evaluate() batches."""
++    predictions, nll = [], []
++    for start in range(0, len(rows), EVAL_BATCH_SIZE):
++        batch = collate(rows[start:start + EVAL_BATCH_SIZE], pad_id, device)
++        mask = batch.question_mask
++        logits = base(batch.question_ids, attention_mask=mask,
++                      position_ids=(mask.long().cumsum(-1) - 1).clamp_min(0), use_cache=False).logits
++        last = mask.long().sum(-1) - 1
++        logits = logits[torch.arange(len(last), device=device), last].float()
++        predictions += logits.argmax(-1).tolist()
++        nll += F.cross_entropy(logits, batch.labels, reduction='none').tolist()
++    return predictions, nll
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--runs', type=Path, default=Path('/work/xg24i002/x10041/bypass-lora/runs'))
++    parser.add_argument('--e16-data', type=Path, required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=True)
++    passed, failure, report = False, None, {}
++    try:
++        rows = load_data(args.e16_data / 'dev.jsonl', 'dev')
++        tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++        pad_id = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
++        for row in rows:
++            row['_subject_token_id'] = tok.encode(' ' + row['query']['head'], add_special_tokens=False)[0]
++        order = ''.join(r['episode_id'] + '\n' for r in rows).encode()
++        lengths = [max(len(r['question_input_ids']) for r in rows[i:i + EVAL_BATCH_SIZE])
++                   for i in range(0, len(rows), EVAL_BATCH_SIZE)]
++        report['settings'] = {'eval_batch_size': EVAL_BATCH_SIZE, 'padding': 'right (v2_memory.pad), pad_id=%d' % pad_id,
++                              'episode_order_sha256': hashlib.sha256(order).hexdigest(), 'episodes': len(rows),
++                              'question_batch_max_lengths': lengths,
++                              'support_batch_max_lengths': [max(len(r['support_input_ids']) for r in rows[i:i + EVAL_BATCH_SIZE])
++                                                            for i in range(0, len(rows), EVAL_BATCH_SIZE)]}
++        base = load_base()
++        report['device'] = device_info()
++        device = next(base.parameters()).device
++        report['checks'] = []
++        for step, label in enumerate(('V2-03', 'R1', 'V2-03')):
++            arm_dir = args.runs / CHECKPOINTS[label] / ARM
++            out = output / f'{step}-{label}'
++            with adapted(base, checkpoint=arm_dir / 'adapter') as model:
++                model.eval()
++                evaluate(model, rows, pad_id, out, 'dev', CONTROLS, None)
++            report['checks'].append({'step': step, 'checkpoint': label,
++                                     'comparison': compare_recorded(arm_dir, out, 'dev', CONTROLS)})
++            write_json(output / 'report.json', report)
++        predictions, nll = base_zero(base, rows, pad_id, device)
++        for label in ('V2-03', 'R1'):
++            recorded = [json.loads(x) for x in (args.runs / CHECKPOINTS[label] / ARM / 'dev.zero.predictions.jsonl')
++                        .read_text().splitlines() if x.strip()]
++            report.setdefault('base_only_vs_recorded_zero', {})[label] = {
++                'prediction_mismatches': sum(p != r['prediction'] for p, r in zip(predictions, recorded)),
++                'nll_max_abs_difference': max(abs(a - r['nll']) for a, r in zip(nll, recorded))}
++        passed = True
++    except Exception as exc:
++        failure = {'type': type(exc).__name__, 'message': str(exc)}
++        raise
++    finally:
++        write_json(output / 'report.json', report)
++        artifacts = [{'path': str(p), 'role': str(p.relative_to(output))} for p in output.rglob('*')
++                     if p.is_file() and p.name != 'manifest.json']
++        write_json(output / 'manifest.json', {
++            'status': 'complete' if passed else 'failed', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
++            'experiment': 'E-0015@4', 'purpose': 'V2-03 reload diagnostic (MSG-0402)',
++            'metrics': {'checks': [{'step': c['step'], 'checkpoint': c['checkpoint'],
++                                    **{m: r['prediction_mismatches'] for m, r in c['comparison'].items()}}
++                                   for c in report.get('checks', [])],
++                        'base_only_vs_recorded_zero': report.get('base_only_vs_recorded_zero')},
++            'failure': failure, 'artifacts': artifacts,
++            'validator': {'name': 'v2r_reload_check', 'passed': passed}})
++    return 0
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
