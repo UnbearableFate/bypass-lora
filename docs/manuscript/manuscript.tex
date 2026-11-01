@@ -11,6 +11,13 @@
   \usepackage{lmodern}
 \else
   \usepackage{fontspec}
+  % Chinese text: ctex (xeCJK) with the system font Droid Sans Fallback. The default Fandol fonts render,
+  % but their extracted text is garbled; Droid lacks curly quotes, so those stay with the Latin font.
+  \usepackage[UTF8, scheme=plain, fontset=none]{ctex}
+  \setCJKmainfont[AutoFakeBold=2.5]{Droid Sans Fallback}
+  \setCJKsansfont[AutoFakeBold=2.5]{Droid Sans Fallback}
+  \setCJKmonofont{Droid Sans Fallback}
+  \xeCJKDeclareCharClass{Default}{"2018, "2019, "201C, "201D}
 \fi
 \usepackage{amsmath}
 \usepackage{booktabs}
@@ -355,7 +362,7 @@ scoring-difference-audit & 20261029 & 1 ended/success & - & - & - & - & - & - \\
 
 % rl:begin records
 \begin{itemize}
-\item records at data\_version 805; plan DOC-0001@1 (docs/plan.md); constraints docs/constraints.md
+\item records at data\_version 813; plan DOC-0001@1 (docs/plan.md); constraints docs/constraints.md
 \item experiments: E-0001@1 (DOC-0003@1), E-0002@1 (DOC-0019@1), E-0003@2 (DOC-0040@2), E-0004@1 (DOC-0047@1), E-0005@1 (DOC-0048@1), E-0006@1 (DOC-0053@1), E-0007@2 (DOC-0063@2)
 \item attempts: 60 (7 ended/cancelled, 7 ended/failed, 46 ended/success)
 \item reviews and advice: RV-0001 answered issues, RV-0002 answered pass, RV-0003 answered issues, RV-0004 answered issues, RV-0005 answered pass, RV-0006 answered pass, RV-0007 answered issues, RV-0008 answered pass, RV-0009 answered pass, RV-0010 answered pass, RV-0011 answered issues, RV-0012 answered pass, RV-0013 answered pass, RV-0014 answered pass, RV-0015 answered pass

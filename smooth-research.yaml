@@ -47,7 +47,7 @@ usage:
   switch_left_percent: 10
   coordinator_host_left_percent: 20
 manuscript:
-  latex: pdftotext
+  latex: tectonic --keep-logs
 compute:
   coordinator: login
   default: miyabi
