@@ -54,11 +54,14 @@
     "job_id": "3767640.opbs",
     "code_commit": "388f2f82cfa91253830343c299db52537bbfffd5",
     "notification": "N-20261102-011115-6426",
-    "status": "running",
+    "status": "complete",
     "host": "mg1098",
     "profile": "2g.24gb",
     "guard_passed": true,
-    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1"
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1",
+    "result": "RES-0172",
+    "used_MIG_seconds": 179,
+    "positive_finite_samples": 3840
   },
   "all_nine_checkpoint_preflight_passed": true,
   "paired_orders_match": true,
@@ -79,8 +82,27 @@
   "original_lock_final": true,
   "formal_completed_MIG_seconds": 73357,
   "other_completed_T0013_MIG_seconds": 10147,
-  "known_completed_MIG_seconds": 83504,
-  "known_completed_node_h": 5.7988888888888885,
-  "usage_note": "All9 formal plus prior ancillary usage imported once. Latency usage pending, not zero.",
-  "validation_accessed": false
+  "known_completed_MIG_seconds": 83684,
+  "known_completed_node_h": 5.811388888888889,
+  "usage_note": "All T0013 jobs ended and measured usage imported once. T0013 subtotal excludes other E0013 workers.",
+  "validation_accessed": false,
+  "cost_tabulation": {
+    "attempt": "ATT-0175-1",
+    "job_id": "3767690.opbs",
+    "code_commit": "3e7c90c8f7f696561b04a71f96a054a5da65e7b6",
+    "status": "complete",
+    "result": "RES-0173",
+    "used_MIG_seconds": 1,
+    "allocation_verified": true,
+    "host": "mg1098"
+  },
+  "phase": "complete_ready_for_delivery",
+  "pending_T0013_jobs": [],
+  "cost_evidence": "EV-0106",
+  "final_usage_summary": {
+    "path": "research/artifacts/T-0013/usage-summary.json",
+    "sha256": "bff57ac450442240418faa0bf770a7d3bf0a13bbc818c4844042649c084fcd31",
+    "bytes": 3674
+  },
+  "delivery_report": "research/notes/T-0013-delivery.md"
 }
