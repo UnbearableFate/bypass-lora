@@ -109,10 +109,10 @@ def test_read_summary_reports_nonempty_means_without_changing_original_means():
     labels = torch.full((1, 3), -100)
     record = {
         'step': 1,
-        'current_weight': torch.tensor([[0., .5, .25]]),
-        'n_eff': torch.tensor([[0., 1., 3.]]),
-        'entropy': torch.tensor([[0., 0., 1.]]),
-        'relative_n_eff': torch.tensor([[0., 1., 1.5]]),
+        'current_weight': torch.tensor([[0., 0., 0.]]),
+        'n_eff': torch.tensor([[0., 1., 2.]]),
+        'entropy': torch.tensor([[0., 0., .69314718]]),
+        'relative_n_eff': torch.tensor([[0., 1., 1.]]),
         'readable_positions': torch.tensor([[0., 1., 2.]]),
     }
     summary = ReadSummary()
@@ -120,10 +120,10 @@ def test_read_summary_reports_nonempty_means_without_changing_original_means():
     result = summary.finish()[0]
     assert result['count'] == 3
     assert result['empty_reads'] == 1
-    assert result['means']['n_eff'] == 4 / 3
-    assert result['nonempty_means']['n_eff'] == 2
-    assert result['means']['current_weight'] == .25
-    assert result['nonempty_means']['current_weight'] == .375
+    assert result['means']['n_eff'] == 1
+    assert result['nonempty_means']['n_eff'] == 1.5
+    assert result['means']['current_weight'] == 0
+    assert result['nonempty_means']['current_weight'] == 0
 
 
 @pytest.mark.parametrize('steps,mode,fixed', [(1, 'inclusive', False), (4, 'strict', False), (4, 'inclusive', True)])
