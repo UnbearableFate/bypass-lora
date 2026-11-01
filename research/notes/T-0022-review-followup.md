@@ -26,7 +26,8 @@ recheck. No RBc/RB1 training is authorized here.
    intermediate-monitor files, checkpoint inventory bytes/hashes and fresh reload
    identity. Smoke manifests remain explicitly ineligible as LR-lock candidates.
 
-Validation is pending. The planned PBS job runs the full regression suite,
+Validation is pending in ATT-0197-1/PBS3768755.opbs,source
+183ad685785b8249d8a1c679a09e8dd5280d8cd5. This PBS job runs the full regression suite,
 the three CLI smokes and rb_report against the original immutable timing inputs
 to recalculate only the RBc forecast. It does not repeat 100-step timing or create
 scientific training results. Only ordinary record-only profile metadata is

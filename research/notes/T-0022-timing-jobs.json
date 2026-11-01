@@ -68,6 +68,18 @@
   "code_review_requested": true,
   "review_ticket": "RV-0060",
   "review_snapshot": "a5d04f8",
+  "review_status": "RV-0060 pass;four low fixes require the focused recheck",
+  "review_fix_run": {
+    "attempt": "ATT-0197-1",
+    "job_id": "3768755.opbs",
+    "code_commit": "183ad685785b8249d8a1c679a09e8dd5280d8cd5",
+    "spec_digest": "blake2b:7ff4075d5c48ab4f0b0dbd68bb853685f0eee735946ed89bbc6532a3551d3968",
+    "status": "running",
+    "usage": "pending",
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1",
+    "notification_id": "N-20261102-033738-2fb0",
+    "profile_policy": "record_only"
+  },
   "formal_training_started": false,
   "confirmation_evaluated": false
 }

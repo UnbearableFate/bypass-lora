@@ -1,5 +1,10 @@
 # T-0022 RB0 code review package
 
+Historical first-review package (RV-0060,a5d04f8). Its measured timing and397-test
+evidence remain valid. The four low follow-ups and the updated RBc single-pass
+cost policy are in T-0022-review-followup.md;that note supersedes the two-pass
+RBc forecast below after the revised PBS report is validated.
+
 Target: E-0019@1 / H-0017@1, task T-0022. This is an implementation and cost
 diagnostic. No RBc, RB1 or RB5 scientific training or confirmation evaluation has
 started. The coordinator owns release and hypothesis-state decisions.

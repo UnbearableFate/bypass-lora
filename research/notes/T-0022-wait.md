@@ -1,4 +1,31 @@
-# T-0022 current continuation: timing imported; awaiting RV-0060 code review
+# T-0022 current continuation: RV-0060 low fixes in PBS ATT-0197-1
+
+This section supersedes every section below. RV-0060 passed with four lows;
+coordinator MSG-0599 authorized fixing all four then one focused recheck. Code
+183ad685785b8249d8a1c679a09e8dd5280d8cd5 is staged read-only and running in
+PBS3768755.opbs (ATT-0197-1),debug-mig,expected180s/request270s. Allocation
+verified on mg1098;profile is nonfatal record-only because no new timing is
+compared. No RBc/RB1 training. See T-0022-review-followup.md for changes.
+
+Outputs:/work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/.
+Full regressions,three actual rb_train CLI4step/limit2smokes (RB1-02/01/07),
+and revised one-pass/no-checkpoint RBc forecast from original timing artifacts.
+Queued/running observations are being imported;usage remains pending,not zero.
+Notification N-20261102-033738-2fb0 is sealed1job;daemon already running. Listener:
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-033738-2fb0 --notifier miyabi-g2
+
+On completion:verify allocation,terminal manifest,new regression count and all
+three complete CLI smoke manifests with lock-schema keys,reload.identical and
+checkpoint inventory. Import exact PBS usage/result once. Copy updated small
+cost JSON/MD (original ATT0193 output remains historical),record actual total,
+then request one focused --recheck-of RV-0060 covering all four changes,tests,
+rb_revision_check and updated cost output. Send evidence to reviewer-3. Freeze
+the resulting scope. On pass,record diagnostic H-0017 evidence and deliver.
+All tolerances,model fixtures,A2 split and formal sample budgets are unchanged.
+
+---
+
+# Historical continuation before RV-0060 answer
 
 This section supersedes every historical section below. No PBS job is pending.
 T-0022 is active, not delivered. The exact review scope is frozen at a5d04f8;
