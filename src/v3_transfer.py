@@ -1,7 +1,7 @@
 """E-0023 rule 4: frozen-transfer diagnostic of the S_M* arm (no training). Execute only in an
 allocated GPU job. Rows: T2 calibration hops 2-3; T2 hops 4/6/8 and confirmation are never opened.
 
-Six reads of the frozen arm, all scored at its S_train with the chain end as the label:
+Five reads of the frozen arm, all scored at its S_train with the chain end as the label:
 - native: the arm's own loop (equal to its native forward; replay checked within 1e-3);
 - forced_first: z^(1) is set to the state after reading the correct first-edge value
   (q̄ + η·(v[path fact 1]·g)·Ro); step 2 onward queries and reads natively;

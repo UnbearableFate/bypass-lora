@@ -79,5 +79,49 @@ All of these are descriptive; none enters a rule.
 
 `v3_diag.py stage-a` writes the rule.
 
+## 4. Rule 4: frozen-transfer diagnostic (`src/v3_transfer.py`, `src/test_v3_transfer.py`; D-0034)
+Stage A gave case A3 with S_M* = V3-02 (ATT-0251-1), so rule 4 applies. The diagnostic trains nothing. It reads the frozen S_M* checkpoint on the T2 calibration rows of hops 2 and 3 (pooled). All reads are scored at S_train, labelled with the chain end, and measured at the answer position (the last valid question token).
+
+### Reads
+- `native`: the arm's own loop. The replay must match the native output within the loop tolerance, and the native logits are scored.
+- `forced_first` (descriptive only): z^(1) is set to q̄ + η·(v[path fact 1]·g)·Ro, using the step-0 Ro if the arm is untied. Step 2 onward queries and reads natively, and the result goes back through the reviewed side-output hook (`_with_increment`). Defined only for S ≥ 2.
+- `bridge`: the question template is re-encoded with the gold bridge entity (`path.entities[1]`) as the subject. Relation and template are unchanged.
+- `wrong_bridge`: the subject is the head of the first same-relation fact that is off the path and whose head is not a path entity. Rows with no such fact are left out of this read; the count is reported per read.
+- `donor_bridge`: the subject is the gold bridge of the nearest earlier evaluated row (cyclic) whose bridge entity appears nowhere in this episode (no fact head or tail, no path entity).
+- Also on the same rows:
+  - the reviewed first-edge and end-edge value oracles (`v3_diag.evaluate_oracles`);
+  - the zero and shuffled memory controls (`v3_train.evaluate_arm`; global donor rule within the hops 2-3 subset).
+
+### D-0034 mapping (`mapping`)
+Every quantity is an exact Fraction, computed from the per-record floats and reported next to its boolean.
+- (a) end-edge oracle EM − max(EM_zero, EM_shuffled) ≥ 10 pp.
+- (b) Holds when all three of these hold:
+  - the bridge read's mean step-1 weight on path fact 2 is ≥ 1/8;
+  - the wrong-bridge mean on that fact is < 1/8;
+  - the donor-bridge mean on that fact is < 1/8.
+- (c) The native read's mean step-2 weight on path fact 2 is < 1/8.
+
+| Criteria | Repair |
+|---|---|
+| (a) fails | none |
+| (a), (b) and (c) hold | successor-slot CE S4 pilot with the permuted-label control |
+| (a) holds, (b) fails | linear-start S4 |
+| (a) and (b) hold, (c) fails | none; describe and go to the conclusion |
+
+### Tests
+- CPU:
+  - `wrong_fact` and `donor_bridge` choices, including the absent-name rule;
+  - every boundary at equality: a 10 pp gap holds (a); a bridge weight of exactly 1/8 holds; a control at exactly 1/8 fails (b); a native weight of exactly 1/8 fails (c);
+  - the summaries.
+- GPU (D5 stand-in):
+  - the rewritten questions contain the new subject;
+  - `native` records equal `evaluate_arm`'s normal records;
+  - `forced_first`'s step-2 weights equal the closed form within 1e-5;
+  - V3-06 (tokenwise) raises.
+- Pre-review check ATT-0252-1 (not evidence):
+  - 95 tests passed;
+  - a 4-rows-per-hop smoke on ATT-0234-1 completed and wrote all reads, oracles, controls and the mapping.
+
 ## Not yet implemented
-The rule-4 frozen-transfer diagnostic and V3-05b. Each is needed only if its case arises (A3/A4, or A1 with S_M* = 2), and each will be reviewed before it runs.
+- V3-05b: not needed under A3.
+- The repair arm, if the D-0034 mapping selects one: it will be implemented and reviewed before it runs.
