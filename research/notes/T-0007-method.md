@@ -32,3 +32,10 @@ strata denote generator sampling weights, not pretraining frequencies.
 Five examples are fixed to the first five calibration identities with E=1,16,1,16,16,
 independent of their scores. Output examples.md is copied into final notes.
 No training, dev inference, confirmation reads, or H-0003 inference.
+
+Smoke ATT-0047-1 passed 13 tests but stopped on the strict original-path check.
+ATT-0048-1 independently confirmed that moving the identical logits to CPU before
+CE changes its reduction result: first M batch max difference 0.00006485;
+smoke M/F max differences 0.00007248/0.00006962, zero top-1 differences. Fixed
+by computing score_logits on the original CUDA batch before transferring logits
+for diagnostic summaries. No tolerance, metric, protocol, or data change.

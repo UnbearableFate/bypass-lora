@@ -107,10 +107,13 @@ def candidate_score(logits, ids, target):
             'random_attainable': 1 / len(ids) if covered else 0.}
 
 
-def describe(logits, tok, row, names, line):
+def describe(logits, tok, row, names, line, scored=None):
     target = row['query']['answer_token_id']
-    pred, losses = score_logits(logits[None], torch.tensor([target], device=logits.device))
-    pred = int(pred[0])
+    if scored is None:
+        predictions, losses = score_logits(logits[None], torch.tensor([target], device=logits.device))
+        pred, nll = int(predictions[0]), float(losses[0])
+    else:
+        pred, nll = scored
     probs = logits.float().softmax(-1)
     # Stable token-ID tie break also makes the first top-5 token equal argmax.
     top = torch.argsort(logits, descending=True, stable=True)[:5].tolist()
@@ -124,7 +127,7 @@ def describe(logits, tok, row, names, line):
             'answer_frequency_stratum': row['axes']['answer_frequency_stratum'],
             'target': target, 'subject_token_id': head_id, 'answer_is_subject': target == head_id,
             'prediction': pred, 'correct': pred == target, 'subject_copy': pred == head_id,
-            'category': category(pred, row, names), 'nll': float(losses[0]),
+            'category': category(pred, row, names), 'nll': nll,
             'answer_probability': float(probs[target]), 'subject_probability': float(probs[head_id]),
             'answer_rank': 1 + int((logits > logits[target]).sum()),
             'answer_tie_count': int((logits == logits[target]).sum()),
@@ -186,9 +189,14 @@ def diagnose(model, tok, views, output):
                 batch = rows[start:start + 8]
                 inputs = left_pad([prompt_tokens(tok, r, line, split='calibration') for r in batch],
                                   tok.pad_token_id, device)
-                logits = model(**inputs, use_cache=False, logits_to_keep=1).logits[:, -1, :].float().cpu()
-                for row, vector in zip(batch, logits):
-                    record = describe(vector, tok, row, names, line)
+                logits = model(**inputs, use_cache=False, logits_to_keep=1).logits[:, -1, :]
+                targets = torch.tensor([r['query']['answer_token_id'] for r in batch], device=device)
+                predictions, losses = score_logits(logits, targets)
+                # Preserve original device/batch reduction for EM/NLL. CPU
+                # vocabulary summaries must not silently replace CUDA CE.
+                scored = list(zip(predictions.tolist(), losses.tolist()))
+                for row, vector, scores in zip(batch, logits.float().cpu(), scored):
+                    record = describe(vector, tok, row, names, line, scored=scores)
                     handle.write(json.dumps(record, allow_nan=False) + '\n')
                     records.append(record)
     return records
