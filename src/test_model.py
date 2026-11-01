@@ -1,5 +1,6 @@
 """Real, revision-pinned Qwen3 tests; run only inside the registered GPU job."""
 from contextlib import contextmanager
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -156,6 +157,55 @@ def chunked(model,ids,mask,chunk,phase='F',memory=None):
     return torch.cat(parts,1),cache
 
 
+def assert_memory_close(actual, expected):
+    for name in ('M', 'c', 'slot_keys', 'slot_values', 'slot_valid', 'counts'):
+        a, b = getattr(actual, name), getattr(expected, name)
+        if b is None:
+            assert a is None
+        else:
+            torch.testing.assert_close(a, b, atol=TOL['fp32_atol'],
+                                       rtol=TOL['fp32_rtol'], msg=lambda msg: name + ': ' + msg)
+
+
+@pytest.mark.parametrize('backend', ['kernel_matrix', 'kernel_slot_reference', 'soft_slot'])
+@pytest.mark.parametrize('mode', ['inclusive', 'strict'])
+@pytest.mark.parametrize('rank', [32, 128])
+@pytest.mark.parametrize('steps', [1, 4])
+def test_cache_memory_state(base, backend, mode, rank, steps, record_property):
+    ids = fixture()
+    mask = torch.ones_like(ids)
+    mask[0, :2] = 0
+    mask[1, -2:] = 0
+    config = AdapterConfig(layers=(14,), branch='memory', backend=backend,
+                           rank=rank, steps=steps, mode=mode)
+    with adapted(base, config) as model, torch.no_grad():
+        nonzero_exits(model)
+        expected = model(ids, attention_mask=mask).cache.memory[14]
+        states = {}
+        for chunk in (3, 1):
+            _, cache = chunked(model, ids, mask, chunk)
+            actual = states[chunk] = cache.memory[14]
+            errors = []
+            for name in ('M', 'c', 'slot_keys', 'slot_values'):
+                a, b = getattr(actual, name), getattr(expected, name)
+                if b is not None:
+                    assert a.dtype == b.dtype == torch.float32
+                    error = (a - b).abs().max().item()
+                    errors.append(error)
+                    record_property(f'cache.chunk{chunk}.state.{name}.max_abs_err', error)
+            record_property(f'cache.chunk{chunk}.state.max_abs_err', max(errors))
+        # Each floating state component must detect a one-element corruption.
+        for name in ('M', 'c', 'slot_keys', 'slot_values'):
+            value = getattr(expected, name)
+            if value is not None:
+                corrupted = value.clone()
+                corrupted.reshape(-1)[0] += 1
+                with pytest.raises(AssertionError):
+                    assert_memory_close(replace(expected, **{name: corrupted}), expected)
+        # Token-at-a-time backbone features differ: chunk1 is diagnostic only.
+        assert_memory_close(states[3], expected)
+
+
 @pytest.mark.parametrize('mode', ['inclusive','strict'])
 @pytest.mark.parametrize('rank,steps', [(32,1),(32,2),(128,4)])
 def test_cache_causality_padding(base,mode,rank,steps,record_property):
@@ -306,10 +356,11 @@ def test_support_delimiter_write_scope_and_capacity(base,backend):
         invalid=delimiters.clone(); invalid[:,0]=True
         with pytest.raises(ValueError,match='subset'):
             model(ids,attention_mask=mask,phase='support',write_mask=invalid)
-    if backend!='kernel_matrix':
-        with adapted(base,AdapterConfig(layers=(14,),branch='memory',backend=backend,slot_capacity=1)) as model:
-            with pytest.raises(ValueError,match='capacity exceeded'):
-                model(ids,phase='support',write_mask=delimiters)
+    with adapted(base,AdapterConfig(layers=(14,),branch='memory',backend=backend,slot_capacity=2)) as model,torch.no_grad():
+        assert model(ids,phase='support',write_mask=delimiters).cache.memory[14].counts.tolist()==[2,2]
+    with adapted(base,AdapterConfig(layers=(14,),branch='memory',backend=backend,slot_capacity=1)) as model,torch.no_grad():
+        with pytest.raises(ValueError,match='capacity exceeded'):
+            model(ids,phase='support',write_mask=delimiters)
 
 
 def test_reject_missing_memory_and_reused_cache(base):
