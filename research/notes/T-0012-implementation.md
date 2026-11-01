@@ -40,3 +40,23 @@ reduced probe grids, and 64/64 L3. It measures runtime and plumbing only; it doe
 not produce interpretable L1--L4 evidence if L0 fails. Full-run table expectations
 are 120 probe rows, 10 L3 arms, and 14 L4 rows (ten trained, two random feature
 families each scored with both backends so score margins are comparable).
+
+## Recorded validation
+
+- Initial implementation commit: `fed91c959a4ba3460f3956d98ef24a4e6a089139`.
+- `RV-0027`: pass, no findings. The full L0 gate, full-size runtime/memory and
+  all-checkpoint completion remain execution requirements.
+- `ATT-0094-1` / `RES-0095`: PBS `3762986.opbs`, confirmed allocation `mg1098`.
+  Five tests passed, no skips. Smoke completed 52 probe rows, two L3 arms and six
+  L4 entries; pipeline 25.0819 seconds, measured PBS walltime 48 seconds on one
+  MIG instance (0.003333 node·h). Both tap families had exact support/query
+  projection-input equality and passing read reconstruction.
+- The four-epoch smoke L0 qknorm tail/head controls were 1754/2048 and 1829/2048
+  (85.64% / 89.31%); other controls were above 90%. The smoke is explicitly
+  uninterpretable. Full mode selects among up to 64 epochs and three L2 values
+  using train-internal validation and aborts before L1--L4 if any L0 fails.
+- `src/v2_layer_cost.py`, added without modifying reviewed files, times full-size
+  synthetic probe epochs/validation and all four bilinear ranks. It also executes
+  all ten trained L4 geometry paths on the 64 cached smoke dev episodes and the
+  unchanged L3 path at its full 4096/2048 shape. These are cost/plumbing checks,
+  not evidence interpreted before the full L0 gate.
