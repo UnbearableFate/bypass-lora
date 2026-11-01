@@ -208,10 +208,20 @@ def test_four_layer_cache_causality_padding_and_ownership(base,impl,record_prope
         changed=ids.clone();changed[:,5:]=330
         other=model(changed,attention_mask=mask)
         measure(other.logits[:,:5][mask[:,:5].bool()],full.logits[:,:5][mask[:,:5].bool()],record_property,'causal',atol=2e-5)
+        permutation=torch.tensor([1,0],device=ids.device)
+        permuted=model(ids.index_select(0,permutation),attention_mask=mask.index_select(0,permutation))
+        measure(permuted.logits[mask.index_select(0,permutation).bool()],
+                full.logits.index_select(0,permutation)[mask.index_select(0,permutation).bool()],
+                record_property,'same_batch_permutation')
         order=torch.tensor([1,0,0],device=ids.device)
         moved=model(ids.index_select(0,order),attention_mask=mask.index_select(0,order))
         expected=full.logits.index_select(0,order)
-        measure(moved.logits[mask.index_select(0,order).bool()],expected[mask.index_select(0,order).bool()],record_property,'row_reorder')
+        # D0027:record the unchanged0.50002 comparison across B2->B3 as a
+        # diagnostic. Same-B permutation above and FP32 expansion below gate.
+        delta=(moved.logits[mask.index_select(0,order).bool()].float()-
+               expected[mask.index_select(0,order).bool()].float()).abs().max().item()
+        record_property(f'D0027.{impl}.batch_expansion.max_abs_err',delta)
+        record_property(f'D0027.{impl}.batch_expansion.within_locked_bf16',int(delta<=TOL['bf16_atol']))
         prefix=model(ids[:,:3],attention_mask=mask[:,:3],use_cache=True)
         source={i:s.M.clone() for i,s in prefix.cache.memory.items()}
         owner=prefix.cache.reorder(order)
@@ -224,13 +234,17 @@ def test_four_layer_cache_causality_padding_and_ownership(base,impl,record_prope
 def test_BF16_token_decode_prefix_reference_agreement(base,record_property):
     ids=fixture();mask=torch.ones_like(ids)
     mask[0,:2]=0;mask[1,-2:]=0
-    outputs=[]
+    outputs=[];expanded=[]
     for impl in ('reference','prefix'):
         with attached(base,adapter_config('RB1-04',impl)) as model,torch.no_grad():
             nonzero_exits(model)
             values,_=chunked(model,ids,mask,1)
             outputs.append(values)
+            order=torch.tensor([1,0,0],device=ids.device)
+            expanded.append(model(ids.index_select(0,order),attention_mask=mask.index_select(0,order)).logits)
     measure(outputs[1][mask.bool()],outputs[0][mask.bool()],record_property,'BF16.token.prefix_reference')
+    moved_mask=mask.index_select(0,order).bool()
+    measure(expanded[1][moved_mask],expanded[0][moved_mask],record_property,'D0027.BF16.batch_expansion.prefix_reference')
 
 
 @pytest.mark.parametrize('impl',['prefix','reference'])
@@ -254,6 +268,18 @@ def test_FP32_four_layer_cache_and_state_clear_negative_control(impl,record_prop
                 assert torch.equal(state.counts,whole.cache.memory[i].counts)
         for a,b in ((3,8),(1,8),(1,3)):
             close(outputs[a][mask.bool()],outputs[b][mask.bool()],record_property,f'{impl}.FP32.logits.{a}_{b}')
+        for order in (torch.tensor([1,0],device=ids.device),torch.tensor([1,0,0],device=ids.device)):
+            moved_mask=mask.index_select(0,order)
+            moved=model(ids.index_select(0,order),attention_mask=moved_mask)
+            close(moved.logits[moved_mask.bool()],whole.logits.index_select(0,order)[moved_mask.bool()],
+                  record_property,f'{impl}.FP32.batch{order.numel()}.logits')
+        # Duplicated beam rows own separate side and backbone state storage.
+        first=model(ids[:,:3],attention_mask=mask[:,:3],use_cache=True)
+        source={i:s.M.clone() for i,s in first.cache.memory.items()}
+        order=torch.tensor([1,0,0],device=ids.device)
+        fork=first.cache.reorder(order)
+        model(ids[:,3:4].index_select(0,order),attention_mask=mask[:,:4].index_select(0,order),cache=fork,use_cache=True)
+        assert all(torch.equal(s.M,source[i]) for i,s in first.cache.memory.items())
         # Keep backbone KV,deliberately erase only side M,c,n at each boundary.
         pieces=[];cache=None
         for start in range(ids.shape[1]):

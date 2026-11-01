@@ -60,3 +60,20 @@ clearing only sideM/c/n at token boundaries must fail that same FP32 check.
 The strong std0.5 exit fixture,all earlier passing assertions,and tolerance file
 are unchanged. T0 now rejects non-KernelMatrix backend to avoid a dead extra
 temperature parameter;researcher3 was notified before the shared schema edit.
+
+ATT0187/PBS3767969/RES0182:395/397passed;D0026 topology and FP32 carry gates
+passed,the state-clear variants were rejected,and every topology subtraction
+was <=0.5ulp_bf16(Y). Maximum full/token FP32 logit error0.00019454956
+(relative infinity norm1.10723e-5). Two previously unreached failures concerned
+B2->B3 beam expansion(std0.5 exits),identical prefix/reference BF16 error
+0.857421875 versus unchanged0.50002. Full timing still did not start.
+Scheduler102MIGseconds recorded once;T0022 cumulative236seconds=0.01638889node_h.
+
+Coordinator D0027/MSG0569 explicitly generalizes D0026:BF16 comparisons across
+GEMM-shape changes with the same excess in unchanged reference are diagnostic;
+the same comparison in FP32(TF32off) is decisive under the existing mixed gate.
+Same-shape BF16 gates remain0.50002. A true same-B permutation,FP32B2->B3
+expansion/ownership,and BF16prefix/reference expanded-batch agreement are added.
+The original BF16expansion comparison is retained in named D0027 diagnostics
+with its actual error and whether it meets the unchanged bound. No fixture or
+tolerance has been changed. No more per-case rulings are needed for this rule.
