@@ -86,7 +86,7 @@ def read_rows(path, limit):
     return rows
 
 
-def train_steps(model, batch, steps, lr):
+def train_steps(model, batch, steps, lr, progress_path):
     model.train()
     # Backbone dropout is pinned to zero by the loaded Qwen config; no stochastic
     # layers are introduced. Keep frozen backbone in eval mode explicitly.
@@ -121,6 +121,8 @@ def train_steps(model, batch, steps, lr):
         torch.cuda.synchronize()
         times.append(time.monotonic()-start)
         losses.append(float(loss.detach()))
+        progress_path.write_text(json.dumps({'steps': step+1, 'input_tokens': batch.input_tokens*(step+1),
+                                             'step_seconds': times, 'losses': losses})+'\n')
     stable = times[1:] or times
     mean = sum(stable)/len(stable)
     return {'steps': steps, 'input_tokens': batch.input_tokens*steps, 'losses': losses,
@@ -152,7 +154,7 @@ def run_arm(base, rows, pad_id, tap, backend, fusion, steps, lr, out):
         del reference
         result = {'initialization_max_abs': delta,
                   'parameters': sum(p.numel() for p in model.adapter_parameters())}
-        result['train'] = train_steps(model, batch, steps, lr)
+        result['train'] = train_steps(model, batch, steps, lr, out/'train-progress.json')
         model.eval()
         result['controls'] = {}
         probe_vectors = {}
@@ -212,7 +214,7 @@ def main():
         success = not args.require_positive or all(v['positive_control_pass'] for v in results.values())
     finally:
         metrics = {'elapsed_s': time.monotonic()-start,
-                   'train.input_tokens': sum(v['train']['input_tokens'] for v in results.values()),
+                   'train.input_tokens': sum(json.loads(p.read_text())['input_tokens'] for p in out.glob('*/train-progress.json')),
                    'arms_completed': len(results)}
         for arm, result in results.items():
             metrics[arm+'.tokens_per_second'] = result['train']['tokens_per_second']
