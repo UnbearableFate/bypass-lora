@@ -61,8 +61,8 @@ def compare(model, encoded, pad_id, traced, batch_size):
             batched_nll[i] = nll[j]
             for layer, values in (neff or {}).items():
                 batched_neff.setdefault(layer, [None]*len(encoded))[i] = values[j]
-    base_nll = [s[0] for s in single]
-    result = {'nll': {'pad_only': gaps(base_nll, [p[0] for p in padded]),
+    base_nll = [s[0][0] for s in single]
+    result = {'nll': {'pad_only': gaps(base_nll, [p[0][0] for p in padded]),
                       'repeat_no_pad': gaps(base_nll, [r[0][0] for r in repeated]),
                       'repeat_copies_agree': max(max(r[0])-min(r[0]) for r in repeated),
                       'sorted_batches': gaps(base_nll, batched_nll)}}
