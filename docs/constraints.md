@@ -25,7 +25,7 @@ where the CLI reads them.
 - Resource ceiling (per experiment / per batch / total; units such as CPU-h, GPU-h, node-h; queues):
   - V0+V1 总算力 [用户 2026-11-01]：≤ **200 node·h**（Miyabi-G；MIG 作业按 miyabi-mcp 账本的实际计量计入）。达到 80% 时协调者先报告，超出前必须由用户同意。
   - 训练 tokens [用户 2026-11-01]：取消训练 tokens 上限（原为 V0+V1 ≤ 18M 非 padding 输入 tokens，来自 plan §6.4、§7.3、§14）。tokens 仍按样本呈现次数如实记录，但不再作为资源上限；算力只受上面的 node·h 上限约束。[协调者默认] 实验契约中每个 arm 的 token 数属于实验设计（各 arm 相同的样本预算），不是资源上限，改动按契约修订处理。
-  - 每个作业 [plan §14.4；协调者默认，用户 2026-11-01 未改]：单节点；walltime 按实测 × 1.5 申请，普通作业 ≤ 1 h，有实测结果和 scale-up 说明时 ≤ 2 h；debug 队列 ≤ 30 min；同时运行的作业 ≤ 4 个；作业不得跨越 2026-11-25 09:00 JST 的计划停机。
+  - 每个作业 [协调者默认；用户 2026-11-01：资源只看 node·h 上限]：单节点；walltime 按实测 × 1.5 申请；遵守队列自身的时限（如 debug 队列 ≤ 30 min）；作业不得跨越 2026-11-25 09:00 JST 的计划停机。不再另设单作业时长或并发作业数的上限。
   - 预算核算 [plan §14.4]：每个 arm 实测加载、稳定训练步、评估与保存时间；node·h 只按实测换算。时间不足时统一缩短所有 arm 的步数，不允许各 arm 停在不同的样本预算上。
   - 角色与订阅 [用户 2026-11-01]：研究者优先用 codex，审核者用 Claude；顾问轮次 ≤ `advice.max_rounds`（3）。
 - Actions that need the user's decision first:
