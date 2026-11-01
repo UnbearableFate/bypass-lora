@@ -301,9 +301,22 @@ class BranchModel(nn.Module):
             yield from layer.side.parameters()
 
     def forward(self, input_ids, attention_mask=None, cache=None, memory=None, phase='F', use_cache=False,
-                write_mask=None, intervention=None, capture_history=False, trace_reads=False):
+                write_mask=None, intervention=None, capture_history=False, trace_reads=False,
+                initial_memory=None):
         if phase not in ('F', 'support', 'query'):
             raise ValueError('unknown protocol phase')
+        # E-0025: carry only differentiable side statistics into a fresh F-line
+        # backbone forward. This is neither M-line read-only memory nor HF KV.
+        if initial_memory is not None:
+            if (phase != 'F' or cache is not None or memory is not None or use_cache or
+                    intervention is not None or capture_history or trace_reads or
+                    self.config.branch != 'memory' or self.config.backend != 'kernel_matrix'):
+                raise ValueError('initial_memory requires a fresh uncached KernelMatrix F forward')
+            if set(initial_memory) != set(self.config.layers) or any(
+                    s is None or s.backend != 'kernel_matrix' or s.M is None or s.c is None or
+                    s.slot_keys is not None or s.slot_values is not None or s.slot_valid is not None
+                    for s in initial_memory.values()):
+                raise ValueError('initial_memory must contain only all configured M,c,counts states')
         runtime = None
         if intervention is not None or capture_history or trace_reads:
             if self.training or torch.is_grad_enabled() or phase != 'F' or cache is not None or memory is not None or use_cache:
@@ -346,7 +359,8 @@ class BranchModel(nn.Module):
         if cache is not None:
             if cache.backbone is None or cache.backbone.get_seq_length() != attention_mask.shape[1] - input_ids.shape[1]:
                 raise ValueError('stale or reused cache; reorder/copy before reuse and request use_cache=True')
-        states = cache.memory if cache else (memory if memory is not None else {})
+        states = cache.memory if cache else (memory if memory is not None else
+                                            initial_memory if initial_memory is not None else {})
         if phase == 'query' and self.config.branch == 'memory':
             if any(states.get(i) is None for i in self.config.layers):
                 raise ValueError('query is missing support memory for an adapter layer')

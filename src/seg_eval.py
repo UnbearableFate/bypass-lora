@@ -1,0 +1,83 @@
+"""Segmented candidate scoring with the unchanged V1 loss and tie conventions."""
+import math
+import time
+
+import torch
+import torch.nn.functional as F
+
+from rb_history import donor_indices
+from seg_data import encode_segments
+from seg_model import forward, first_forward
+from v1_run import batch_tensors, EvaluationNonfinite
+
+
+def tensors(encoded, pad_id):
+    second = batch_tensors([encoded], pad_id)
+    first = torch.tensor([encoded['segment1_ids']], device=second['input_ids'].device)
+    return first, torch.ones_like(first), second
+
+
+def token_losses(model, arm, encoded, pad_id, kind='normal', donor_memory=None, force_first=False,
+                 timing_events=None):
+    first, mask, second = tensors(encoded, pad_id)
+    output, parts = forward(model, arm, first, mask, second['input_ids'], second['attention_mask'],
+                            kind=kind, donor_memory=donor_memory, force_first=force_first,
+                            timing_events=timing_events)
+    labels = second['labels'][:, 1:]
+    valid = labels != -100
+    losses = F.cross_entropy(output.logits[:, :-1][valid].float(), labels[valid], reduction='none')
+    if not losses.numel() or not torch.isfinite(losses).all():
+        raise EvaluationNonfinite('segmented candidate has nonfinite/empty answer loss')
+    return losses, parts, output
+
+
+@torch.no_grad()
+def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
+    model.eval()
+    rows = [r for task in ('piqa', 'boolq') for r in splits['splits'][task]['dev'][:limit]]
+    donors = donor_indices(rows, 'R1') if kind == 'iv_swap' else None
+    metrics, predictions, audit, donor_map = {}, [], [], []
+    start = time.monotonic()
+    segment_seconds = {'segment1': 0., 'segment2': 0.}
+    donor_seconds = 0.
+    for ri, row in enumerate(rows):
+        encoded = encode_segments(tok, row)
+        audit.append(encoded[0]['seam'])
+        donor_memory = None
+        if donors is not None:
+            donor = rows[donors[ri]]
+            donor_encoded = encode_segments(tok, donor)[0]
+            ids, mask, _ = tensors(donor_encoded, tok.pad_token_id)
+            torch.cuda.synchronize(); donor_tick = time.monotonic()
+            donor_memory = first_forward(model, ids, mask).cache.memory
+            torch.cuda.synchronize(); donor_seconds += time.monotonic()-donor_tick
+            donor_map.append({'task': row['task'], 'recipient': row['id'], 'donor': donor['id']})
+        scores, sums, counts = [], [], []
+        for candidate in encoded:
+            events = []
+            losses, _, _ = token_losses(model, arm, candidate, tok.pad_token_id, kind, donor_memory,
+                                        timing_events=events)
+            total = losses.sum().item()
+            for phase, begin, end in events:
+                segment_seconds[phase] += begin.elapsed_time(end)/1000
+            sums.append(total); counts.append(losses.numel())
+            scores.append(-total/(counts[-1] if row['task'] == 'piqa' else 1))
+        gold = int(row['label']) if row['task'] == 'piqa' else (0 if row['label'] else 1)
+        prediction = 0 if scores[0] >= scores[1] else 1
+        predictions.append({'task': row['task'], 'split': 'dev', 'id': row['id'], 'gold': gold,
+                            'prediction': prediction, 'scores': scores,
+                            'gold_nll_sum': sums[gold], 'gold_loss_tokens': counts[gold]})
+    for task in ('piqa', 'boolq'):
+        selected = [r for r in predictions if r['task'] == task]
+        if not selected:
+            raise ValueError('both tasks need nonempty dev rows')
+        nll = sum(r['gold_nll_sum'] for r in selected)
+        tokens = sum(r['gold_loss_tokens'] for r in selected)
+        metrics.update({f'dev.{task}.accuracy': sum(r['prediction'] == r['gold'] for r in selected)/len(selected),
+                        f'dev.{task}.examples': len(selected), f'dev.{task}.nll': nll/tokens,
+                        f'dev.{task}.loss_tokens': tokens})
+    metrics['dev.nll'] = sum(metrics[f'dev.{t}.nll'] for t in ('piqa', 'boolq'))/2
+    if not all(math.isfinite(float(x)) for x in metrics.values()):
+        raise EvaluationNonfinite('nonfinite segmented evaluation aggregate')
+    return metrics, predictions, {'elapsed_s': time.monotonic()-start, 'seams': audit, 'donors': donor_map,
+                                 'forward_seconds': segment_seconds, 'donor_forward_seconds': donor_seconds}
