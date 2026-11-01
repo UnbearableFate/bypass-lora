@@ -7,6 +7,8 @@
   magnitude sweep on the E=1, E=4 (ATT-0112-1) and E=16 (V2) calibration splits;
 - fits the Pv/Pf/Pz probes and their baselines on the first 4,096 train rows of the
   same E and tests them on calibration.
+It also describes per fact position the L2 norm and max-abs coordinate of the frozen
+delimiter features and the trained values (E-0015@4, descriptive only).
 `analyze` combines the four checkpoint summaries and evaluates E-0015 rules 1-8.
 Run in an allocated GPU job; never on a login node. Confirmation is never opened.
 """
@@ -197,6 +199,30 @@ def probe(train_x, train_y, test_x, test_y, positions, projection=False):
     return result
 
 
+def magnitudes(writes):
+    """E-0015@4 (AD-0002): per fact-position group, L2 norm and max-abs coordinate of the
+    frozen delimiter features and of the trained values, contextual and isolated."""
+    result = {}
+    for kind in ('context', 'isolated'):
+        for name in ('features', 'values'):
+            x = writes[kind][name].float()
+            norms, peaks = x.norm(dim=-1), x.abs().max(-1)
+            groups = {}
+            for group, low, high in FACT_GROUPS:
+                mask = (writes['positions'] >= low) & (writes['positions'] <= high)
+                if not mask.any():
+                    continue
+                dims = Counter(peaks.indices[mask].tolist()).most_common(1)[0]
+                groups[group] = {'n': int(mask.sum()),
+                                 'l2_mean': float(norms[mask].mean()), 'l2_median': float(norms[mask].median()),
+                                 'max_abs_mean': float(peaks.values[mask].mean()),
+                                 'max_abs_median': float(peaks.values[mask].median()),
+                                 'max_abs_max': float(peaks.values[mask].max()),
+                                 'argmax_dimension_mode': dims[0], 'argmax_dimension_share': dims[1] / int(mask.sum())}
+            result[f'{name}.{kind}'] = groups
+    return result
+
+
 def tensor_digest(x):
     return hashlib.sha256(x.contiguous().view(torch.uint8).numpy().tobytes()).hexdigest()
 
@@ -256,7 +282,7 @@ def run(args):
     if (output / 'manifest.json').exists():
         raise SystemExit('output already contains run results')
     passed, failure = False, None
-    summary = {'experiment': 'E-0015@3', 'checkpoint': label, 'attempt': CHECKPOINTS[label], 'limit': args.limit}
+    summary = {'experiment': 'E-0015@4', 'checkpoint': label, 'attempt': CHECKPOINTS[label], 'limit': args.limit}
     try:
         recorded_config = json.loads((arm_dir / 'metrics.json').read_text())['config']
         data, priors = load_splits(args.e16_data, {1: args.e1_data, 4: args.e4_data})
@@ -322,6 +348,7 @@ def run(args):
                     probes[f'Pz.{mode}'] = probe(fit_z, fit_labels, pz_test[mode], test_labels, test_positions)
                 part['probes'] = probes
                 part['probe_seconds'] = time.monotonic() - tick
+                part['magnitudes'] = magnitudes(test)  # calibration slots
                 part['feature_sha256'] = {f'{s}.{k}': tensor_digest(writes[s][k]['features'])
                                           for s in writes for k in ('context', 'isolated')}
                 part['isolated_minus_context_value_max_abs'] = float(
@@ -339,7 +366,7 @@ def run(args):
         artifacts = [{'path': str(p), 'role': p.name} for p in output.rglob('*') if p.is_file() and p.name != 'manifest.json']
         write_json(output / 'manifest.json', {
             'status': 'complete' if passed else 'failed', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
-            'experiment': 'E-0015@3', 'checkpoint': label, 'checkpoint_attempt': CHECKPOINTS[label],
+            'experiment': 'E-0015@4', 'checkpoint': label, 'checkpoint_attempt': CHECKPOINTS[label],
             'adapter': str((arm_dir / 'adapter').resolve()), 'model': MODEL, 'revision': REVISION,
             'data': {'e16': str(Path(args.e16_data).resolve()), 'e16_sha256': DATA_HASHES,
                      'e1': str(Path(args.e1_data).resolve()), 'e4': str(Path(args.e4_data).resolve()),
@@ -466,9 +493,10 @@ def analyze(args):
                        **({'random_projection_128': p['baseline_random_projection_128']['accuracy']}
                           if 'baseline_random_projection_128' in p else {}),
                        'unseen': p['unseen_label_count'], 'by_position': p['by_position']}
-                   for n, p in part['probes'].items()}}
+                   for n, p in part['probes'].items()},
+        'magnitudes': part['magnitudes']}
         for split, part in s['splits'].items()} for label, s in summaries.items()}
-    report = {'experiment': 'E-0015@3', 'evidence_level': 'diagnostic', 'checks': checks, 'rules': rules,
+    report = {'experiment': 'E-0015@4', 'evidence_level': 'diagnostic', 'checks': checks, 'rules': rules,
               'tables': tables, 'wall_seconds': {k: s['wall_seconds'] for k, s in summaries.items()}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, report)

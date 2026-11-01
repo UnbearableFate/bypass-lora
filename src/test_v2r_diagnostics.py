@@ -106,6 +106,18 @@ def test_probe_fit_test_baselines_and_unseen_labels():
     assert 'baseline_random_projection_128' in result
 
 
+def test_magnitudes_by_fact_position():
+    x = torch.zeros(4, 3)
+    x[0, 2] = -5.  # position 0: one massive coordinate
+    x[1:, 0] = torch.tensor([1., 2., 3.])
+    part = {'values': x, 'features': x * 2}
+    m = diag.magnitudes({'context': part, 'isolated': part, 'positions': torch.tensor([0, 1, 3, 4])})
+    assert m['values.context']['0'] == {'n': 1, 'l2_mean': 5., 'l2_median': 5., 'max_abs_mean': 5., 'max_abs_median': 5.,
+                                        'max_abs_max': 5., 'argmax_dimension_mode': 2, 'argmax_dimension_share': 1.}
+    assert m['features.isolated']['1-3']['n'] == 2 and m['features.isolated']['1-3']['l2_mean'] == 6.
+    assert m['values.context']['>=4']['argmax_dimension_mode'] == 0
+
+
 # ---- real model ---------------------------------------------------------------------
 
 @pytest.fixture(scope='module')
