@@ -1,11 +1,30 @@
 """V0 regression, V1 invariants and measured three-family smoke, one registered attempt."""
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
 import pytest
+
+
+def valid_smoke(manifest, steps=5):
+    metrics = manifest.get('metrics', {})
+    if (manifest.get('status') != 'complete' or not manifest.get('validator', {}).get('passed')
+            or metrics.get('train.diverged') or metrics.get('run.failed_lr')
+            or metrics.get('train.steps') != steps or metrics.get('reload.identical') is not True):
+        return False
+    for split in ('calibration', 'dev'):
+        for task in ('piqa', 'boolq'):
+            for metric in ('nll', 'accuracy'):
+                value = metrics.get(f'{split}.{task}.{metric}')
+                if not isinstance(value, (int, float)) or not math.isfinite(value):
+                    return False
+        value = metrics.get(f'{split}.nll')
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            return False
+    return True
 
 
 def main():
@@ -30,7 +49,7 @@ def main():
                 '/work/xg24i002/x10041/bypass-lora/data/v1','--output',str(arm_out)])
             manifest = json.loads((arm_out/'manifest.json').read_text())
             metrics.update({arm+'.'+k:v for k,v in manifest['metrics'].items()})
-            if result.returncode or not manifest['validator']['passed']:
+            if result.returncode or not valid_smoke(manifest):
                 raise RuntimeError(f'{arm} smoke failed')
         passed = True
     finally:

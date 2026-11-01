@@ -1,6 +1,7 @@
 """CPU unit tests for the shared V1 training mechanics."""
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 
 import v1_run
+import v1_smoke
 from v1_data import collate_encoded
 
 
@@ -176,3 +178,159 @@ def test_main_records_training_divergence_as_completed_and_accepts_next_run(
         assert manifest['metrics']['train.diverged'] is True
         assert manifest['metrics']['train.failure_reason'] == 'nonfinite gradient norm'
         assert manifest['metrics']['train.token_overshoot'] == 0
+
+
+@pytest.mark.parametrize('bad_loss', [float('nan'), float('inf')])
+def test_evaluate_rejects_nonfinite_nongold_candidate_losses(monkeypatch, bad_loss):
+    class Tokenizer:
+        pad_token_id = 0
+
+    monkeypatch.setattr(v1_run, 'encode_candidates',
+                        lambda tok, row: [{'which': 0}, {'which': 1}])
+    monkeypatch.setattr(v1_run, 'batch_tensors', lambda candidates, pad_id: candidates[0]['which'])
+
+    def loss_for_candidate(model, candidate):
+        value = 1.25 if candidate == 0 else bad_loss
+        return torch.tensor([value]), torch.tensor([True])
+
+    monkeypatch.setattr(v1_run, 'token_losses', loss_for_candidate)
+    splits = {'splits': {
+        'piqa': {'calibration': [{'id': 'nongold-bad', 'label': 0}], 'dev': []},
+        'boolq': {'calibration': [], 'dev': []},
+    }}
+    with pytest.raises(v1_run.EvaluationNonfinite, match='calibration/piqa/nongold-bad'):
+        v1_run.evaluate(TinyCausalModel(), splits, Tokenizer())
+
+
+class ExportableModel:
+    def export_adapter(self, directory):
+        Path(directory).mkdir(parents=True, exist_ok=True)
+
+
+class MainTokenizer:
+    pad_token_id = 0
+    eos_token_id = 0
+
+
+def patch_main_inputs(monkeypatch, tmp_path):
+    monkeypatch.setattr(v1_run.AutoTokenizer, 'from_pretrained', lambda *a, **k: MainTokenizer())
+    monkeypatch.setattr(v1_run, 'prepare', lambda data_dir: {'metadata': {'split_ids': {}}})
+    monkeypatch.setattr(v1_run, 'plan_batches', lambda *a, **k: [[
+        {'task': 'piqa', 'id': 'row-1', 'epoch': 0, 'input_ids': [1, 2],
+         'labels': [-100, 2]}]])
+    monkeypatch.setattr(v1_run, 'make_model', lambda *a, **k: ExportableModel())
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    monkeypatch.setattr(torch.cuda, 'empty_cache', lambda: None)
+    monkeypatch.setenv('SR_SPEC_DIGEST', 'unit-test-digest')
+
+
+def set_main_argv(monkeypatch, tmp_path, arm, output_name):
+    output = tmp_path / output_name
+    monkeypatch.setattr(sys, 'argv', [
+        'v1_run.py', '--arm', arm, '--data-dir', str(tmp_path), '--output', str(output),
+        '--smoke-steps', '1', '--lr', '1e-3'])
+    return output
+
+
+def test_main_adapted_evaluation_nonfinite_completes_failed_lr_and_allows_next_candidate(
+        monkeypatch, tmp_path):
+    patch_main_inputs(monkeypatch, tmp_path)
+
+    def finite_train(model, batches, tok, lr, output):
+        usage = {'train.input_tokens': 81, 'train.loss_tokens': 17,
+                 'train.padded_tokens': 0, 'train.examples': 2}
+        (output / 'usage.json').write_text(json.dumps(usage) + '\n')
+        result = dict(usage)
+        result.update({'train.steps': 1, 'train.seconds': 0.1,
+                       'train.last_epoch': 0, 'train.peak_cuda_bytes': 0,
+                       'train.tokens_per_second': 810.})
+        return result
+
+    monkeypatch.setattr(v1_run, 'train', finite_train)
+    monkeypatch.setattr(v1_run, 'evaluate', lambda *a, **k: (_ for _ in ()).throw(
+        v1_run.EvaluationNonfinite('calibration/piqa/nongold: nonfinite candidate loss')))
+    results = []
+    for index in range(2):
+        output = set_main_argv(monkeypatch, tmp_path, 'lora', f'eval-fail-{index}')
+        v1_run.main()
+        assert json.loads((output / 'usage.json').read_text())['train.input_tokens'] == 81
+        manifest = json.loads((output / 'manifest.json').read_text())
+        results.append(manifest)
+
+    assert len(results) == 2
+    for manifest in results:
+        metrics = manifest['metrics']
+        assert manifest['status'] == 'complete' and manifest['validator']['passed'] is True
+        assert metrics['train.input_tokens'] == 81 and metrics['train.loss_tokens'] == 17
+        assert metrics['train.diverged'] is True and metrics['run.failed_lr'] is True
+        assert metrics['failure.stage'] == 'evaluation'
+        assert metrics['reload.identical'] is False
+        assert 'reload.seconds' not in metrics
+
+
+def test_main_base_evaluation_nonfinite_remains_partial_failure(monkeypatch, tmp_path):
+    patch_main_inputs(monkeypatch, tmp_path)
+    monkeypatch.setattr(v1_run, 'evaluate', lambda *a, **k: (_ for _ in ()).throw(
+        v1_run.EvaluationNonfinite('calibration/piqa/base: nonfinite candidate loss')))
+    output = set_main_argv(monkeypatch, tmp_path, 'base', 'base-eval-fail')
+    with pytest.raises(v1_run.EvaluationNonfinite, match='nonfinite candidate loss'):
+        v1_run.main()
+    manifest = json.loads((output / 'manifest.json').read_text())
+    assert manifest['status'] == 'partial' and manifest['validator']['passed'] is False
+    assert manifest['metrics']['failure.stage'] == 'evaluation'
+    assert 'train.diverged' not in manifest['metrics']
+
+
+def test_main_finite_checkpoint_mismatch_remains_partial_assertion(monkeypatch, tmp_path):
+    patch_main_inputs(monkeypatch, tmp_path)
+    monkeypatch.setattr(v1_run, 'train', lambda *a, **k: {
+        'train.input_tokens': 2, 'train.loss_tokens': 1, 'train.examples': 1,
+        'train.steps': 1, 'train.seconds': .1, 'train.last_epoch': 0,
+        'train.peak_cuda_bytes': 0, 'train.tokens_per_second': 20.})
+    calls = []
+
+    def finite_but_mismatching(*args, **kwargs):
+        calls.append(True)
+        return {'calibration.piqa.nll': 1.0}, [{'prediction': len(calls)}]
+
+    monkeypatch.setattr(v1_run, 'evaluate', finite_but_mismatching)
+    output = set_main_argv(monkeypatch, tmp_path, 'lora', 'reload-mismatch')
+    with pytest.raises(AssertionError, match='checkpoint/repeated Base evaluation'):
+        v1_run.main()
+    manifest = json.loads((output / 'manifest.json').read_text())
+    assert manifest['status'] == 'partial' and manifest['validator']['passed'] is False
+    assert manifest['metrics']['reload.identical'] is False
+    assert 'train.diverged' not in manifest['metrics']
+
+
+def finite_smoke_manifest():
+    metrics = {'train.steps': 5, 'reload.identical': True}
+    for split in ('calibration', 'dev'):
+        metrics[f'{split}.nll'] = 1.0
+        for task in ('piqa', 'boolq'):
+            metrics[f'{split}.{task}.nll'] = 1.0
+            metrics[f'{split}.{task}.accuracy'] = .5
+    return {'status': 'complete', 'validator': {'passed': True}, 'metrics': metrics}
+
+
+def test_valid_smoke_requires_complete_finite_evaluation_and_exact_reload():
+    manifest = finite_smoke_manifest()
+    assert v1_smoke.valid_smoke(manifest, steps=5)
+
+    invalid_manifests = []
+    diverged = finite_smoke_manifest()
+    diverged['metrics']['train.diverged'] = True
+    invalid_manifests.append(diverged)
+    for key, value in (('reload.identical', None), ('reload.identical', False),
+                       ('train.steps', None), ('train.steps', 4),
+                       ('calibration.piqa.nll', float('nan')),
+                       ('dev.boolq.accuracy', float('inf'))):
+        invalid = finite_smoke_manifest()
+        if value is None:
+            invalid['metrics'].pop(key)
+        else:
+            invalid['metrics'][key] = value
+        invalid_manifests.append(invalid)
+
+    assert all(not v1_smoke.valid_smoke(candidate, steps=5)
+               for candidate in invalid_manifests)

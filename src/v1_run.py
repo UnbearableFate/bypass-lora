@@ -33,6 +33,10 @@ class TrainingDiverged(Exception):
         self.metrics = metrics
 
 
+class EvaluationNonfinite(Exception):
+    """Invalid candidate likelihood, including an unselected candidate."""
+
+
 def example_mean_objective(losses, step_examples):
     return losses.mean() / step_examples
 
@@ -129,14 +133,20 @@ def evaluate(model, splits, tok, limit=None):
                 scores, sums, counts = [], [], []
                 for candidate in candidates:
                     loss, _ = token_losses(model, batch_tensors([candidate], tok.pad_token_id))
+                    if not torch.isfinite(loss).all() or not loss.numel():
+                        raise EvaluationNonfinite(f'{split}/{task}/{row["id"]}: nonfinite candidate loss')
                     sums.append(loss.sum().item())
                     counts.append(loss.numel())
                     # PIQA length normalization; BoolQ joint label probability (sum).
                     scores.append(-sums[-1] / (counts[-1] if task == 'piqa' else 1))
+                    if not math.isfinite(sums[-1]) or not math.isfinite(scores[-1]):
+                        raise EvaluationNonfinite(f'{split}/{task}/{row["id"]}: nonfinite candidate score')
                 gold = int(row['label']) if task == 'piqa' else (0 if row['label'] else 1)
                 pred = 0 if scores[0] >= scores[1] else 1
                 correct += pred == gold
                 total += sums[gold]
+                if not math.isfinite(total):
+                    raise EvaluationNonfinite(f'{split}/{task}: nonfinite accumulated NLL')
                 count += counts[gold]
                 predictions.append({'task':task, 'split':split, 'id':row['id'], 'gold':gold,
                                     'prediction':pred, 'scores':scores, 'gold_nll_sum':sums[gold],
@@ -241,6 +251,7 @@ def main():
             model.export_adapter(out/'adapter')
             metrics['save.seconds'] = time.monotonic()-tick
         tick = time.monotonic()
+        evaluation_stage = 'evaluation'
         eval_metrics, predictions = evaluate(model,splits,tok,args.eval_limit)
         metrics.update(eval_metrics)
         metrics['eval.seconds'] = time.monotonic()-tick
@@ -251,15 +262,28 @@ def main():
         torch.cuda.empty_cache()
         tick = time.monotonic()
         model = make_model(args.arm, None if args.arm=='base' else out/'adapter')
+        evaluation_stage = 'reload_evaluation'
         repeat_metrics, repeat = evaluate(model,splits,tok,args.eval_limit)
         metrics['reload.seconds'] = time.monotonic()-tick
         metrics['reload.identical'] = repeat == predictions and repeat_metrics == eval_metrics
         assert metrics['reload.identical'], 'checkpoint/repeated Base evaluation is not identical'
         passed = True
+    except EvaluationNonfinite as exc:
+        metrics['failure.stage'] = evaluation_stage
+        metrics['failure.reason'] = str(exc)
+        if args.arm == 'base':
+            metrics['error'] = repr(exc)
+            raise
+        metrics['train.diverged'] = True
+        metrics['run.failed_lr'] = True
+        metrics['reload.identical'] = False
+        passed = True
     except TrainingDiverged as exc:
         metrics.update(exc.metrics)
         metrics['train.diverged'] = True
         metrics['train.failure_reason'] = str(exc)
+        metrics['failure.stage'] = 'training'
+        metrics['run.failed_lr'] = True
         metrics['train.token_overshoot'] = max(0, metrics['train.input_tokens']-args.tokens)
         # Record a complete failed-LR result and let a caller continue other arms.
         passed = True

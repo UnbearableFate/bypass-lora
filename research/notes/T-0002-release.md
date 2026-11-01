@@ -40,3 +40,9 @@ Locked split mapping SHA256:47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7
 Coordinator MSG-0028, confirmed in main docs/constraints.md: token resource caps and the separate job duration/concurrency caps are removed. Tokens and overshoot remain recorded facts. E-0002's200000-token/arm experimental design is unchanged; E-0002 retains5node·h and V0+V1 retains200node·h ceilings, queue/maintenance limits and measured walltime×1.5. This supersedes earlier token-cap wording in this note.
 
 Corrected smoke ATT-0008-1 / RES-0008 / EV-0007 (8d6a400):98/98 checks passed, including equal-example gradients and completed failed-LR continuation. Five steps in each family consumed981tokens,2943total. All exact reload checks passed.116s/.032222MIG instance-hours. Cumulative T-0002 smoke usage:14529tokens and.068889MIG instance-hours. Source author identifier is unknown (parent exact runtime model not exposed); helper used gpt-6-luna for data/LoRA modules and tests; parent inspected and integrated all changes.
+
+## RV-0003 fixes before calibration
+
+Review RV-0003 reported two failure-path findings; finite ATT-0008-1 evidence remains valid. Evaluation now checks every candidate (including nongold) before scoring/aggregation and checks sums for overflow. Adapted evaluation nonfinites produce a completed failed-LR result with stage/reason and existing training usage retained; Base nonfinites remain errors. Finite checkpoint mismatches remain errors, with no tolerance change. Smoke now requires all requested steps, nondivergence, finite per-task and macro evaluation metrics, and reload.identical=true.
+
+Accounting correction from coordinator MSG-0032: MIG node·h equals ledger mig_instance_hours×0.25. Report both raw and converted values; apply5node·h E-0002 and200node·h V0+V1 ceilings to converted values. T-0002's first two smokes total.068889MIG instance-hours=.01722225node·h. This supersedes treating MIG instance-hours directly as node·h.
