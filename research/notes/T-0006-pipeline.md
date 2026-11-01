@@ -1,7 +1,7 @@
 # T-0006 M-line pipeline implementation and smoke
 
-Status: implementation and fixture smoke complete; exact-final-code integration and
-independent review RV-0011 in progress. This is not a delivery or V2 release.
+Status: implementation, fixture smoke, E-0005 integration and focused review-fix
+regression complete; re-check RV-0012 pending. This is not a delivery or V2 release.
 
 ## Implementation
 
@@ -68,13 +68,12 @@ Both checksums are asserted in the integration PBS wrapper. No generator import
 or copy, and no confirmation data read. If the accepted schema changes, repeat
 integration using the accepted artifacts as directed by the coordinator.
 
-## Limits and open review item
+## Limits and review history
 
 RV-0011 reviewer correctly identified that shuffled address metrics cannot be
-interpreted using the recipient target index in donor memory. Proposed remedy:
-omit those address metrics and record their unavailable status; keep full-vocab
-NLL/EM and read error against the original recipient learned target. Await the
-review verdict before editing the reviewed files.
+interpreted using the recipient target index in donor memory. The correction
+below omits those target-dependent metrics with an explicit unavailable marker,
+while retaining full-vocab NLL/EM and original-recipient learned-value read error.
 
 Throughput counts actual support plus question tokens forwarded; the single-token
 answer is a CE label rather than another forwarded input. Larger-study contracts
@@ -143,3 +142,14 @@ SoftSlot NLL differed4.77e-7 because the test used fused mean CE while evaluatio
 uses per-example CE followed by mean; logits were bit-identical. The test now
 uses the declared per-example aggregation, retaining exact equality. No
 production change or tolerance relaxation. Rerun commit9de4127, ATT-0045-1.
+
+ATT-0045-1 / RES-0037 / EV-0034: all six focused regressions passed in9.83s;
+PBS3760300.opbs on mg1098 exit0 and12s measured walltime. Diagnostic/unhooked
+logits are bit-identical for normal, permuted and shuffled under both backends.
+NLL/EM match exactly under the declared aggregation. Read-error discrepancy is
+at most1.27e-7 overall and4.47e-8 for shuffled. Re-check requested asRV-0012.
+
+Measured cost through the six runs: first four jobs total0.054444 MIG-instance
+hours (196s), plus12s for each focused regression =220s, about0.015278 node·h.
+Final two scheduler usage imports will be confirmed when the ledger exports end
+observations; no additional training occurred during these two regressions.
