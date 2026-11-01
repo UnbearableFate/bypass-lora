@@ -29,13 +29,15 @@ def load_data(path, split):
     return rows
 
 
-def make_schedule(rows, budget):
+def make_schedule(rows, budget, *, phase='V2'):
+    if phase not in ('V2', 'V3'):
+        raise ValueError('unsupported data phase')
     if budget <= 0 or not rows or len(rows) % 8:
         raise ValueError('positive budget and complete batches of eight required')
     order = []
     for epoch in range(3):
         indices = list(range(len(rows)))
-        random.Random(derive_seed(20261029, 'concat_loop_v2', 'V2', f'train-order-{epoch}')).shuffle(indices)
+        random.Random(derive_seed(20261029, 'concat_loop_v2', phase, f'train-order-{epoch}')).shuffle(indices)
         order.extend(indices)
     digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order).encode('utf-8')).hexdigest()
     batches, tokens = [], 0
