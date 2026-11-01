@@ -1,5 +1,8 @@
 # T-0013: initial LR calibration in progress
 
+Historical initial-grid continuation. **Current continuation is
+T-0013-endpoint-wait.md**;the initial9 and Base have completed and been imported.
+
 Current continuation; task not delivered. Full job/spec map is committed in
 T-0013-calibration-jobs.json. Official validation remains sealed and untouched.
 
