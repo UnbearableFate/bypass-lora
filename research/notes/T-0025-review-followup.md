@@ -79,6 +79,24 @@ result or confirmation data is an input.
 
 ## Remaining execution
 
+RV-0069 (the second review in the RV-0064 round) **passed**, confirming that all
+four original findings are resolved. Its only new low finding was a lost direct
+test of the unchanged family-LR rejection. The test is restored in8bf0146: an
+RB1-07 run has its config, manifest and full schedule changed consistently to
+RBc-R's locked0.003, and must still raise `LR lock family/value mismatch`.
+Production code did not change. The focused artifact-only PBS supplement
+ATT-0250-1 /3769279 passed16tests, zero failures/skips, in12.86pytest seconds.
+Its manifest is complete/validator-passed, and19production/dependency file
+hashes equal the reviewed ffa4c71 snapshot exactly. The allocation is verified;
+the scheduler reports Exit0,16seconds. Native observations/result/usage are
+imported once. All test jobs through ATT0250 total252MIG seconds =0.0175node
+hours (0.01749975using rounded native exports), excluding ongoing training.
+
+Costly selection/intervention/latency/final analysis jobs will execute the
+reviewed immutable ffa4c71 snapshot, with run registration required to report
+covered status. The later branch commits add only this regression and its PBS
+launcher/notes. There is no third code-review request for unchanged production.
+
 After a passing focused recheck, validate the nine completed producers and run
 the locked selection analysis. Measure the frozen-intervention smoke cost
 before releasing the four-target grid plus T0 swap, since permutation and
