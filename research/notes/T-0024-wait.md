@@ -1,24 +1,32 @@
-# T-0024 initial-grid wait
+# T-0024 endpoint wait
 
-Status: twelve initial candidates submitted and observed running; application results are not verified yet.
+CURRENT: All 12 initial-grid candidates have been verified and imported once. The four required one-time upper endpoint candidates are running. No LR is locked yet.
 
-Contract E-0020@1, DOC-0231@1. Reviewed code source 6df9e479b229feb3d5edfac588b06264612c7839; no code/environment/data changes. All run review checks are covered by RV-0062 (and its underlying reviews). Exact registrations, configs, spec digests, PBS jobs, logs, and outputs are in [T-0024-initial-jobs.json](T-0024-initial-jobs.json).
+Initial verification: ATT-0222-1 / RES-0205 / PBS3768977; all12 complete/finite, correct source/spec/config/representative/phase/seed, same split/order, 1096 steps /2192 presentations /200229 input tokens, exactly2048 calibration examples/task. NLL was recomputed from saved calibration gold-token CE sums/counts. No dev, confirmation, export or reload. Results ATT0210..0221 -> RES0193..0204.
 
-Notification N-20261102-040252-5355 is sealed with all twelve PBS jobs, expected=12, all_ended with early failure. The coordinator owns the wake-up. Listen command:
+Initial training exact usage:7230 MIG seconds. Verification report:13seconds. Total imported once:7243s /14400 = 0.5029861111111111 node·h. Cap1.5. Running endpoint usage is unknown.
+
+Required endpoint group (source ef1f2d549913ef67fcd4d450d2913b04a97d2829; training/data/core/environment unchanged from RV0062):
+- RBc-L@0.003: ATT-0223-1, PBS3768984.opbs, output /work/xg24i002/x10041/bypass-lora/runs/ATT-0223-1
+- RBc-T@0.003: ATT-0224-1, PBS3768985.opbs, output /work/xg24i002/x10041/bypass-lora/runs/ATT-0224-1
+- RBc-R@0.01: ATT-0225-1, PBS3768987.opbs, output /work/xg24i002/x10041/bypass-lora/runs/ATT-0225-1
+- RBc-C@0.01: ATT-0226-1, PBS3768988.opbs, output /work/xg24i002/x10041/bypass-lora/runs/ATT-0226-1
+
+Notification N-20261102-042540-0f14, sealed expected4. Coordinator listen command:
 
 ```sh
-/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-040252-5355 --notifier miyabi-g2
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-042540-0f14 --notifier miyabi-g2
 ```
 
 Continuation:
-1. Read the twelve jobs once with miyabi-mcp job_get. Inspect each saved allocation and manifest; require complete/validator passed, contract E-0020@1, source SHA/spec digest, correct representative/family/LR/seed0/phaseV0/stagecalibration. Nonfinite candidates are allowed only with explicit failed=true; implementation failures stop.
-2. Verify all successful candidates have identical plan order (expected 053284831520676982857bf9677a9fa3e338b0bbad4d2ce2af1c3f88d20457d3), 1096 steps, 2192 examples, 200229 input tokens; A2 split SHA 34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc; full calibration 2048 rows per task; no dev-step, dev metrics, checkpoint export, adapter directory or reload. Confirm the calibration-only evaluation rows. Do not read prediction content from any other split.
-3. Record end facts and exact usage once per miyabi-pbs:<job-id>; use scheduler walltime seconds /14400, not rounded ledger hours. Import each result once. Profile is metadata only; no slice comparison or reruns.
-4. In PBS, validate common provenance and use reviewed extension_lr on each exact initial family grid. Report raw finite minimum and required one-time endpoint only; stop if a family has no finite candidate. Submit required extension candidates in a second notification group.
-5. After extensions, run the reviewed rb_train.py lock CLI on the exact expected list in PBS. Authenticate the common plan order and add that SHA as provenance to the resulting lock while preserving lock_lrs decisions. Commit lock and final candidate/cost table. Add one diagnostic EV about E-0020/H-0013 with no support/challenge direction, then deliver.
+1. Read the four ended jobs once via miyabi-mcp job_get; inspect allocation and manifests. Record scheduler end and exact walltime seconds/14400 usage once per accounting ref. Ordinary profiles are metadata only, never analysis or rejection. Notification ACK is coordinator-owned.
+2. Verify every endpoint's application output: status complete/validator passed, contractE0020@1/stagecalibration/phaseV0/seed0, source/spec/family/representative/LR, correct split and identical complete200k plan, full2048-row/task calibration only. Explicit failed=true/nonfinite candidates are rejected by selection as registered; implementation problems stop/report.
+3. Populate a new final-jobs JSON with the 12 initial verified entries from research/notes/T-0024/verified-initial-jobs.json plus four ended endpoint entries from T-0024-endpoint-jobs.json. Preserve exact registered metadata and attach scheduler_exit_status, used_MIG_seconds, used_node_h. Register artifact-only report before executing.
+4. In PBS execute existing src/rbc_report.py --mode final --jobs <finaljobs> --output <unique final report ATT directory>. It exhaustively authenticates all16 source/config/budget/allocation/calibration artifacts, then calls the reviewed rb_train.py lock CLI on that exact inventory. It leaves raw output lr-lock-reviewed.json immutable and adds only the authenticated common plan_order_sha256 field to lr-lock.json. It reports final relative NLL excess, the smallest LR within1%, and registered boundary flags. No new LR rule.
+5. Import four candidate results and final report once after application verification; record exact final-report usage once. If already inspected before the report, authenticate with final report before delivery; no duplicates.
+6. Copy final lr-lock.json to research/artifacts/T-0024/lr-lock.json and commit its small exact file (git add -f if ignored). Commit candidate table/report and delivery/evidence notes. Include split SHA, plan order SHA, input manifest SHA refs, explicit extension/1%/boundary decisions, all ATT/RES/EV refs, and exact full task usage including both PBS reports.
+7. Add one diagnostic EV about E-0020/H-0013 without supports/challenges direction; do not change hypothesis state or claim efficacy. Deliver T-0024 via rl and wait for coordinator acceptance. No RB1 training, dev, confirmation, official validation, slice analysis, or second endpoint expansion.
 
-Important: ATT-0198-1..ATT-0209-1 were withdrawn before submission due solely to incorrect descriptive metric wording. They consumed no compute and must not enter reports/lock. Active candidates are ATT-0210-1..ATT-0221-1. Their correct metric is macro average of per-task gold-token CE sum divided by gold-token count. This correction changed no executable code or scientific definition.
+Detailed registration/import/usage metadata is in research/notes/T-0024-endpoint-jobs.json and the initial-grid report. Scientific source paths are unchanged; the only new src file is rbc_report.py (artifact-only verification invoking unchanged reviewed functions).
 
-Budget cap 1.5 node·h. Predicted 12-point usage 0.509314; maximum registered 16-point design estimate 0.679085. Actual running usage remains unknown until completion; no usage has been imported.
-
-No RB1, dev, RB confirmation or official validation evaluation.
+Historical bookkeeping: ATT0198..0209 were withdrawn before submission (descriptive metric correction), zero compute; excluded from all candidate/report/lock inputs.
