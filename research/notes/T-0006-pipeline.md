@@ -122,3 +122,24 @@ checkpoint export/reload measured0.0064–0.0092s. The report does not extrapola
 those without an evaluation/checkpoint schedule. Allocation peak can exceed
 PyTorch allocated bytes; no whole-job GPU-memory claim is made. These estimates
 come from three steady steps on two fixed episodes and are provisional.
+
+## RV-0011 correction
+
+RV-0011 found one medium issue: target-dependent shuffled addressing scores
+used an unrelated donor ordinal. Fixed in5464b98: shuffled output now has
+`address.target_available=false` and a reason, and omits `address.top1`,
+`address.margin`, `address.target_weight`. Entropy and n_eff remain, as do
+recipient-target read errors and answer logits/NLL/EM. No production forward,
+contract, data, tolerance or metric formula changed.
+
+Focused regression uses distinct recipient/donor facts, differing target
+indices0/1, repeated/reordered owners[1,0,1], both backends, and nonzero fusion.
+It compares diagnostic forward with unhooked deployed logits, NLL/EM, and
+original-target errors computed from core memory reads. Normal/permuted target
+addressing is checked separately.
+
+ATT-0044-1 / RES-0036 / EV-0033: five checks passed, one test-reference error:
+SoftSlot NLL differed4.77e-7 because the test used fused mean CE while evaluation
+uses per-example CE followed by mean; logits were bit-identical. The test now
+uses the declared per-example aggregation, retaining exact equality. No
+production change or tolerance relaxation. Rerun commit9de4127, ATT-0045-1.
