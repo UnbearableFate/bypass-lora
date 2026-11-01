@@ -1,0 +1,254 @@
+diff --git a/src/test_v3_pilot.py b/src/test_v3_pilot.py
+new file mode 100644
+index 0000000..715b58e
+--- /dev/null
++++ b/src/test_v3_pilot.py
+@@ -0,0 +1,68 @@
++"""V3 data-selection/schedule/stratification regressions; run only in PBS."""
++import copy
++from pathlib import Path
++import random
++
++import pytest
++
++from v1_data import derive_seed
++from v2_schedule import make_schedule
++from v3_pilot_data import load_data, stratify
++
++DATA_DIR = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0077-1/data')
++
++
++def test_final_v3_data_pin_released_only_and_complete(tmp_path):
++    train = load_data(DATA_DIR / 'train.jsonl', 'train')
++    calibration = load_data(DATA_DIR / 'calibration.jsonl', 'calibration')
++    assert len(train) == 18432 and len(calibration) == 2048
++    assert {r['identity']['phase'] for r in train} == {'V3'}
++    assert {r['axes']['hop'] for r in train} == {1, 2, 3}
++    for split in ('confirmation', 'ood_h4', 'ood_h6', 'ood_h8', 'ood_unseen'):
++        with pytest.raises(ValueError, match='released'):
++            load_data(DATA_DIR / (split + '.registry.jsonl'), split)
++    with pytest.raises(ValueError, match='released'):
++        load_data(DATA_DIR / 'dev.jsonl', 'calibration')
++    (tmp_path / 'metadata.json').write_text('{}')
++    with pytest.raises(ValueError, match='metadata digest'):
++        load_data(tmp_path / 'train.jsonl', 'train')
++
++
++def test_phase_schedule_preserves_v2_default_and_uses_v3_seed_purpose():
++    rows = [dict(episode_id=f'episode-{i}', support_input_ids=[1] * (i + 2), question_input_ids=[2])
++            for i in range(32)]
++    v2 = make_schedule(rows, 200)
++    assert v2 == make_schedule(rows, 200, phase='V2')
++    v3 = make_schedule(rows, 200, phase='V3')
++    expected = []
++    for epoch in range(3):
++        indices = list(range(32))
++        random.Random(derive_seed(20261029, 'concat_loop_v2', 'V3', f'train-order-{epoch}')).shuffle(indices)
++        expected.extend(indices)
++    assert v3['order'] == expected and v3['order'] != v2['order']
++    assert v3['tokens'] >= 200
++    previous = sum(len(rows[i]['support_input_ids']) + len(rows[i]['question_input_ids'])
++                   for batch in v3['batches'][:-1] for i in batch)
++    assert previous < 200
++    assert all(len(batch) == 8 for batch in v3['batches'])
++
++
++def test_stratification_joins_identity_and_reports_meaningful_hop_order_scores():
++    rows = [dict(episode_id=f'row-{i}', axes={'hop': 1 + i % 3,
++                  'support_order': 'natural' if i % 2 == 0 else 'shuffled'},
++                 query={'answer_token_id': 10 + i}) for i in range(12)]
++    records = [dict(episode_id=row['episode_id'], target=10 + i, prediction=10 + i if i % 2 else 99,
++                    subject=99, nll=float(i)) for i, row in enumerate(rows)]
++    metrics = stratify(rows, list(reversed(records)), 11)
++    assert metrics['hop=2.examples'] == metrics['hop=3.examples'] == 4
++    assert metrics['hops2-3.examples'] == 8 and metrics['hops2-3.em'] == .5
++    assert metrics['order=natural.em'] == 0 and metrics['order=shuffled.em'] == 1
++    assert metrics['hop=2,order=natural.subject_copy'] == 1
++    assert metrics['hop=2.nll'] == sum((1., 4., 7., 10.)) / 4
++    for invalid in (records[:-1], records[:-1] + [records[0]]):
++        with pytest.raises(ValueError, match='count|identity'):
++            stratify(rows, invalid, 11)
++    wrong = copy.deepcopy(records)
++    wrong[0]['target'] = -1
++    with pytest.raises(ValueError, match='target'):
++        stratify(rows, wrong, 11)
+diff --git a/src/v2_fline.py b/src/v2_fline.py
+index 59f0e01..99e97ba 100644
+--- a/src/v2_fline.py
++++ b/src/v2_fline.py
+@@ -105,19 +105,26 @@ def main():
+     parser.add_argument('--lr', type=float, required=True)
+     parser.add_argument('--tokens', type=int, choices=(200000, 4000000), default=200000)
+     parser.add_argument('--smoke', action='store_true')
++    parser.add_argument('--data-phase', choices=('V2', 'V3'), default='V2')
+     args = parser.parse_args()
+     if not math.isfinite(args.lr) or args.lr <= 0:
+         raise ValueError('positive finite learning rate required')
++    if args.data_phase == 'V3' and args.tokens != 200000:
++        raise ValueError('V3 data selection is restricted to the 0.2M-token pilot')
+     out = args.output
+     out.mkdir(parents=True, exist_ok=True)
+     start = time.monotonic()
+     metrics, passed = {}, False
+     stage = 'setup'
+     try:
+-        train_rows = load_data(args.data_dir / 'train.jsonl', 'train')
+-        calibration = load_data(args.data_dir / 'calibration.jsonl', 'calibration')
+-        dev = load_data(args.data_dir / 'dev.jsonl', 'dev') if args.tokens == 4000000 or args.smoke else None
+-        schedule = make_schedule(train_rows, args.tokens)
++        read_data = load_data
++        if args.data_phase == 'V3':
++            from v3_pilot_data import load_data as read_data
++        train_rows = read_data(args.data_dir / 'train.jsonl', 'train')
++        calibration = read_data(args.data_dir / 'calibration.jsonl', 'calibration')
++        dev = read_data(args.data_dir / 'dev.jsonl', 'dev') if args.tokens == 4000000 or args.smoke else None
++        schedule = (make_schedule(train_rows, args.tokens, phase='V3') if args.data_phase == 'V3'
++                    else make_schedule(train_rows, args.tokens))
+         (out / 'schedule.json').write_text(json.dumps(schedule) + '\n')
+         if args.smoke:
+             schedule = {**schedule, 'batches': schedule['batches'][:4], 'warmup_steps': 1}
+@@ -150,6 +157,9 @@ def main():
+             values, records = evaluate(model, tok, rows, split, constant, out / f'{split}.jsonl')
+             originals[split] = records
+             metrics.update({f'{split}.{key}': val for key, val in values.items()})
++            if args.data_phase == 'V3':
++                from v3_pilot_data import stratify
++                metrics.update({f'{split}.{key}': val for key, val in stratify(rows, records, constant).items()})
+         metrics['peak_memory_bytes'] = torch.cuda.max_memory_allocated()
+         del model
+         gc.collect()
+@@ -182,6 +192,7 @@ def main():
+     finally:
+         metrics['elapsed_s'] = time.monotonic() - start
+         report = {'metrics': metrics, 'lr': args.lr, 'tokens_budget': args.tokens,
++                  'data_phase': args.data_phase,
+                   'smoke': args.smoke, 'model': MODEL, 'revision': REVISION,
+                   'torch': torch.__version__, 'cuda': torch.version.cuda, 'eval_batch': 16}
+         (out / 'metrics.json').write_text(json.dumps(report, indent=2) + '\n')
+diff --git a/src/v2_schedule.py b/src/v2_schedule.py
+index 9c34687..610faea 100644
+--- a/src/v2_schedule.py
++++ b/src/v2_schedule.py
+@@ -29,13 +29,15 @@ def load_data(path, split):
+     return rows
+ 
+ 
+-def make_schedule(rows, budget):
++def make_schedule(rows, budget, *, phase='V2'):
++    if phase not in ('V2', 'V3'):
++        raise ValueError('unsupported data phase')
+     if budget <= 0 or not rows or len(rows) % 8:
+         raise ValueError('positive budget and complete batches of eight required')
+     order = []
+     for epoch in range(3):
+         indices = list(range(len(rows)))
+-        random.Random(derive_seed(20261029, 'concat_loop_v2', 'V2', f'train-order-{epoch}')).shuffle(indices)
++        random.Random(derive_seed(20261029, 'concat_loop_v2', phase, f'train-order-{epoch}')).shuffle(indices)
+         order.extend(indices)
+     digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order).encode('utf-8')).hexdigest()
+     batches, tokens = [], 0
+diff --git a/src/v3_pilot_data.py b/src/v3_pilot_data.py
+new file mode 100644
+index 0000000..ba5534f
+--- /dev/null
++++ b/src/v3_pilot_data.py
+@@ -0,0 +1,46 @@
++"""Pinned V3 dataset selection and offline strata for the shared F-line runner."""
++from pathlib import Path
++
++from v3_eval import grouped_scores, load_released_data
++
++# Reviewed full generation ATT-0077-1, E-0011@2. Includes all split checksums,
++# exact V2 pool bytes, empirical shortcut gates and 5.5M prompt-token coverage.
++METADATA_SHA256 = '2ad8cc358ec5f6005e832125e3fa9995a0aa0a7c73f77c8fec6da6b7416a178f'
++
++
++def load_data(path, split):
++    path = Path(path)
++    if split not in ('train', 'calibration', 'dev') or path.name != split + '.jsonl':
++        raise ValueError('only the explicitly selected released V3 split is authorized')
++    _, rows = load_released_data(path.parent, METADATA_SHA256, split)
++    return rows
++
++
++def stratify(rows, records, constant):
++    """Join diagnostics after evaluation; axes never enter a model forward."""
++    by_id = {r['episode_id']: r for r in rows}
++    if len(by_id) != len(rows) or len(records) != len(rows):
++        raise ValueError('prediction/data count or identity mismatch')
++    seen, scored = set(), []
++    for record in records:
++        ident = record['episode_id']
++        if ident not in by_id or ident in seen:
++            raise ValueError('prediction identity missing or duplicated')
++        seen.add(ident)
++        row = by_id[ident]
++        if record['target'] != row['query']['answer_token_id']:
++            raise ValueError('prediction target does not match data')
++        scored.append({'hop': row['axes']['hop'], 'support_order': row['axes']['support_order'],
++                       'em': record['prediction'] == record['target'], 'nll': record['nll'],
++                       'subject_copy': record['prediction'] == record['subject'],
++                       'prior': record['target'] == constant})
++    groups = grouped_scores(scored)
++    longer = [r for r in scored if r['hop'] in (2, 3)]
++    if longer:
++        groups['hops2-3'] = grouped_scores(longer)['all']
++    metrics = {f'{group}.{metric}': value for group, values in groups.items() if group != 'all'
++               for metric, value in values.items()}
++    for group in ('hop=2', 'hop=3', 'hops2-3'):
++        if group in groups:
++            metrics[group + '.gate'] = groups[group]['em'] >= groups[group]['prior'] + .20
++    return metrics
+diff --git a/src/v3_pilot_smoke.py b/src/v3_pilot_smoke.py
+new file mode 100644
+index 0000000..50af719
+--- /dev/null
++++ b/src/v3_pilot_smoke.py
+@@ -0,0 +1,47 @@
++"""PBS regression entry point plus four-step V3 F-line checkpoint roundtrip."""
++import argparse
++import json
++import os
++from pathlib import Path
++import sys
++import time
++
++import pytest
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('--data-dir', type=Path, required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    args.output.mkdir(parents=True, exist_ok=True)
++    tick = time.monotonic()
++    src = Path(__file__).parent
++    code = pytest.main(['-v', '-p', 'no:cacheprovider', '--basetemp=' + str(args.output / 'tmp'),
++                       '--junitxml=' + str(args.output / 'checks.xml'),
++                       *[str(src / name) for name in ('test_v2_fline.py', 'test_v3_data.py', 'test_v3_pilot.py')]])
++    if code:
++        raise RuntimeError('V2 compatibility or V3 pilot regressions failed')
++    import v2_fline
++    sys.argv = ['v2_fline', '--data-dir', str(args.data_dir), '--output', str(args.output / 'pilot'),
++                '--lr', '1e-3', '--tokens', '200000', '--data-phase', 'V3', '--smoke']
++    v2_fline.main()
++    report = json.loads((args.output / 'pilot' / 'metrics.json').read_text())
++    metrics = report['metrics']
++    if report['data_phase'] != 'V3' or metrics['train.steps'] != 4 or not metrics['reload.identical']:
++        raise ValueError('V3 smoke did not complete its exact checkpoint roundtrip')
++    metrics.update({'pytest.exit_code': int(code), 'smoke.elapsed_s': time.monotonic() - tick})
++    (args.output / 'metrics.json').write_text(json.dumps({'metrics': metrics}, indent=2) + '\n')
++    artifacts = [{'path': str(p.resolve()), 'role': str(p.relative_to(args.output))}
++                 for p in args.output.rglob('*') if p.is_file() and p.name != 'manifest.json']
++    manifest = {'status': 'complete', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++                'metrics': metrics, 'artifacts': artifacts,
++                'validator': {'name': 'v3_pilot_smoke', 'passed': True}}
++    (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
++    print(json.dumps({'tests_exit': int(code), 'train_steps': metrics['train.steps'],
++                      'train_tokens': metrics['train.tokens'], 'reload_identical': metrics['reload.identical'],
++                      'elapsed_s': metrics['smoke.elapsed_s']}), flush=True)
++
++
++if __name__ == '__main__':
++    main()
