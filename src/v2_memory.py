@@ -184,33 +184,75 @@ def observe_writes(model, ids, mask, write_mask):
     return {'keys': keys, 'values': values, 'features': features, 'valid': valid}
 
 
-def isolated_writes(model, rows, pad_id, device):
-    """E-0015 isolated encoding: each fact of each row encoded alone, in support order.
+def isolated_batch(rows, pad_id, device):
+    """The single-fact sequences of the isolated encoding (E-0015 and E-0016 D4/D5).
 
     rows[i]['_isolated'] lists, per fact in support order, the single-fact support
-    (E=1 format) as {'ids', 'delimiter'}. The resulting slot j of row i holds fact j.
+    (E=1 format) as {'ids', 'delimiter'}. Returns padded ids, mask, the one-delimiter
+    write mask and, per sequence, its (row, fact) place: slot j of row i holds fact j.
     """
-    sequences = [(i, j, item) for i, row in enumerate(rows) for j, item in enumerate(row['_isolated'])]
     if any(len(row['_isolated']) != len(row['facts']) for row in rows):
         raise ValueError('isolated encoding needs one sequence per fact')
+    sequences = [(i, j, item) for i, row in enumerate(rows) for j, item in enumerate(row['_isolated'])]
     ids, mask = pad([item['ids'] for _, _, item in sequences], pad_id, device)
     write_mask = torch.zeros_like(mask)
     for k, (_, _, item) in enumerate(sequences):
         if not 0 <= item['delimiter'] < len(item['ids']):
             raise ValueError('isolated delimiter outside its sequence')
         write_mask[k, item['delimiter']] = True
-    single = observe_writes(model, ids, mask, write_mask)
+    return ids, mask, write_mask, [(i, j) for i, j, _ in sequences]
+
+
+def place_isolated(single, places, rows, names):
+    """Per-row compact slots [rows, max facts, d] from per-sequence vectors [sequences, d].
+
+    Differentiable (index_put on fresh tensors), so the training path keeps the graph.
+    """
     n = max(len(row['facts']) for row in rows)
-    result = {}
-    for name in ('keys', 'values', 'features'):
-        x = single[name]
-        result[name] = x.new_zeros(len(rows), n, x.shape[-1])
-    result['valid'] = torch.zeros(len(rows), n, dtype=torch.bool, device=device)
-    for k, (i, j, _) in enumerate(sequences):
-        for name in ('keys', 'values', 'features'):
-            result[name][i, j] = single[name][k, 0]
-        result['valid'][i, j] = True
+    device = single[names[0]].device
+    index = tuple(torch.tensor(x, device=device) for x in zip(*places))
+    result = {name: single[name].new_zeros(len(rows), n, single[name].shape[-1]).index_put(index, single[name])
+              for name in names}
+    result['valid'] = torch.zeros(len(rows), n, dtype=torch.bool, device=device).index_put(
+        index, torch.ones(len(places), dtype=torch.bool, device=device))
     return result
+
+
+def isolated_writes(model, rows, pad_id, device):
+    """E-0015 isolated encoding (offline): keys, values, frozen features and validity,
+    each fact of each row encoded alone, in support order."""
+    ids, mask, write_mask, places = isolated_batch(rows, pad_id, device)
+    single = observe_writes(model, ids, mask, write_mask)
+    return place_isolated({name: single[name][:, 0] for name in ('keys', 'values', 'features')}, places, rows,
+                          ('keys', 'values', 'features'))
+
+
+# Right padding under the causal mask: the pad id never reaches a valid position.
+ISOLATED_PAD_ID = 0
+
+
+def isolated_support(model, batch):
+    """E-0016 D4/D5 isolated-encoding write: build_support's contract with each fact
+    encoded alone (E=1 format, the sequences of isolated_writes) and written at its
+    delimiter into slot j = its support index. Differentiable; the question side is
+    unchanged. Accounting is that of the single-fact support pass (one write per fact).
+    """
+    if not torch.equal(batch.owners, torch.arange(len(batch.rows), device=batch.owners.device)):
+        raise ValueError('isolated support needs one question per support owner, in order')
+    ids, mask, write_mask, places = isolated_batch(batch.rows, ISOLATED_PAD_ID, batch.support_ids.device)
+    out = model(ids, mask, phase='support', write_mask=write_mask)
+    memory = {}
+    for layer, state in out.cache.memory.items():
+        if state.slot_valid is None or not bool((state.slot_valid.sum(-1) == 1).all()):
+            raise ValueError('isolated support needs one stored slot per single-fact sequence')
+        column = state.slot_valid.long().argmax(-1)
+        sequence = torch.arange(len(column), device=column.device)
+        slots = place_isolated({'keys': state.slot_keys[sequence, column], 'values': state.slot_values[sequence, column]},
+                               places, batch.rows, ('keys', 'values'))
+        memory[layer] = memory_from_slots(slots['keys'], slots['values'], slots['valid'], state.backend)
+    if not torch.equal(slots['valid'].sum(-1), batch.write_mask.sum(-1)):
+        raise ValueError('isolated slots must match the contextual support delimiters')
+    return Snapshot(memory, slots['keys'], slots['values'], slots['valid']), out.accounting
 
 
 def isolated_snapshot(original, isolated, mode):
@@ -431,8 +473,7 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
     elif mode in ISOLATED_CONTROLS:
         if not torch.equal(batch.owners, torch.arange(len(batch.rows), device=batch.owners.device)):
             raise ValueError('isolated controls need one question per support owner, in order')
-        # Right padding under the causal mask: the pad id never reaches valid positions.
-        isolated = isolated_writes(model, batch.rows, 0, batch.support_ids.device)
+        isolated = isolated_writes(model, batch.rows, ISOLATED_PAD_ID, batch.support_ids.device)
         snapshot = isolated_snapshot(original, isolated, mode).select(batch.owners)
     else:
         # Without explicit donors last_only_shuffled uses shuffled's in-batch donors; the

@@ -3,7 +3,9 @@
 `dump --src DIR` imports the V2 modules from DIR (only APIs that existed before
 E-0014) and saves losses, logits, gradients, four optimizer steps of the formal
 train() and evaluation logits for every control. `compare` checks two dumps for
-exact equality. Run both in one PBS allocation; never on a login node.
+exact equality. Trees that have the E-0015 isolated-encoding controls (v2r_diagnostics)
+also dump them for the soft_slot arm (E-0016 D4/D5 refactor of that builder).
+Run both in one PBS allocation; never on a login node.
 """
 import argparse
 import json
@@ -33,6 +35,13 @@ def dump(src, data_dir, output):
                              for b in schedule['batches'] for i in b)
     tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
     pad = tok.pad_token_id
+    try:
+        from v2_memory import ISOLATED_CONTROLS
+        from v2r_diagnostics import annotate
+    except ImportError:
+        ISOLATED_CONTROLS = ()
+    else:
+        annotate(tok, dev, 16)
     base = load_base()
     result = {}
     for arm in ARMS:
@@ -60,8 +69,9 @@ def dump(src, data_dir, output):
             dev_batch = collate(dev, pad, 'cuda')
             donors = collate(dev[-1:] + dev[:-1], pad, 'cuda')
             out['eval'] = {}
+            isolated = ISOLATED_CONTROLS if arm[1] == 'soft_slot' else ()
             with torch.no_grad():
-                for mode in CONTROLS:
+                for mode in CONTROLS + isolated:
                     details, eval_logits = evaluate_batch(model, dev_batch, mode,
                                                           **({'donor_batch': donors} if mode == 'shuffled' else {}))
                     out['eval'][mode] = {'logits': eval_logits.cpu(),

@@ -27,7 +27,8 @@ import torch
 from transformers import AutoTokenizer
 
 from calibrate import MODEL, REVISION, load_base
-from v2_data import encode, visible_delimiters
+from v2_data import encode
+from v2_isolated import annotate_isolated, fact_text  # noqa: F401 (fact_text re-exported for tests)
 from v2_memory import SWEEP_CONTROLS, collate, evaluate_batch, isolated_writes, observe_writes
 from v2_schedule import DATA_HASHES, load_data
 from v2_train import EVAL_BATCH_SIZE, adapted, evaluate, write_json
@@ -53,10 +54,6 @@ PROJECTION_RANK = 128
 FACT_GROUPS = (('0', 0, 0), ('1-3', 1, 3), ('>=4', 4, 15))
 
 
-def fact_text(fact):
-    return f"{fact['head']} {fact['relation']} {fact['tail']} ;\n"
-
-
 def annotate(tok, rows, n_facts):
     """Subject token (as v2_train), per-fact tail token and isolated E=1-format support.
 
@@ -64,35 +61,23 @@ def annotate(tok, rows, n_facts):
     (same text, same visible_delimiters tokenization; its delimiter is the last token).
     Returns how many facts' tokens inside the contextual support differ from it.
     """
-    differing = 0
     for row in rows:
         if len(row['facts']) != n_facts:
             raise ValueError('fact count mismatch')
-        if row['support_text'] != ''.join(fact_text(f) for f in row['facts']):
-            raise ValueError('support text is not the concatenated fact format')
         subject = encode(tok, ' ' + row['query']['head'])
         if len(subject) != 1:
             raise ValueError('query subject is not a single token')
         row['_subject_token_id'] = subject[0]
-        tails, isolated, previous = [], [], -1
+        tails = []
         for fact in row['facts']:
             tail = encode(tok, ' ' + fact['tail'])
             if len(tail) != 1:
                 raise ValueError('tail is not a single token')
             tails.append(tail[0])
-            ids, positions = visible_delimiters(tok, fact_text(fact))
-            if len(positions) != 1 or positions[0]['delimiter_token_index'] != len(ids) - 1:
-                raise ValueError('isolated fact must end at its single delimiter')
-            isolated.append({'ids': ids, 'delimiter': positions[0]['delimiter_token_index']})
-            differing += row['support_input_ids'][previous + 1:fact['delimiter_token_index'] + 1] != ids
-            previous = fact['delimiter_token_index']
         if tails[row['query']['target_fact_index']] != row['query']['answer_token_id']:
             raise ValueError('target tail token differs from the answer token')
-        if n_facts == 1 and (isolated[0]['ids'] != row['support_input_ids']
-                             or isolated[0]['delimiter'] != row['facts'][0]['delimiter_token_index']):
-            raise ValueError('isolated encoding differs from the E=1 data format')
         row['_tail_token_ids'] = tails
-        row['_isolated'] = isolated
+    differing = annotate_isolated(tok, rows)
     return {'rows': len(rows), 'facts': sum(len(r['facts']) for r in rows),
             'context_fact_tokens_differ_from_isolated': differing}
 
