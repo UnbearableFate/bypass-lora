@@ -53,3 +53,9 @@ Six calibration attempts all same source, qknorm_pre_rope/F_out, batch8,200170to
 |ATT-0066-1|soft_slot|0.003|3761526.opbs|
 
 All submitted, current observations imported. Notification N-20261101-171757-7d81 sealed6jobs. `research/artifacts/T-0008/calibration-grid.json` contains immutable specs/job mapping. Upon completion inspect manifests/app metrics and import results/usage; run PBS analysis to extract table and apply LR selection rule (minnormal calibration NLL, within0.5% choose smaller). Endpoint extension once to1e-4 or1e-2. Do not deliver before review resolution and calibration choice. No E0010 run belongs in T0008.
+
+## Review correction
+
+RV-0017 passes under low-only rule: one low finding, no medium/high. Fixed weighted averaging of `read.reconstruction_max_abs` to true split max, documenting exception to token-mean aggregation. Source d8cc3d4011529fa5c2fcbaa4277d91981a077fed. ATT-0068-1 / RES-0062 PBS3761611 exit0/wall10s: one focused mock test passed7.30s; distinct batch maxima1e-5/3e-5 now report3e-5, existing mean metric/NLL/prediction checks retained. Scoped recheck RV-0019 pending. No training reruns needed per reviewer. Old initial calibration f7c4d2b artifacts retain the weighted-batch-max diagnostic under its legacy name; DO NOT claim it is true split maximum. This field is unused for LR selection, addressing gates, or model logits. Future runs use fixed source once reviewed.
+
+PBS timing report at `/work/xg24i002/x10041/bypass-lora/runs/ATT-0068-1/smoke-cost-report.json`, containing all12 arms. Formal6000step estimate1467.2–1543.6seconds, 1.5x requests2201–2316seconds (~36.7–38.6min, short-mig needed). Includes full dev/calibration six-control final eval, dev curves and reload,10s fixed allowance. Batch-count extrapolation from smoke16rows each, not full-run timing. Initial calibration estimates352–378seconds support9min requests.
