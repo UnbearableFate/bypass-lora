@@ -139,6 +139,11 @@ class Project:
         os.chmod(r / "snapshots" / SHA_USED, 0o555)
         for lock in (HEAD_LOCK, OLD_LOCK):
             write(r / "envs" / f"{lock}-cuda" / "bin" / "python", size=50)
+        # uv links an environment's files from its cache: deleting the environment frees only its own data
+        cached = write(tmp / "uv-cache" / "torch.so", size=5000)
+        os.link(cached, r / "envs" / f"{OLD_LOCK}-cuda" / "bin" / "torch.so")
+        own = write(r / "envs" / f"{OLD_LOCK}-cuda" / "lib" / "a.so", size=300)
+        os.link(own, r / "envs" / f"{OLD_LOCK}-cuda" / "lib" / "b.so")  # both names inside the environment
         write(r / "research" / "tasks" / "T-0002-brief.md", "# T-0002\nUse the E-0002 data.\n")
         write(r / "research" / "notes" / "T-0002-wait.md", "Compare against the adapter of ATT-0002-1.\n")
         write(r / "research" / "experiments" / "E-0005.md", "start checkpoint: runs/ATT-0009-1/adapter/adapter.pt\n")
@@ -151,6 +156,7 @@ class Project:
         write(checkout / "research" / "artifacts" / "T-0002" / "confirmation-lock.json",
               json.dumps({"checkpoints": ["runs/ATT-0007-1/adapter/adapter.pt"],
                           "learning_rate_lock": "research/artifacts/T-0001/lr-lock.json"}))
+        write(checkout / "research" / "artifacts" / "T-0001" / "lr-lock.json", '{"source": "ATT-0012-1"}')
         self.records = export(tmp / "snapshot.json", r)
 
     def model(self, records=None, git=None):
@@ -247,6 +253,8 @@ def test_whole_project_plan_holds_what_open_work_needs(project):
     assert {h["release"] for h in adapter("ATT-0002-1")["holds"]} == {"T-0002 accepted"}
     assert kinds(adapter("ATT-0007-1")) == {"lock"}  # the lock exists only in the task's worktree
     assert kinds(adapter("ATT-0012-1")) == {"lock"}  # a lock named by that lock
+    # the same lock in the main checkout and a worktree is read once, from the main checkout
+    assert {h["source"] for h in adapter("ATT-0012-1")["holds"]} == {"research/artifacts/T-0001/lr-lock.json"}
     assert kinds(adapter("ATT-0006-1")) == {"reopen-condition"}
     for a in ("ATT-0010-1", "ATT-0011-1"):  # resume_from chain of the held ATT-0006-1
         assert kinds(adapter(a)) == {"start-checkpoint"}
@@ -275,6 +283,8 @@ def test_whole_project_plan_classifies_every_area(project):
     assert decision[f"snapshots/{SHA_IDLE}"] == ("candidate", "snapshot")
     assert decision[f"envs/{HEAD_LOCK}-cuda"] == ("hold", "environment")
     assert decision[f"envs/{OLD_LOCK}-cuda"] == ("candidate", "environment")
+    old_env = e[f"envs/{OLD_LOCK}-cuda"]
+    assert (old_env["bytes"], old_env["freed"]) == (50 + 5000 + 300 + 300, 50 + 300)  # the cache keeps torch.so
     assert decision["research/tasks"] == ("keep", "records")
     assert decision["data/v5-sealed"] == ("keep", "data")
     assert decision[".miyabi-mcp/ledger.jsonl"] == ("keep", "ledger")
@@ -473,7 +483,7 @@ def test_apply_deletes_exactly_the_candidates_and_logs_them(project):
                         project.worktrees)
     done = ac.apply_plan(plan_path, project.records, digest, git=project.git)
     assert done["deleted"] == len(gone) == len(H2_CANDIDATES)
-    assert done["bytes"] == doc["totals"]["candidate"]["bytes"]
+    assert done["bytes"] == done["freed"] == doc["totals"]["candidate"]["bytes"]
     assert not [p for p in gone if os.path.lexists(p)]
     assert_untouched(kept)
     assert not (project.root / "snapshots" / SHA_USED).exists()  # a read-only snapshot tree

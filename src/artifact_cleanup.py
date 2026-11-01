@@ -199,9 +199,17 @@ def _readlink(path: Path) -> str:
         return "?"
 
 
+def freed_bytes(st: os.stat_result) -> int:
+    """What deleting this one name frees: nothing while another hard link keeps the data (uv links the
+    files of an environment from its cache)."""
+    return st.st_size if stat.S_ISREG(st.st_mode) and st.st_nlink <= 1 else 0
+
+
 def tree_facts(path: Path, content: bool) -> dict:
-    """Bytes, files and a fingerprint of a directory tree; links are recorded, never followed."""
+    """Bytes (apparent size), the bytes deleting the tree frees, files and a fingerprint of a directory tree;
+    links are recorded, never followed."""
     total, files, newest, lines = 0, 0, 0, []
+    inodes = {}  # (dev, ino) -> [size, links, links seen inside the tree]
     for dirpath, dirnames, filenames in os.walk(path):
         dirnames.sort()
         base = Path(dirpath)
@@ -220,9 +228,11 @@ def tree_facts(path: Path, content: bool) -> dict:
                 continue
             total += st.st_size
             files += 1
+            inodes.setdefault((st.st_dev, st.st_ino), [st.st_size, st.st_nlink, 0])[2] += 1
             lines.append(f"F {rel} {st.st_size} {sha256_file(p) if content else st.st_mtime_ns}")
     digest = hashlib.sha256("\n".join(lines).encode("utf-8", "surrogateescape")).hexdigest()
-    return {"bytes": total, "files": files, "newest_mtime_ns": newest,
+    freed = sum(size for size, links, seen in inodes.values() if seen >= links)
+    return {"bytes": total, "freed": freed, "files": files, "newest_mtime_ns": newest,
             "fingerprint": {("sha256" if content else "listing"): digest}}
 
 
@@ -347,6 +357,7 @@ class Model:
         self.snapshot_holds = defaultdict(list)
         self.env_holds = defaultdict(list)
         self.locks = defaultdict(list)  # lock path -> the holds that made it live
+        self._locks_read = set()  # (content sha256, release) of the locks already read
         self.sources = []  # what was checked, for the plan header
         self._collect()
 
@@ -369,7 +380,7 @@ class Model:
         found = {Path(os.path.normpath(m.group(0).rstrip("."))) for m in self._abs_path.finditer(text)}
         for raw in _REL_PATH.findall(text):
             found.update(Path(os.path.normpath(base / raw.rstrip("."))) for base in self.checkouts)
-        return sorted(found)
+        return sorted(found, key=lambda p: (self.root not in p.parents, str(p)))  # the main checkout first
 
     def _research_doc(self, path: Path) -> bool:
         """A small research document (note, brief, receipt, lock) in some checkout; read when a live text names it."""
@@ -452,9 +463,13 @@ class Model:
         except OSError:
             return
         self.locks[str(path)].append(hold)
+        text = self._read(path)
+        key = (hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest(), hold.release)
+        if key in self._locks_read:  # the same lock in another checkout or snapshot: already read
+            return
+        self._locks_read.add(key)
         rel = self._rel(path)
-        self.scan(self._read(path), Hold("lock", rel, f"pinned by lock {rel} ({hold.reason})", hold.release),
-                  depth + 1)
+        self.scan(text, Hold("lock", rel, f"pinned by lock {rel} ({hold.reason})", hold.release), depth + 1)
 
     # -- the live sources
 
@@ -651,8 +666,14 @@ class Planner:
 
     # -- entries
 
-    def _entry(self, path: Path, area: str, kind: str, cls: str, nbytes: int, files: int, **extra) -> dict:
-        return {"path": str(path), "area": area, "kind": kind, "class": cls, "bytes": nbytes, "files": files, **extra}
+    def _entry(self, path: Path, area: str, kind: str, cls: str, facts: dict, **extra) -> dict:
+        """bytes: apparent size; freed: what deleting it frees (hard-linked data stays)."""
+        return {"path": str(path), "area": area, "kind": kind, "class": cls, "bytes": facts["bytes"],
+                "freed": facts["freed"], "files": facts["files"], "fingerprint": facts["fingerprint"], **extra}
+
+    @staticmethod
+    def _file_facts(st: os.stat_result) -> dict:
+        return {"bytes": st.st_size, "freed": freed_bytes(st), "files": 1, "fingerprint": {"stat": stat_fingerprint(st)}}
 
     def _decide(self, entry: dict, holds: list, checked: list):
         cls = entry["class"]
@@ -678,8 +699,7 @@ class Planner:
         a = a_dir.name
         if a not in m.attempts:
             facts = tree_facts(a_dir, content=False)
-            entry = self._entry(a_dir, "runs", "dir", "unregistered", facts["bytes"], facts["files"],
-                                fingerprint=facts["fingerprint"])
+            entry = self._entry(a_dir, "runs", "dir", "unregistered", facts)
             self._decide(entry, [], [f"{a} not in the records"])
             return [entry]
         run = m.att_run.get(a)
@@ -718,16 +738,13 @@ class Planner:
 
     def _file_entry(self, p: Path, cls: str, a: str, exp, attempt_holds: list, checked: list,
                     st: os.stat_result) -> dict:
-        entry = self._entry(p, "runs", "file", cls, st.st_size, 1, attempt=a, experiment=exp,
-                            fingerprint={"stat": stat_fingerprint(st)})
+        entry = self._entry(p, "runs", "file", cls, self._file_facts(st), attempt=a, experiment=exp)
         cites = sorted(self.model.cited.get(str(p), ()))
         self._decide(entry, attempt_holds, checked + [f"cited by {c}" for c in cites])
         return entry
 
     def _dir_entry(self, path: Path, area: str, cls: str, holds: list, checked: list, **extra) -> dict:
-        facts = tree_facts(path, content=False)
-        entry = self._entry(path, area, "dir", cls, facts["bytes"], facts["files"], fingerprint=facts["fingerprint"],
-                            **extra)
+        entry = self._entry(path, area, "dir", cls, tree_facts(path, content=False), **extra)
         self._decide(entry, holds, checked)
         return entry
 
@@ -801,18 +818,9 @@ class Planner:
         if st is None:
             return None
         if stat.S_ISDIR(st.st_mode):
-            total, files, newest = 0, 0, 0
-            for dirpath, _, filenames in os.walk(d):
-                for name in filenames:
-                    fst = _lstat(Path(dirpath) / name)
-                    if fst is None:
-                        continue
-                    total += 0 if stat.S_ISLNK(fst.st_mode) else fst.st_size
-                    files += 1
-                    newest = max(newest, fst.st_mtime_ns)
-            entry = self._entry(d, area, "dir", cls, total, files, fingerprint={"listing": f"{total}:{files}:{newest}"})
+            entry = self._entry(d, area, "dir", cls, tree_facts(d, content=False))
         else:
-            entry = self._entry(d, area, "file", cls, st.st_size, 1, fingerprint={"stat": stat_fingerprint(st)})
+            entry = self._entry(d, area, "file", cls, self._file_facts(st))
         self._decide(entry, [], [])
         return entry
 
@@ -854,11 +862,16 @@ def _gb(n: int) -> str:
 
 
 def totals(entries: list) -> dict:
-    out = {d: {"bytes": 0, "entries": 0} for d in (KEEP, HOLD, CANDIDATE)}
+    out = {d: {"bytes": 0, "freed": 0, "entries": 0} for d in (KEEP, HOLD, CANDIDATE)}
     for e in entries:
         out[e["decision"]]["bytes"] += e["bytes"]
+        out[e["decision"]]["freed"] += e["freed"]
         out[e["decision"]]["entries"] += 1
     return out
+
+
+def _size(nbytes: int, freed: int) -> str:
+    return _gb(nbytes) if freed == nbytes else f"{_gb(nbytes)}, frees {_gb(freed)}"
 
 
 def summary_text(doc: dict, plan_path: Path, digest: str) -> str:
@@ -869,9 +882,10 @@ def summary_text(doc: dict, plan_path: Path, digest: str) -> str:
              f"- records: `{doc['records']['path']}` (data_version {doc['records'].get('data_version')}, "
              f"sha256 {doc['records']['sha256'][:16]})",
              f"- created: {doc['created_at']} on {doc['host']}; root `{doc['root']}`",
-             f"- totals: candidate {_gb(t[CANDIDATE]['bytes'])} ({t[CANDIDATE]['entries']}), "
-             f"hold {_gb(t[HOLD]['bytes'])} ({t[HOLD]['entries']}), keep {_gb(t[KEEP]['bytes'])} "
-             f"({t[KEEP]['entries']})", ""]
+             f"- totals (apparent size; what deleting frees, when hard links keep data): candidate "
+             f"{_size(t[CANDIDATE]['bytes'], t[CANDIDATE]['freed'])} ({t[CANDIDATE]['entries']} entries), "
+             f"hold {_size(t[HOLD]['bytes'], t[HOLD]['freed'])} ({t[HOLD]['entries']}), "
+             f"keep {_gb(t[KEEP]['bytes'])} ({t[KEEP]['entries']})", ""]
     if scope["id"] != "all":
         gate = scope["gate"]
         lines += [f"## Scope {scope['id']}", "",
@@ -883,40 +897,51 @@ def summary_text(doc: dict, plan_path: Path, digest: str) -> str:
         lines += [f"- warning: {w}" for w in scope.get("warnings", [])]
         lines.append("")
     lines += ["## By area and class", "", "| area | class | candidate | hold | keep |", "|---|---|---|---|---|"]
-    table = defaultdict(lambda: {KEEP: [0, 0], HOLD: [0, 0], CANDIDATE: [0, 0]})
+    table = defaultdict(lambda: {KEEP: [0, 0, 0], HOLD: [0, 0, 0], CANDIDATE: [0, 0, 0]})
     for e in entries:
         cell = table[(e["area"], e["class"])][e["decision"]]
         cell[0] += e["bytes"]
-        cell[1] += 1
+        cell[1] += e["freed"]
+        cell[2] += 1
     for (area, cls), cells in sorted(table.items()):
         lines.append(f"| {area} | {cls} | " + " | ".join(
-            f"{_gb(cells[d][0])} ({cells[d][1]})" if cells[d][1] else "-" for d in (CANDIDATE, HOLD, KEEP)) + " |")
-    releases = defaultdict(lambda: [0, 0, set()])
+            (f"{_size(cells[d][0], cells[d][1] if d != KEEP else cells[d][0])} ({cells[d][2]})" if cells[d][2]
+             else "-") for d in (CANDIDATE, HOLD, KEEP)) + " |")
+    releases = defaultdict(lambda: {"freed": 0, "n": 0, "alone": 0, "n_alone": 0, "sources": set()})
     for e in entries:
         if e["decision"] == HOLD:
-            for release in sorted({h["release"] for h in e["holds"]}):
-                releases[release][0] += e["bytes"]
-                releases[release][1] += 1
-                releases[release][2].update(h["source"] for h in e["holds"] if h["release"] == release)
+            events = sorted({h["release"] for h in e["holds"]})
+            for release in events:
+                r = releases[release]
+                r["freed"] += e["freed"]
+                r["n"] += 1
+                if len(events) == 1:
+                    r["alone"] += e["freed"]
+                    r["n_alone"] += 1
+                r["sources"].update(h["source"] for h in e["holds"] if h["release"] == release)
     if releases:
-        lines += ["", "## Holds by release event (an entry may wait for several)", ""]
-        for release, (nbytes, n, sources) in sorted(releases.items(), key=lambda kv: -kv[1][0]):
-            shown = sorted(sources)
+        lines += ["", "## Holds by release event",
+                  "", "alone: freed when this event happens, as nothing else holds those entries; waiting: every "
+                  "entry that also waits for it.", ""]
+        for release, r in sorted(releases.items(), key=lambda kv: (-kv[1]["alone"], -kv[1]["freed"], kv[0])):
+            shown = sorted(r["sources"])
             more = f" +{len(shown) - 8}" if len(shown) > 8 else ""
-            lines.append(f"- {_gb(nbytes)} ({n}): {release} [held by {', '.join(shown[:8])}{more}]")
-    candidates = sorted((e for e in entries if e["decision"] == CANDIDATE), key=lambda e: -e["bytes"])
+            lines.append(f"- {release}: alone {_gb(r['alone'])} ({r['n_alone']}), waiting {_gb(r['freed'])} "
+                         f"({r['n']}) [held by {', '.join(shown[:8])}{more}]")
+    candidates = sorted((e for e in entries if e["decision"] == CANDIDATE), key=lambda e: (-e["freed"], -e["bytes"]))
     cited = [e for e in candidates if any(c.startswith("cited by ") for c in e["checked"])]
     if cited:
         lines += ["", "## Candidates that a result cites (rl doctor skips a deleted file; the result keeps its digest)",
-                  "", f"{len(cited)} entries, {_gb(sum(e['bytes'] for e in cited))}:", ""]
-        lines += [f"- {_gb(e['bytes'])} {e['class']} `{e['path']}` "
+                  "", f"{len(cited)} entries, {_gb(sum(e['freed'] for e in cited))}:", ""]
+        lines += [f"- {_gb(e['freed'])} {e['class']} `{e['path']}` "
                   f"({', '.join(c for c in e['checked'] if c.startswith('cited by '))})" for e in cited[:15]]
         if len(cited) > 15:
             lines.append(f"- ... {len(cited) - 15} more in plan.json")
     if candidates:
-        lines += ["", "## Largest candidates", ""]
+        lines += ["", "## Largest candidates (by bytes freed)", ""]
         for e in candidates[:25]:
-            lines.append(f"- {_gb(e['bytes'])} {e['class']} `{e['path']}` ({'; '.join(e['checked'][:4])})")
+            lines.append(f"- {_size(e['bytes'], e['freed'])} {e['class']} `{e['path']}` "
+                         f"({'; '.join(e['checked'][:4])})")
     large = sorted((e for e in entries if e["decision"] == KEEP and e["bytes"] >= 10 << 20 and e["area"] == "runs"),
                    key=lambda e: -e["bytes"])
     if large:
@@ -1031,7 +1056,7 @@ def apply_plan(plan_path: Path, records_path: Path, confirm: str, log_path: Path
     if problems:
         log({"event": "refused", "problems": problems})
         raise CleanupError("apply refused, nothing deleted:\n  " + "\n  ".join(problems))
-    deleted, freed = 0, 0
+    deleted, nbytes, freed = 0, 0, 0
     for e in planned:
         path = Path(e["path"])
         st = _lstat(path)
@@ -1049,12 +1074,13 @@ def apply_plan(plan_path: Path, records_path: Path, confirm: str, log_path: Path
             raise CleanupError(f"deleting {path} failed ({exc}); stopped after {deleted} deletions "
                                f"(see {log_path})") from None
         deleted += 1
-        freed += e["bytes"]
+        nbytes += e["bytes"]
+        freed += e["freed"]
         log({"event": "deleted", "path": str(path), "kind": e["kind"], "class": e["class"], "bytes": e["bytes"],
-             "files": e["files"], "fingerprint": e["fingerprint"], "rule": e["rule"], "attempt": e.get("attempt"),
-             "experiment": e.get("experiment"), "checked": e["checked"]})
-    log({"event": "apply-end", "deleted": deleted, "bytes": freed})
-    return {"deleted": deleted, "bytes": freed, "log": str(log_path)}
+             "freed": e["freed"], "files": e["files"], "fingerprint": e["fingerprint"], "rule": e["rule"],
+             "attempt": e.get("attempt"), "experiment": e.get("experiment"), "checked": e["checked"]})
+    log({"event": "apply-end", "deleted": deleted, "bytes": nbytes, "freed": freed})
+    return {"deleted": deleted, "bytes": nbytes, "freed": freed, "log": str(log_path)}
 
 
 # --------------------------------------------------------------------------------------------- CLI
@@ -1084,7 +1110,7 @@ def main(argv=None) -> int:
     try:
         if args.command == "apply":
             done = apply_plan(Path(args.plan), Path(args.records), args.confirm, args.log)
-            print(f"deleted {done['deleted']} entries, {_gb(done['bytes'])}; log {done['log']}")
+            print(f"deleted {done['deleted']} entries, {_size(done['bytes'], done['freed'])}; log {done['log']}")
             return 0
         records = load_records(args.records)
         root = Path(os.path.abspath(args.root))
