@@ -33,7 +33,12 @@ NAME_POOLS_SHA256 = 'a6bde954098e6bee7452abba1eabc56e7d0bf811b4ab220a5106c95c216
 MAX_ATTEMPTS = 1000
 # metadata.json SHA-256 of each released full dataset; pinned after the
 # generation run so that training refuses any other bytes.
-METADATA_SHA256 = {1: None, 4: None, 8: None}
+METADATA_SHA256 = {  # ATT-0112-1 (RES-0103)
+    1: '46fa324c1d6273a6c060df8fc4c0e2a188ec6de3f3c98d034009ea23f31d09c1',
+    4: 'ccc271d4466716ef1f73dc8154eb812d5d0d2d02dcc6a2f91985d505f2cca51e',
+    8: '58143a37ef90ba23acb3a4fd2ae63fce68f80883d77c377274fd6b156262628e',
+}
+RELEASE_DIR = '/work/xg24i002/x10041/bypass-lora/runs/ATT-0112-1'  # e1/, e4/, e8/
 
 
 def version(n_facts):

@@ -29,27 +29,89 @@ def load_data(path, split):
     return rows
 
 
-def make_schedule(rows, budget, *, phase='V2'):
+ORDER_HASH_ENCODING = 'UTF-8 episode_id followed by LF, including final LF, three epochs'
+
+
+def _cost(row):
+    return len(row['support_input_ids']) + len(row['question_input_ids'])
+
+
+def train_order(rows, phase='V2'):
     if phase not in ('V2', 'V3'):
         raise ValueError('unsupported data phase')
-    if budget <= 0 or not rows or len(rows) % 8:
-        raise ValueError('positive budget and complete batches of eight required')
+    if not rows or len(rows) % 8:
+        raise ValueError('complete batches of eight required')
     order = []
     for epoch in range(3):
         indices = list(range(len(rows)))
         random.Random(derive_seed(20261029, 'concat_loop_v2', phase, f'train-order-{epoch}')).shuffle(indices)
         order.extend(indices)
     digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order).encode('utf-8')).hexdigest()
+    return order, digest
+
+
+def make_schedule(rows, budget, *, phase='V2'):
+    if phase not in ('V2', 'V3'):
+        raise ValueError('unsupported data phase')
+    if budget <= 0 or not rows or len(rows) % 8:
+        raise ValueError('positive budget and complete batches of eight required')
+    order, digest = train_order(rows, phase)
     batches, tokens = [], 0
     for offset in range(0, len(order), 8):
         batch = order[offset:offset+8]
         batches.append(batch)
-        tokens += sum(len(rows[i]['support_input_ids']) + len(rows[i]['question_input_ids']) for i in batch)
+        tokens += sum(_cost(rows[i]) for i in batch)
         if tokens >= budget:
             break
     return {'order': order, 'batches': batches, 'steps': len(batches), 'tokens': tokens,
             'warmup_steps': math.ceil(.05*len(batches)), 'order_sha256': digest,
-            'budget': budget, 'order_hash_encoding': 'UTF-8 episode_id followed by LF, including final LF, three epochs'}
+            'budget': budget, 'order_hash_encoding': ORDER_HASH_ENCODING}
+
+
+def make_step_schedule(rows, steps, *, phase='V2'):
+    """The first ``steps`` batches of the same three-epoch order (E-0014 step budget).
+
+    On rows where the token budget stops at step N, steps=N gives the same batches.
+    """
+    if type(steps) is not int or steps <= 0:
+        raise ValueError('positive integer step budget required')
+    order, digest = train_order(rows, phase)
+    if steps * 8 > len(order):
+        raise ValueError('step budget exceeds three epochs')
+    batches = [order[offset:offset+8] for offset in range(0, steps*8, 8)]
+    return {'order': order, 'batches': batches, 'steps': steps,
+            'tokens': sum(_cost(rows[i]) for batch in batches for i in batch),
+            'warmup_steps': math.ceil(.05*steps), 'order_sha256': digest,
+            'step_budget': steps, 'order_hash_encoding': ORDER_HASH_ENCODING}
+
+
+def make_curriculum_schedule(segments):
+    """One schedule over concatenated row sets: ``segments`` is [(label, rows, steps)].
+
+    Segment k uses the first ``steps`` batches of its own rows' step schedule, so
+    steps are contiguous in segment order. Batch indices refer to the returned
+    concatenated ``rows``; warmup/cosine spans the total step count.
+    """
+    if not segments:
+        raise ValueError('empty curriculum')
+    rows, batches, parts, offset, start = [], [], [], 0, 0
+    for label, segment_rows, steps in segments:
+        plan = make_step_schedule(segment_rows, steps)
+        batches.extend([[offset + i for i in batch] for batch in plan['batches']])
+        parts.append({'label': label, 'first_step': start + 1, 'last_step': start + steps,
+                      'steps': steps, 'tokens': plan['tokens'], 'order_sha256': plan['order_sha256'],
+                      'row_offset': offset, 'rows': len(segment_rows)})
+        rows.extend(segment_rows)
+        offset += len(segment_rows)
+        start += steps
+    if len({r['episode_id'] for r in rows}) != len(rows):
+        raise ValueError('curriculum row sets share episode identities')
+    digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for batch in batches for i in batch)
+                            .encode('utf-8')).hexdigest()
+    return rows, {'batches': batches, 'steps': start, 'tokens': sum(p['tokens'] for p in parts),
+                  'warmup_steps': math.ceil(.05*start), 'step_budget': start,
+                  'curriculum': parts, 'order_sha256': digest,
+                  'order_hash_encoding': 'UTF-8 episode_id followed by LF for every scheduled example'}
 
 
 def lr_multiplier(step, total, warmup):

@@ -16,6 +16,8 @@ from bypass_core import LatentReader, process_sequence
 
 
 FUSIONS = ('F_out', 'F_pre', 'F_attnres', 'C_gate', 'C_up', 'C_dual')
+# E-0014 R6: initial tau of the learnable centered-cosine address temperature.
+CENTERED_COS_TEMPERATURE_INIT = 10.
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,8 @@ class AdapterConfig:
     eps_read: float = 1e-6
     write_scope: str = 'visible_fact_delimiter'
     slot_capacity: int = 16
+    # E-0014 R4: rank of a separate query-only tokenwise F_out prior path; 0 = absent.
+    prior_rank: int = 0
     model_revision: str = 'da87bfb608c14b7cf20ba1ce41287e8de496c0cd'
 
     def __post_init__(self):
@@ -51,6 +55,10 @@ class AdapterConfig:
             raise ValueError('unknown readout')
         if self.write_scope not in ('visible_fact_delimiter', 'all_support_tokens') or self.slot_capacity < 1:
             raise ValueError('invalid support write scope or slot capacity')
+        if type(self.prior_rank) is not int or self.prior_rank < 0:
+            raise ValueError('prior_rank must be a nonnegative integer')
+        if self.prior_rank and self.branch != 'memory':
+            raise ValueError('the prior path is defined only beside an M-line memory branch')
 
 
 class LowDimProjection(nn.Module):
@@ -123,6 +131,21 @@ class Fusion(nn.Module):
                 handle.remove()
 
 
+class PriorPath(nn.Module):
+    """Tokenwise SiLU F_out increment ``SiLU(u A) P`` added to the layer output.
+
+    P starts at zero, so the path is an exact identity at initialization.
+    """
+
+    def __init__(self, width, rank):
+        super().__init__()
+        self.A = nn.Parameter(torch.randn(width, rank) / width ** .5)
+        self.P = nn.Parameter(torch.zeros(rank, width))
+
+    def forward(self, u, valid):
+        return (F.silu(u.float() @ self.A) * valid.unsqueeze(-1)) @ self.P
+
+
 class SideBranch(nn.Module):
     def __init__(self, layer, config):
         super().__init__()
@@ -134,10 +157,14 @@ class SideBranch(nn.Module):
                 layer.self_attn.v_proj.out_features)
             self.projection = LowDimProjection(dims, config.rank)
             self.reader = LatentReader(config.rank, eta=config.eta, read_gain=config.read_gain,
-                                       eps_norm=config.eps_norm, eps_read=config.eps_read)
+                                       eps_norm=config.eps_norm, eps_read=config.eps_read,
+                                       temperature_init=CENTERED_COS_TEMPERATURE_INIT
+                                       if config.backend == 'centered_cos_slot' else None)
         else:
             self.A = nn.Parameter(torch.randn(d, config.rank) / d ** .5)
         self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features)
+        # Created last so that memory-path initialization is unchanged by its presence.
+        self.prior = PriorPath(d, config.prior_rank) if config.prior_rank else None
 
     def forward(self, u, features, state, valid, phase, write_mask=None):
         cfg = self.config
@@ -195,7 +222,12 @@ class AdaptedLayer(nn.Module):
         self.result = (state, counts)
         if phase == 'support':
             return h + layer.mlp(u)
-        return self.side.fusion(h, u, z, layer.mlp, layer.post_attention_layernorm)
+        out = self.side.fusion(h, u, z, layer.mlp, layer.post_attention_layernorm)
+        if self.side.prior is not None:
+            if phase != 'query':
+                raise ValueError('the prior path is defined only for M-line question forwards')
+            out = out + self.side.prior(u, valid).to(out.dtype)
+        return out
 
 
 @dataclass(frozen=True)
