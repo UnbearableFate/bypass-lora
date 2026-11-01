@@ -105,19 +105,26 @@ def main():
     parser.add_argument('--lr', type=float, required=True)
     parser.add_argument('--tokens', type=int, choices=(200000, 4000000), default=200000)
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--data-phase', choices=('V2', 'V3'), default='V2')
     args = parser.parse_args()
     if not math.isfinite(args.lr) or args.lr <= 0:
         raise ValueError('positive finite learning rate required')
+    if args.data_phase == 'V3' and args.tokens != 200000:
+        raise ValueError('V3 data selection is restricted to the 0.2M-token pilot')
     out = args.output
     out.mkdir(parents=True, exist_ok=True)
     start = time.monotonic()
     metrics, passed = {}, False
     stage = 'setup'
     try:
-        train_rows = load_data(args.data_dir / 'train.jsonl', 'train')
-        calibration = load_data(args.data_dir / 'calibration.jsonl', 'calibration')
-        dev = load_data(args.data_dir / 'dev.jsonl', 'dev') if args.tokens == 4000000 or args.smoke else None
-        schedule = make_schedule(train_rows, args.tokens)
+        read_data = load_data
+        if args.data_phase == 'V3':
+            from v3_pilot_data import load_data as read_data
+        train_rows = read_data(args.data_dir / 'train.jsonl', 'train')
+        calibration = read_data(args.data_dir / 'calibration.jsonl', 'calibration')
+        dev = read_data(args.data_dir / 'dev.jsonl', 'dev') if args.tokens == 4000000 or args.smoke else None
+        schedule = (make_schedule(train_rows, args.tokens, phase='V3') if args.data_phase == 'V3'
+                    else make_schedule(train_rows, args.tokens))
         (out / 'schedule.json').write_text(json.dumps(schedule) + '\n')
         if args.smoke:
             schedule = {**schedule, 'batches': schedule['batches'][:4], 'warmup_steps': 1}
@@ -150,6 +157,9 @@ def main():
             values, records = evaluate(model, tok, rows, split, constant, out / f'{split}.jsonl')
             originals[split] = records
             metrics.update({f'{split}.{key}': val for key, val in values.items()})
+            if args.data_phase == 'V3':
+                from v3_pilot_data import stratify
+                metrics.update({f'{split}.{key}': val for key, val in stratify(rows, records, constant).items()})
         metrics['peak_memory_bytes'] = torch.cuda.max_memory_allocated()
         del model
         gc.collect()
@@ -182,6 +192,7 @@ def main():
     finally:
         metrics['elapsed_s'] = time.monotonic() - start
         report = {'metrics': metrics, 'lr': args.lr, 'tokens_budget': args.tokens,
+                  'data_phase': args.data_phase,
                   'smoke': args.smoke, 'model': MODEL, 'revision': REVISION,
                   'torch': torch.__version__, 'cuda': torch.version.cuda, 'eval_batch': 16}
         (out / 'metrics.json').write_text(json.dumps(report, indent=2) + '\n')
