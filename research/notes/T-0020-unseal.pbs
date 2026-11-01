@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${V5_CONFIRM_LOCK:?reviewed immutable lock required}"
+R20_PROJECT=/work/xg24i002/x10041/bypass-lora
+R20_SOURCE="$R20_PROJECT/snapshots/$SR_CODE_COMMIT"
+R20_OUTPUT="$R20_PROJECT/runs/$SR_ATTEMPT_ID"
+R20_PYTHON="$R20_PROJECT/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$R20_OUTPUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$R20_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$R20_OUTPUT/allocation.json"
+/usr/bin/jq -e '.ok == true' "$R20_OUTPUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$R20_SOURCE/src"
+export TMPDIR="/local/${PBS_JOBID}/v5-confirm"
+mkdir -p "$TMPDIR"
+# D-0018/D-0019: hardware metadata only, with no slice acceptance condition.
+nvidia-smi -L > "$R20_OUTPUT/nvidia-smi.txt" 2>&1 || true
+/usr/bin/jq -n --arg visible "${CUDA_VISIBLE_DEVICES:-}" \
+  '{cuda_visible_devices:$visible,profile_policy:"D-0019 metadata only"}' \
+  > "$R20_OUTPUT/device-metadata.json"
+cd "$R20_SOURCE"
+R20_ARGS=()
+if [[ "${V5_RESUME:-0}" == 1 ]]; then
+  R20_ARGS+=(--resume)
+fi
+exec "$R20_PYTHON" src/v5_confirm.py evaluate --lock "$V5_CONFIRM_LOCK" \
+  --output "$R20_OUTPUT" --unseal "${R20_ARGS[@]}"
