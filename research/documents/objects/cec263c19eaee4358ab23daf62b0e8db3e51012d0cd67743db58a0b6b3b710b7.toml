@@ -1,0 +1,33 @@
+[project]
+name = "bypass-lora"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "latticedb==0.15.0",
+    "pyyaml>=6.0",
+    "transformers==4.57.1",
+    "pytest==8.4.2",
+]
+
+[project.optional-dependencies]
+cpu = ["torch==2.10.0"]
+cuda = ["torch==2.10.0"]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cuda" }]]
+required-environments = ["sys_platform == 'linux' and platform_machine == 'aarch64'"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", extra = "cpu" }, { index = "pytorch-cu128", extra = "cuda" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
