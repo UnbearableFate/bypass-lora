@@ -170,11 +170,11 @@ def normal_training_agreement(normal, trained, training_hardware='unknown', inte
 
 
 def analyze(spec, stage='final'):
-    expected = expected_release(spec)
+    release_pins = expected_release(spec)
     if set(spec.get('training_runs', {})) != set(ARM_IDS):
         raise ValueError('all nine registered training arms are required')
     base_root = Path(spec['base_run'])
-    if reference(base_root/'manifest.json')['sha256'] != expected['base_manifest_sha256']:
+    if reference(base_root/'manifest.json')['sha256'] != release_pins['base_manifest_sha256']:
         raise ValueError('Base manifest differs from accepted ATT-0024-1')
     base_rows, base_manifest = _read_run(base_root, 'Base', 'base')
     rows = {'Base': validate_rows(base_rows, 'Base')}
@@ -186,7 +186,7 @@ def analyze(spec, stage='final'):
         root = Path(spec['training_runs'][arm])
         manifest, refs, _ = validate_formal_run(root, arm)
         metrics = manifest['metrics']
-        if metrics['source.commit'] != expected['source_commit'] or metrics['lr_lock.sha256'] != expected['lr_lock_sha256']:
+        if metrics['source.commit'] != release_pins['source_commit'] or metrics['lr_lock.sha256'] != release_pins['lr_lock_sha256']:
             raise ValueError(f'{arm}: source commit or LR lock differs from expected release')
         plan = {k: metrics.get(k) for k in ('plan.steps', 'plan.examples', 'plan.input_tokens',
                 'plan.order_sha256', 'split_manifest.sha256', 'lr_lock.sha256', 'source.commit',
@@ -219,9 +219,9 @@ def analyze(spec, stage='final'):
             if set(accounting.get('layers', {})) != {'6', '13', '20', '27'}:
                 raise ValueError(f'{arm}: accounting must cover all four adapted layers')
             depth = 2 if arm == 'RB1-03' else 4 if arm in ('RB1-04', 'RB1-05', 'RB1-06') else 1
-            expected = 0 if arm == 'RB1-01' else metrics['train.input_tokens']
+            expected_writes = 0 if arm == 'RB1-01' else metrics['train.input_tokens']
             for counts in accounting['layers'].values():
-                if (counts['writes'] != expected or counts['reads'] != expected*depth or
+                if (counts['writes'] != expected_writes or counts['reads'] != expected_writes*depth or
                     counts['valid_tokens'] != metrics['train.input_tokens'] or
                     counts['attention'] != metrics['train.examples'] or counts['ffn'] != metrics['train.examples']):
                     raise ValueError(f'{arm}: invalid per-layer write/read/original call counts')
@@ -300,8 +300,8 @@ def analyze(spec, stage='final'):
             raise ValueError('incomplete RB1 latency run')
         if guard.get('passed') is not True or guard.get('profile') != '2g.24gb':
             raise ValueError('comparative latency was not measured on required 2g profile')
-        expected = {'RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07', 'RB1-07-merged'}
-        if set(latency['measurements']) not in (expected, expected | {'Base'}):
+        expected_labels = {'RB1-01', 'RB1-02', 'RB1-04', 'RB1-08', 'RB1-07', 'RB1-07-merged'}
+        if set(latency['measurements']) not in (expected_labels, expected_labels | {'Base'}):
             raise ValueError('latency grid differs from E-0021')
         for label, value in latency['measurements'].items():
             verified_latency(value)
@@ -317,7 +317,7 @@ def analyze(spec, stage='final'):
             Path(path).name for path in spec['intervention_runs'].values()} | {Path(spec['latency_run']).name}
         if not required_cost <= {row['attempt'] for row in report['cost']['rows']}:
             raise ValueError('measured usage is missing for a required training/intervention/latency attempt')
-    report.update(contract='E-0021@1', stage=stage, expected=expected, sources=sources, common_training=common,
+    report.update(contract='E-0021@1', stage=stage, expected=release_pins, sources=sources, common_training=common,
                   performance=performance, learning_curves=curves, training_runtime=runtime,
                   interventions=intervention_tables, read_diagnostics=read_tables,
                   interventions_normal_vs_training=agreement,
