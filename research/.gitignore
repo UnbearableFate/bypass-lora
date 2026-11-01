@@ -1,0 +1,5 @@
+# the active database, call logs and raw run artifacts stay out of git;
+# sealed documents are kept, and `rl export` writes consistent snapshots
+state/
+calls/
+artifacts/

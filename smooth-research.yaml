@@ -1,0 +1,69 @@
+# Smooth Research configuration. Resource limits and scope live in docs/constraints.md; the
+# layout is fixed: experiment code in src/, documents for people in docs/, records in research/.
+# Model entries: <entry>:<model>[@effort]; entry is claude, codex, pi or manual. Researchers and
+# reviewers use the first available entry of their list; every available advisor is asked.
+# agents.args: extra launch arguments for sessions opened in herdr tabs (rl agent open);
+# agents.watch_minutes: minutes between the watcher's rounds over those sessions (0: off).
+# usage: when a Claude or Codex 5-hour or weekly window has this percent left or less, its
+# researchers and reviewers hand over to the next model entry (more is kept on the coordinator's
+# host); advisors keep the rest. rl usage shows the windows.
+# manuscript.latex: the command that builds the manuscript (rl manuscript) as a PDF, e.g.
+# latexmk -pdf -interaction=nonstopmode (null: a Markdown draft, docs/manuscript.md).
+# compute: where experiments run (default: the resource used unless a task says otherwise).
+# rl connects to none of them; rl compute checks them, rl compute steps prints how to stage a
+# commit there. A remote resource, for example:
+#   cluster:
+#     host: cluster-login            # ssh alias, or pi-env-mcp's host name
+#     connect: ssh                   # ssh, or pi-env-mcp:<MCP server name>
+#     jobs: mcp:cluster-jobs         # shell, mcp:<server> or skill:<name>
+#     workspace: /shared/<user>/<project>        # absolute cluster workspace
+#     code: git                       # git (push, the host fetches) or archive (upload)
+# On a login node set compute.coordinator: login; use a remote resource with connect: local,
+# jobs: mcp:<server>, code: archive and a shared workspace (no host, SSH or push needed).
+# compute.repository: github-private lets the coordinator's rl session start create a missing git
+# remote of those resources as a private GitHub repository (gh) before it pushes; none: never.
+version: 1
+models:
+  researcher:
+  - codex:gpt-6-astra@high
+  - claude:claude-opus-5-5@high
+  reviewer:
+  - claude:claude-opus-5-5@high
+  - codex:gpt-6-astra@high
+  advisor:
+  - codex:gpt-6-astra@max
+  - claude:claude-fable-5-1@high
+advice:
+  max_rounds: 3
+agents:
+  args:
+    claude:
+    - --permission-mode
+    - auto
+    codex: []
+    pi: []
+  watch_minutes: 20
+usage:
+  switch_left_percent: 10
+  coordinator_host_left_percent: 20
+context:
+  work_target_tokens: 4000
+  advice_target_tokens: 10000
+manuscript:
+  latex: null
+compute:
+  coordinator: login
+  default: miyabi
+  repository: none
+  resources:
+    miyabi:
+      kind: remote
+      connect: local
+      jobs: mcp:miyabi-mcp
+      workspace: /work/xg24i002/x10041/bypass-lora
+      code: archive
+      notes: >-
+        Miyabi-G GH200 nodes (aarch64) through the miyabi-mcp PBS server, PBS group
+        xg24i002; /work is shared between login and compute nodes. Login nodes never run workloads.
+        Queues: debug-g (<=30 min), short-g (<=8 h), regular-g, interact-g; MIG (GH200 MIG 2g.24gb):
+        debug-mig, short-mig, regular-mig, interact-mig. Scheduled stop 2026-11-25 09:00 JST.
