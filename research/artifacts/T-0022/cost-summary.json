@@ -1,0 +1,1053 @@
+{
+  "experiment": "E-0019@1",
+  "scope": "RB0 engineering/cost diagnostics only",
+  "sources": [
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/manifest.json",
+      "sha256": "d4d32271c6361efd93b6b97b881ac24b023f66ab82644302552cf4002b0efe23",
+      "bytes": 719
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/allocation.json",
+      "sha256": "b658981c39cedeca31f210aecc64be0a559a2734d41cbdb9fcd0c2199c4f6a02",
+      "bytes": 413
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/mig-profile.json",
+      "sha256": "9f1984e5c15a5a4f720123831ba1a894af49b2ed39ae840c0c36b6b112acc2e5",
+      "bytes": 382
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/manifest.json",
+      "sha256": "306b0612446d73c4fdce0c9f204b9642e8709fe8c8d1e00dd90e9cc3ffeaf9c7",
+      "bytes": 1039
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/allocation.json",
+      "sha256": "82f4903e63d7c22841831c8ffd221c40c138636682dac76a02b2f2570b50708c",
+      "bytes": 413
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/mig-profile.json",
+      "sha256": "51d637b72b782d85301172111d94c9943b988ba0161af5e34f13b8ecf73802ac",
+      "bytes": 382
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/timings.json",
+      "sha256": "f0b1454398bce6465ac1b6d1b2cadd45e9d277f533aaed69055096b52bdb391e",
+      "bytes": 46120
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/timings.json",
+      "sha256": "16f10cb7e130bed59727b40d7dd72a1e6093465b74ad22db244ff1daaa82ccda",
+      "bytes": 25097
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/cost-estimates.json",
+      "sha256": "cbc5ae7c51d6e4ebdb950aec85ce65e3cbe2da7ed6893e1d607ce32a006748d8",
+      "bytes": 15201
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/schedules.json",
+      "sha256": "401cf27197b9c3d56da6985d5f8e931494402399ed7e8dc7f22ac486ab4372f3",
+      "bytes": 953
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/latency-base.json",
+      "sha256": "31591f1bd3eb07c8cb4bfb62efe2c6ec61924a86ae5638d26edc05a69a1e88fc",
+      "bytes": 3557
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/checks/checks.xml",
+      "sha256": "61faab42b1300b783cdc54df22f023a9eef59ec5f83f23ffe5d89a5d5e0c6a43",
+      "bytes": 573317
+    }
+  ],
+  "source_hashes_unchanged_since397check_snapshot": {
+    "src/bypass_core.py": "58985103765600a58ff76be7a0293dc0949f1340305264ea45f8a933dc441016",
+    "src/bypass_model.py": "3d5116560cf57e5d2ed10fcf6595242a19f04b0710cee93f113b69604e5426fd",
+    "src/rb_train.py": "58e49eff473be1685bb0e94c9cdd719379b265768aeb38acf6eda962b4bb0b7d",
+    "src/rb_data.py": "2a8100fca6431d4b011f796c240b97690a9a1c37e85dff239023fce475bd5a88",
+    "src/rb_history.py": "cbecf9f20eb3f5b75bc5711d3950854014f16918b5eefff515eee15a0ca1e964",
+    "src/v1_run.py": "38d2456cc69d3406b76ab77a32cbf9ac8107983617bbbc448a13306d046b6358",
+    "src/v1_data.py": "63d9715eed984b474003cebad05b8f6fe5b34b8a2de0716a1f9e2a759123df1f",
+    "src/v1_lora.py": "f81cdc627679ac66cd710395af2a3c9e888beff901cc67b636ea605ae1b18bbe",
+    "src/calibrate.py": "30c7c268463e630e409dcc54b6a63af8becd0d50d548650c1ebb49ee30b0692d",
+    "src/tolerances.json": "924b849a5157481b8c30b40d697f9889a4ba12a999b2c15b8e49e1f2571c6acd",
+    "pyproject.toml": "cd1881a570a7ff4ca6e0878d36c1448f1330ec027e2985765f3d23c3dbb71b4d",
+    "uv.lock": "31429457ceece707abf1505af6e6210b44a6e2817d2527241892f0587aca47a3"
+  },
+  "schedules": {
+    "RBc": {
+      "plan.steps": 1096,
+      "plan.examples": 2192,
+      "plan.input_tokens": 200229,
+      "plan.order_sha256": "053284831520676982857bf9677a9fa3e338b0bbad4d2ce2af1c3f88d20457d3",
+      "plan.epoch_end_steps": {}
+    },
+    "RB1": {
+      "plan.steps": 13115,
+      "plan.examples": 26230,
+      "plan.input_tokens": 2000069,
+      "plan.order_sha256": "33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf",
+      "plan.epoch_end_steps": {
+        "1": 8722
+      }
+    },
+    "RB5": {
+      "plan.steps": 26165,
+      "plan.examples": 52329,
+      "plan.input_tokens": 3629259,
+      "plan.order_sha256": "02d68feddba6014f733fa3ede8b08308b6948681120ccd27bc27d396ef86b997",
+      "plan.epoch_end_steps": {
+        "1": 8722,
+        "2": 17443,
+        "3": 26165
+      }
+    },
+    "excluded": [
+      {
+        "task": "piqa",
+        "id": 5528,
+        "candidate_lengths": [
+          537,
+          537
+        ],
+        "reason": "a complete candidate exceeds max_length"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case": "RB1-01",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.21769417720031925,
+      "tokens_per_second": 843.5687272931373,
+      "peak_cuda_bytes": 2718761472,
+      "parameters": 663552,
+      "load_seconds": 1.1669188139494509,
+      "save_seconds": 0.01574915600940585,
+      "sample_eval_seconds": 5.747553162043914,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 603.4438302996066,
+          "node_h": 0.04190582154858379,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 363.6840932741073
+        },
+        "RB1": {
+          "seconds": 3745.309339111084,
+          "node_h": 0.2600909263271586,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 177.5801236689977
+        },
+        "RB5": {
+          "seconds": 6586.2183515752495,
+          "node_h": 0.4573762744149479,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 177.5801236689977
+        }
+      }
+    },
+    {
+      "case": "RB1-02",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.21496926406922284,
+      "tokens_per_second": 854.2616582660188,
+      "peak_cuda_bytes": 2727168000,
+      "parameters": 663552,
+      "load_seconds": 0.24886942299781367,
+      "save_seconds": 0.00583366904174909,
+      "sample_eval_seconds": 6.004680322017521,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 615.8093401589547,
+          "node_h": 0.04276453751103852,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 379.9541573160887
+        },
+        "RB1": {
+          "seconds": 3747.447925167877,
+          "node_h": 0.26023943924776927,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 185.52449087699642
+        },
+        "RB5": {
+          "seconds": 6552.796821271235,
+          "node_h": 0.4550553348105024,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 185.52449087699642
+        }
+      }
+    },
+    {
+      "case": "RB1-03",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.22565991376934108,
+      "tokens_per_second": 813.7909694838763,
+      "peak_cuda_bytes": 2728759296,
+      "parameters": 663552,
+      "load_seconds": 0.25220235501183197,
+      "save_seconds": 0.006030568038113415,
+      "sample_eval_seconds": 6.1706678490154445,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 638.0327073520739,
+          "node_h": 0.04430782689944957,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 390.4572395058642
+        },
+        "RB1": {
+          "seconds": 3913.304949250334,
+          "node_h": 0.2717572881423843,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 190.65294897747276
+        },
+        "RB5": {
+          "seconds": 6858.166823940235,
+          "node_h": 0.47626158499584964,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 190.65294897747276
+        }
+      }
+    },
+    {
+      "case": "RB1-04",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.2432743524684338,
+      "tokens_per_second": 754.8679017605373,
+      "peak_cuda_bytes": 2731941888,
+      "parameters": 663552,
+      "load_seconds": 0.2502391419839114,
+      "save_seconds": 0.006000424036756158,
+      "sample_eval_seconds": 6.539614184002858,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 680.6817404553664,
+          "node_h": 0.04726956530940044,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 413.802811007979
+        },
+        "RB1": {
+          "seconds": 4201.310380393963,
+          "node_h": 0.2917576653051363,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 202.05215381248976
+        },
+        "RB5": {
+          "seconds": 7376.040680107024,
+          "node_h": 0.5122250472296545,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 202.05215381248976
+        }
+      }
+    },
+    {
+      "case": "RB1-05",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.2335112520662369,
+      "tokens_per_second": 786.4289124187873,
+      "peak_cuda_bytes": 2728771584,
+      "parameters": 663552,
+      "load_seconds": 0.24737042299238965,
+      "save_seconds": 0.005964775977190584,
+      "sample_eval_seconds": 6.482605962955859,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 666.3712424627291,
+          "node_h": 0.04627578072657841,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 410.1955397751411
+        },
+        "RB1": {
+          "seconds": 4064.454730999812,
+          "node_h": 0.28225380076387585,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 200.29079090583062
+        },
+        "RB5": {
+          "seconds": 7111.776570464203,
+          "node_h": 0.493873372948903,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 200.29079090583062
+        }
+      }
+    },
+    {
+      "case": "RB1-06",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.2438315370719647,
+      "tokens_per_second": 753.1429371492675,
+      "peak_cuda_bytes": 2731941888,
+      "parameters": 663552,
+      "load_seconds": 0.24125409498810768,
+      "save_seconds": 0.0060438839718699455,
+      "sample_eval_seconds": 6.693008553003892,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 690.9896630527257,
+          "node_h": 0.0479853932675504,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 423.5090443268643
+        },
+        "RB1": {
+          "seconds": 4232.296788523899,
+          "node_h": 0.29390949920304854,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 206.7915255502267
+        },
+        "RB5": {
+          "seconds": 7414.298347313038,
+          "node_h": 0.5148818296745166,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 206.7915255502267
+        }
+      }
+    },
+    {
+      "case": "RB1-07",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.21634898676828015,
+      "tokens_per_second": 848.8137741855338,
+      "peak_cuda_bytes": 2816188416,
+      "parameters": 630784,
+      "load_seconds": 0.23880955704953521,
+      "save_seconds": 0.007423696981277317,
+      "sample_eval_seconds": 5.727484721050132,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 599.7715349550231,
+          "node_h": 0.04165080103854327,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 362.41423589993843
+        },
+        "RB1": {
+          "seconds": 3722.7023848921585,
+          "node_h": 0.25852099895084435,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 176.96007612301682
+        },
+        "RB5": {
+          "seconds": 6546.056662218214,
+          "node_h": 0.4545872682095982,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 176.96007612301682
+        }
+      }
+    },
+    {
+      "case": "RB1-08",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.2172862675378565,
+      "tokens_per_second": 845.1523516920162,
+      "peak_cuda_bytes": 2752333824,
+      "parameters": 1318912,
+      "load_seconds": 0.24387062498135492,
+      "save_seconds": 0.00747682002838701,
+      "sample_eval_seconds": 6.120629042037763,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 625.680587091581,
+          "node_h": 0.04345004077024868,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 387.29096724510885
+        },
+        "RB1": {
+          "seconds": 3795.739204829733,
+          "node_h": 0.2635930003353981,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 189.1069176001508
+        },
+        "RB5": {
+          "seconds": 6631.32499619876,
+          "node_h": 0.4605086802915806,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 189.1069176001508
+        }
+      }
+    },
+    {
+      "case": "RB1-09",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 0.21491130370064637,
+      "tokens_per_second": 854.4920478254381,
+      "peak_cuda_bytes": 2733459456,
+      "parameters": 925696,
+      "load_seconds": 0.24123547202907503,
+      "save_seconds": 0.006537451990880072,
+      "sample_eval_seconds": 6.158747233042959,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 625.4869709566427,
+          "node_h": 0.04343659520532241,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 389.70294662870526
+        },
+        "RB1": {
+          "seconds": 3770.4739659727634,
+          "node_h": 0.26183846985921966,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 190.28464190854748
+        },
+        "RB5": {
+          "seconds": 6575.066479266199,
+          "node_h": 0.4566018388379305,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 190.28464190854748
+        }
+      }
+    },
+    {
+      "case": "RB1-02-reference",
+      "attempt": "ATT-0189-1",
+      "step_seconds": 2.1576381781505187,
+      "tokens_per_second": 85.11158259046579,
+      "peak_cuda_bytes": 2742597632,
+      "parameters": 663552,
+      "load_seconds": 0.24216998799238354,
+      "save_seconds": 0.006145449005998671,
+      "sample_eval_seconds": 53.044245932018384,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 5721.459032935795,
+          "node_h": 0.39732354395387465,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 3356.4454196948345
+        },
+        "RB1": {
+          "seconds": 36492.36201729588,
+          "node_h": 2.5341918067566587,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 1638.8893650853684
+        },
+        "RB5": {
+          "seconds": 64649.540242160154,
+          "node_h": 4.4895514057055665,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 1638.8893650853684
+        }
+      }
+    },
+    {
+      "case": "Cdual32-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.24389902014343534,
+      "tokens_per_second": 752.9345541937913,
+      "peak_cuda_bytes": 2757107712,
+      "parameters": 1318912,
+      "load_seconds": 0.616196577961091,
+      "save_seconds": 0.01129150198539719,
+      "sample_eval_seconds": 6.669065085006878,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 689.9235121051419,
+          "node_h": 0.047911355007301516,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 421.99398944997563
+        },
+        "RB1": {
+          "seconds": 4230.238097144667,
+          "node_h": 0.29376653452393525,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 206.0517526611209
+        },
+        "RB5": {
+          "seconds": 7413.120310016498,
+          "node_h": 0.5148000215289235,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 206.0517526611209
+        }
+      }
+    },
+    {
+      "case": "Cup32-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.22850755502993705,
+      "tokens_per_second": 803.649577257702,
+      "peak_cuda_bytes": 2738233344,
+      "parameters": 925696,
+      "load_seconds": 0.2521493390086107,
+      "save_seconds": 0.006311498989816755,
+      "sample_eval_seconds": 6.470554778003134,
+      "adapter_state_M_c_bytes": 16896,
+      "estimates": {
+        "RBc": {
+          "seconds": 660.1294146234046,
+          "node_h": 0.04584232045995865,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 409.43298497158503
+        },
+        "RB1": {
+          "seconds": 3996.9794428604155,
+          "node_h": 0.27756801686530663,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 199.91844969315676
+        },
+        "RB5": {
+          "seconds": 6979.003036001094,
+          "node_h": 0.4846529886111871,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 199.91844969315676
+        }
+      }
+    },
+    {
+      "case": "T0-R32-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.2103534525714349,
+      "tokens_per_second": 873.0068261543596,
+      "peak_cuda_bytes": 2722718208,
+      "parameters": 663552,
+      "load_seconds": 0.24112498899921775,
+      "save_seconds": 0.006020873028319329,
+      "sample_eval_seconds": 5.883278396038804,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 603.0607975130365,
+          "node_h": 0.041879222049516426,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 372.2722885057446
+        },
+        "RB1": {
+          "seconds": 3668.141693185123,
+          "node_h": 0.25473206202674464,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 181.7735783719456
+        },
+        "RB5": {
+          "seconds": 6413.254249242349,
+          "node_h": 0.4453648784196076,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 181.7735783719456
+        }
+      }
+    },
+    {
+      "case": "T0-Cdual32-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.2124202260916354,
+      "tokens_per_second": 864.5127791210429,
+      "peak_cuda_bytes": 2744738304,
+      "parameters": 1318912,
+      "load_seconds": 0.28158436599187553,
+      "save_seconds": 0.007614163972903043,
+      "sample_eval_seconds": 5.89264502399601,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 605.95912654677,
+          "node_h": 0.04208049489908125,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 372.86497438434566
+        },
+        "RB1": {
+          "seconds": 3696.7769269557866,
+          "node_h": 0.2567206199274852,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 182.06297577360627
+        },
+        "RB5": {
+          "seconds": 6468.860877451628,
+          "node_h": 0.4492264498230297,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 182.06297577360627
+        }
+      }
+    },
+    {
+      "case": "T0-Cup32-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.211839716542745,
+      "tokens_per_second": 866.8818246032024,
+      "peak_cuda_bytes": 2730058240,
+      "parameters": 925696,
+      "load_seconds": 0.2540326379821636,
+      "save_seconds": 0.008281240006908774,
+      "sample_eval_seconds": 5.85318824503338,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 602.7986560309646,
+          "node_h": 0.041861017779928095,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 370.3682940621339
+        },
+        "RB1": {
+          "seconds": 3683.0136968992033,
+          "node_h": 0.25576484006244465,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 180.8438935850263
+        },
+        "RB5": {
+          "seconds": 6447.521997782026,
+          "node_h": 0.4477445831793074,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 180.8438935850263
+        }
+      }
+    },
+    {
+      "case": "R44-S1",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.20382301755889784,
+      "tokens_per_second": 900.9777315603443,
+      "peak_cuda_bytes": 2739292160,
+      "parameters": 916608,
+      "load_seconds": 0.3720435200375505,
+      "save_seconds": 0.006690285983495414,
+      "sample_eval_seconds": 5.745054851984605,
+      "adapter_state_M_c_bytes": 31680,
+      "estimates": {
+        "RBc": {
+          "seconds": 587.2880801370746,
+          "node_h": 0.040783894453963514,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 363.526009372485
+        },
+        "RB1": {
+          "seconds": 3561.4043239305474,
+          "node_h": 0.24731974471739912,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 177.50293426390868
+        },
+        "RB5": {
+          "seconds": 6221.294703074164,
+          "node_h": 0.4320343543801503,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 177.50293426390868
+        }
+      }
+    },
+    {
+      "case": "R44-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.23183301366050726,
+      "tokens_per_second": 792.1218686693156,
+      "peak_cuda_bytes": 2745835520,
+      "parameters": 916608,
+      "load_seconds": 0.23079971299739555,
+      "save_seconds": 0.006317802995909005,
+      "sample_eval_seconds": 6.31342726299772,
+      "adapter_state_M_c_bytes": 31680,
+      "estimates": {
+        "RBc": {
+          "seconds": 653.8103145443578,
+          "node_h": 0.0454034940655804,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 399.4905318594444
+        },
+        "RB1": {
+          "seconds": 4016.2765726840153,
+          "node_h": 0.2789080953252788,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 195.06373625949433
+        },
+        "RB5": {
+          "seconds": 7041.697400953635,
+          "node_h": 0.48900676395511355,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 195.06373625949433
+        }
+      }
+    },
+    {
+      "case": "R64-S1",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.20386373862042093,
+      "tokens_per_second": 900.7977644416891,
+      "peak_cuda_bytes": 2762164224,
+      "parameters": 1343488,
+      "load_seconds": 0.24729636998381466,
+      "save_seconds": 0.00701313599711284,
+      "sample_eval_seconds": 5.764678154955618,
+      "adapter_state_M_c_bytes": 66560,
+      "estimates": {
+        "RBc": {
+          "seconds": 588.4496539424365,
+          "node_h": 0.04086455930155809,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 364.7677000444714
+        },
+        "RB1": {
+          "seconds": 3564.7206805694827,
+          "node_h": 0.24755004726176963,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 178.10922853733953
+        },
+        "RB5": {
+          "seconds": 6225.142469565976,
+          "node_h": 0.4323015603865261,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 178.10922853733953
+        }
+      }
+    },
+    {
+      "case": "R64-S4",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.23473916688701138,
+      "tokens_per_second": 782.3151220792766,
+      "peak_cuda_bytes": 2771656704,
+      "parameters": 1343488,
+      "load_seconds": 0.24770174804143608,
+      "save_seconds": 0.007154673046898097,
+      "sample_eval_seconds": 6.584156144992448,
+      "adapter_state_M_c_bytes": 66560,
+      "estimates": {
+        "RBc": {
+          "seconds": 674.1430916625288,
+          "node_h": 0.0468154924765645,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 416.62126300632286
+        },
+        "RB1": {
+          "seconds": 4096.2484872788145,
+          "node_h": 0.28446170050547326,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 203.42835107730608
+        },
+        "RB5": {
+          "seconds": 7159.594615154313,
+          "node_h": 0.4971940704968273,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 203.42835107730608
+        }
+      }
+    },
+    {
+      "case": "LoRA28-r1",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.37185061294818295,
+      "tokens_per_second": 493.85423502203577,
+      "peak_cuda_bytes": 3655368704,
+      "parameters": 630784,
+      "load_seconds": 0.26205925398971885,
+      "save_seconds": 0.02114868798526004,
+      "sample_eval_seconds": 7.749331223021727,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 898.1596013985591,
+          "node_h": 0.0623721945415666,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 490.34927035336085
+        },
+        "RB1": {
+          "seconds": 6074.507829335019,
+          "node_h": 0.4218408214815985,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 239.42835466472698
+        },
+        "RB5": {
+          "seconds": 10927.158328308808,
+          "node_h": 0.7588304394658895,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 239.42835466472698
+        }
+      }
+    },
+    {
+      "case": "LoRA28-r2",
+      "attempt": "ATT-0191-1",
+      "step_seconds": 0.3982864891702775,
+      "tokens_per_second": 461.0751431276628,
+      "peak_cuda_bytes": 3665862656,
+      "parameters": 1261568,
+      "load_seconds": 0.398254526022356,
+      "save_seconds": 0.021659989026375115,
+      "sample_eval_seconds": 7.953703130013309,
+      "adapter_state_M_c_bytes": 0,
+      "estimates": {
+        "RBc": {
+          "seconds": 940.2014220467069,
+          "node_h": 0.06529176541991019,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
+          "estimated_eval_seconds_per_pass": 503.28117539006035
+        },
+        "RB1": {
+          "seconds": 6453.0592816139,
+          "node_h": 0.448129116778743,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 245.7427614209279
+        },
+        "RB5": {
+          "seconds": 11650.697965286021,
+          "node_h": 0.809076247589307,
+          "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
+          "estimated_eval_seconds_per_pass": 245.7427614209279
+        }
+      }
+    }
+  ],
+  "latency": {
+    "Base": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 12253.712351073136,
+      "decode_tokens": 128,
+      "decode_p50_ms": 38.582280511036515,
+      "decode_p95_ms": 39.51348701957613,
+      "peak_cuda_bytes": 1484018176,
+      "adapter_persistent_state": {
+        "M_c_bytes": 0,
+        "counts_bytes": 0
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    },
+    "RB1-01": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 11579.485260873944,
+      "decode_tokens": 128,
+      "decode_p50_ms": 40.37216102005914,
+      "decode_p95_ms": 41.23312700539827,
+      "peak_cuda_bytes": 1489336832,
+      "adapter_persistent_state": {
+        "M_c_bytes": 0,
+        "counts_bytes": 0
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    },
+    "RB1-02": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 10833.119255920112,
+      "decode_tokens": 128,
+      "decode_p50_ms": 43.37793798185885,
+      "decode_p95_ms": 44.45818503154442,
+      "peak_cuda_bytes": 1489375744,
+      "adapter_persistent_state": {
+        "M_c_bytes": 16896,
+        "counts_bytes": 32
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    },
+    "RB1-04": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 9939.951662820069,
+      "decode_tokens": 128,
+      "decode_p50_ms": 47.563822008669376,
+      "decode_p95_ms": 48.327939002774656,
+      "peak_cuda_bytes": 1489375744,
+      "adapter_persistent_state": {
+        "M_c_bytes": 16896,
+        "counts_bytes": 32
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    },
+    "RB1-07": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 11533.23232354168,
+      "decode_tokens": 128,
+      "decode_p50_ms": 40.828029974363744,
+      "decode_p95_ms": 41.42232198501006,
+      "peak_cuda_bytes": 1489064448,
+      "adapter_persistent_state": {
+        "M_c_bytes": 0,
+        "counts_bytes": 0
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    },
+    "RB1-07-merged": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 12258.502825324513,
+      "decode_tokens": 128,
+      "decode_p50_ms": 37.52006948343478,
+      "decode_p95_ms": 39.30676996242255,
+      "peak_cuda_bytes": 1484018176,
+      "adapter_persistent_state": {
+        "M_c_bytes": 0,
+        "counts_bytes": 0
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    },
+    "RB1-08": {
+      "batch": 1,
+      "prefill_length": 512,
+      "prefill_passes": 5,
+      "prefill_tokens_per_second": 10383.361872321762,
+      "decode_tokens": 128,
+      "decode_p50_ms": 45.67417351063341,
+      "decode_p95_ms": 46.54784395825118,
+      "peak_cuda_bytes": 1494618624,
+      "adapter_persistent_state": {
+        "M_c_bytes": 16896,
+        "counts_bytes": 32
+      },
+      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
+    }
+  },
+  "full_dev_seconds": 185.52449087699642,
+  "RB1_training_monitor_reload_node_h": 2.443961088134835,
+  "max_nonreference_RB1_or_side_proxy_step_seconds": 0.24389902014343534,
+  "profile_required": false,
+  "RB1_core_estimate_exceeds4": false,
+  "RBc_family_node_h_per_candidate": {
+    "RBc-L": 0.04165080103854327,
+    "RBc-T": 0.04190582154858379,
+    "RBc-R": 0.04276453751103852,
+    "RBc-C": 0.04345004077024868
+  },
+  "RBc_12candidate_node_h": 0.5093136026052428,
+  "RBc_16candidate_node_h": 0.6790848034736571,
+  "actual_T0022_through_timing_MIG_seconds": 1755,
+  "actual_T0022_through_timing_node_h": 0.121875,
+  "timing_sample_rule": "20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches",
+  "estimate_rule": "RBc one load+plannedsteps*measuredstep+one4096calibration pass,no export/reload;RB1/RB5 two loads+steps+five scaleddev passes+save",
+  "limits": [
+    "Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.",
+    "Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.",
+    "RB5 matrix/monitoring remains conditional;S2 unmeasured layouts need labeled interpolation;S1concatT0 and mixed-rankLoRA are not measured here.",
+    "Latency uses synthetic512tokens and128fixed decoder steps;mergedLoRA timing only,unmerged adapters for task scoring.",
+    "D0026/D0027 preserve0.50002;reference-matched BF16shape-change exceedances remain diagnostics,decisiveFP32 and same-shapeBF16 gates pass."
+  ],
+  "formal_RB_training_started": false,
+  "confirmation_evaluated": false
+}
