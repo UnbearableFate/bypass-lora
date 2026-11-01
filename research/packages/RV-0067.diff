@@ -1,0 +1,170 @@
+diff --git a/research/notes/T-0026-implementation.md b/research/notes/T-0026-implementation.md
+index 9a552f5..9f94a8d 100644
+--- a/research/notes/T-0026-implementation.md
++++ b/research/notes/T-0026-implementation.md
+@@ -23,7 +23,8 @@ Review package for the E-0023@1 code paths that are new since RV-0059 (diff base
+   - formal, not a smoke run;
+   - `readiness_passed` true;
+   - run on the same start checkpoint files.
+-- `start_provenance(..., ready_run=None)` makes a start formal if it is eligible and either passed the old H3 gate or has such a readiness run. It records `hop1_gate_passed` and `readiness`. The CLI option `--ready-run` applies to `arm` and `analyze`.
++- `start_provenance(..., ready_run=None)` makes a start formal only if it is eligible and has such a readiness run (E-0023 rule 1). The old H3 result is recorded as `hop1_gate_passed` metadata only; a start that passed H3 but has no readiness run is rejected (RV-0065). The CLI option `--ready-run` applies to `arm` and `analyze`.
++- `validate_arm_run` requires the analysis start to carry a readiness record, and each arm's recorded `start.readiness` (readiness run path, manifest digest, criteria) to equal it (RV-0065).
+ - Fix: `TokenwiseKernelSide.forward` takes SideBranch's new `runtime` argument. Researcher-1's RB change 2f1687b added it after RV-0059, and V3-06 failed with a TypeError in ATT-0229-1. A non-empty runtime is rejected, because the RB options are not defined for this arm.
+ - Tests:
+   - `test_old_gate_failure_is_a_formal_start_only_with_a_passed_readiness_run` covers seven bad readiness manifests and shows a smoke start stays non-formal.
+diff --git a/src/test_v3_diag.py b/src/test_v3_diag.py
+index c1f4c6d..a10ed05 100644
+--- a/src/test_v3_diag.py
++++ b/src/test_v3_diag.py
+@@ -50,6 +50,8 @@ def test_analyze_stage_a_on_validated_records(tmp_path):
+     assert set(result['bootstrap']['intervals_pp']) == {'V3-02 - V3-01', 'V3-03 - V3-01', 'V3-03 - V3-02'}
+     with pytest.raises(ValueError):
+         diag.analyze_stage_a(runs[:2] + runs[:1], reference, SYN_START)
++    with pytest.raises(ValueError):  # the analysis start must carry the passed R record
++        diag.analyze_stage_a(runs, reference, dict(SYN_START, readiness=None))
+     other = synthetic_arm(tmp_path/'V3-04', 'V3-04', (1, 1, 1), reference)
+     with pytest.raises(ValueError):
+         diag.analyze_stage_a(runs[:2] + [other], reference, SYN_START)
+diff --git a/src/test_v3_train.py b/src/test_v3_train.py
+index 4c07b91..b558ae6 100644
+--- a/src/test_v3_train.py
++++ b/src/test_v3_train.py
+@@ -290,17 +290,22 @@ def write_start(tmp_path, **changes):
+     return run
+ 
+ 
+-def test_start_provenance_requires_the_passed_gate_and_the_pin(tmp_path):
++def test_start_provenance_requires_readiness_and_the_pin(tmp_path):
++    """E-0023 rule 1: the old H3 gate alone never makes a formal start (RV-0065)."""
+     sha = 'c4f3f9f8c24a55a89142cd251e845a39ac4c235fb22aa244afb8e7cc3425b794'  # the D5 file copied as a stand-in
+-    assert v3.start_provenance(write_start(tmp_path), sha)['expected_adapter_sha256'] == sha
+-    for changes in ({'metrics': {'hop1_gate': {'passed': False}}}, {'eligible_as_evidence': False},
+-                    {'contract': 'E-0022@1'}, {'arm': 'V3-01'}):
++    start = write_start(tmp_path)  # old H3 passed
++    with pytest.raises(ValueError):
++        v3.start_provenance(start, sha)
++    record = v3.start_provenance(start, sha, ready_run=write_ready(tmp_path/'r', start))
++    assert record['expected_adapter_sha256'] == sha and record['formal_start'] is True and record['hop1_gate_passed']
++    for i, changes in enumerate(({'eligible_as_evidence': False}, {'contract': 'E-0022@1'}, {'arm': 'V3-01'})):
++        bad = write_start(tmp_path/f'bad{i}', **changes)
+         with pytest.raises(ValueError):
+-            v3.start_provenance(write_start(tmp_path/str(len(str(changes))), **changes), sha)
++            v3.start_provenance(bad, sha, ready_run=write_ready(tmp_path/f'bad{i}r', bad))
+     with pytest.raises(ValueError):
+-        v3.start_provenance(write_start(tmp_path/'x'), 'a'*64)
++        v3.start_provenance(start, 'a'*64, ready_run=write_ready(tmp_path/'x', start))
+     with pytest.raises(ValueError):
+-        v3.start_provenance(write_start(tmp_path/'y'), None)
++        v3.start_provenance(start, None, ready_run=write_ready(tmp_path/'y', start))
+ 
+ 
+ @pytest.mark.parametrize('argv', [
+@@ -541,6 +546,16 @@ def test_old_gate_failure_is_a_formal_start_only_with_a_passed_readiness_run(tmp
+     assert v3.start_provenance(smoke, sha, smoke=True, ready_run=write_ready(tmp_path/'s', smoke))['formal_start'] is False
+ 
+ 
++def test_real_start_is_formal_only_with_its_readiness_run():
++    """ATT-0196-1 (old H3 failed) with ATT-0227-1 (R passed on calibration); without it, rejected."""
++    start, sha = loop.RUNS/'ATT-0196-1'/'run', 'f70ea08e5f378012975e08bd5bac0083023fef78659174ba1a1d2a9977395417'
++    record = v3.start_provenance(start, sha, ready_run=loop.RUNS/'ATT-0227-1'/'run')
++    assert record['formal_start'] is True and record['hop1_gate_passed'] is False
++    assert all(record['readiness']['criteria'].values())
++    with pytest.raises(ValueError):
++        v3.start_provenance(start, sha)
++
++
+ def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
+     sha = 'c4f3f9f8c24a55a89142cd251e845a39ac4c235fb22aa244afb8e7cc3425b794'
+     smoke = write_start(tmp_path, eligible_as_evidence=False, smoke_only=True, metrics={'hop1_gate': {'passed': False}})
+@@ -549,8 +564,10 @@ def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
+     assert v3.start_provenance(smoke, sha, smoke=True)['formal_start'] is False
+ 
+ 
++SYN_READY = {'run': '/synthetic/ready', 'source_manifest': {'sha256': 'r'*64, 'bytes': 1},
++             'criteria': {'hop1_em_margin': True}}
+ SYN_START = {'expected_adapter_sha256': 'a'*64, 'formal_start': True, 'run': '/synthetic/start',
+-             'checkpoint_files': {'adapter.pt': {'sha256': 'a'*64, 'bytes': 1}}}
++             'checkpoint_files': {'adapter.pt': {'sha256': 'a'*64, 'bytes': 1}}, 'readiness': SYN_READY}
+ 
+ 
+ def synthetic_reference(n=4):
+@@ -646,6 +663,11 @@ CORRUPTIONS = {
+     'stored_em': lambda r: corrupt_metrics(r, lambda m: hop(m, 3).update(em=1.)),
+     'start_digest': lambda r: corrupt_metrics(r, lambda m: m['start'].update(expected_adapter_sha256='b'*64)),
+     'nonformal_start': lambda r: corrupt_metrics(r, lambda m: m['start'].update(formal_start=False)),
++    'missing_readiness': lambda r: corrupt_metrics(r, lambda m: m['start'].update(readiness=None)),
++    'other_readiness_run': lambda r: corrupt_metrics(r, lambda m: m['start'].update(
++        readiness=dict(SYN_READY, run='/synthetic/other'))),
++    'other_readiness_manifest': lambda r: corrupt_metrics(r, lambda m: m['start'].update(
++        readiness=dict(SYN_READY, source_manifest={'sha256': 's'*64, 'bytes': 1}))),
+     'order': lambda r: corrupt_metrics(r, lambda m: m['schedule'].update(order_sha256='x'*64)),
+     'steps': lambda r: corrupt_metrics(r, lambda m: m['train'].update(steps=5999)),
+     'smoke_schedule': lambda r: corrupt_metrics(r, lambda m: m['schedule'].update(smoke_steps=3)),
+@@ -670,6 +692,16 @@ def test_analyze_rejects_each_corruption(tmp_path, name):
+         v3.analyze_runs(runs, reference, SYN_START)
+ 
+ 
++def test_analyze_rejects_an_analysis_start_without_readiness(tmp_path):
++    """Arms and analysis start agree, but neither has a passed R record (RV-0065)."""
++    reference = synthetic_reference()
++    runs = synthetic_matrix(tmp_path, reference)
++    for run in runs:
++        corrupt_metrics(run, lambda m: m['start'].update(readiness=None))
++    with pytest.raises(ValueError):
++        v3.analyze_runs(runs, reference, dict(SYN_START, readiness=None))
++
++
+ def test_analyze_rejects_runs_consistent_with_each_other_but_not_the_released_dev(tmp_path):
+     reference = synthetic_reference()
+     short = dict(reference, dev=reference['dev'][:-1])
+diff --git a/src/v3_train.py b/src/v3_train.py
+index 93091b6..36ee031 100644
+--- a/src/v3_train.py
++++ b/src/v3_train.py
+@@ -860,10 +860,10 @@ def readiness_provenance(ready_run, start_files):
+ 
+ 
+ def start_provenance(run, expected_sha256, smoke=False, ready_run=None):
+-    """A completed V3-S0 run whose adapter.pt has the pinned digest. It is a formal start when it is
+-    formal and either passed the E-0010@2 hop1 H3 gate (E-0022) or has an E-0023 readiness run whose
+-    rule R passed for this start (``ready_run``). A smoke job (smoke=True) may start from a completed
+-    smoke V3-S0 run; its output is smoke too."""
++    """A completed V3-S0 run whose adapter.pt has the pinned digest. It is a formal start only when
++    it is formal and has an E-0023 readiness run whose rule R passed on calibration for exactly this
++    start (``ready_run``; E-0023 rule 1). The old E-0010@2 hop1 H3 result is kept as metadata only.
++    A smoke job (smoke=True) may start from a completed smoke V3-S0 run; its output is smoke too."""
+     from v2r16_train import checkpoint_records, file_record
+     if not (isinstance(expected_sha256, str) and len(expected_sha256) == 64
+             and all(c in '0123456789abcdef' for c in expected_sha256)):
+@@ -879,11 +879,11 @@ def start_provenance(run, expected_sha256, smoke=False, ready_run=None):
+     if files['adapter.pt']['sha256'] != expected_sha256:
+         raise ValueError('common start adapter.pt differs from the pinned digest')
+     readiness = readiness_provenance(ready_run, files) if ready_run is not None else None
+-    gate = manifest.get('metrics', {}).get('hop1_gate', {}).get('passed') is True
+-    formal = manifest.get('eligible_as_evidence') is True and (gate or readiness is not None)
++    gate = manifest.get('metrics', {}).get('hop1_gate', {}).get('passed') is True  # metadata only (E-0023)
++    formal = manifest.get('eligible_as_evidence') is True and readiness is not None
+     if not (formal or (smoke and manifest.get('smoke_only') is True)):
+-        raise ValueError('the common start must be a formal V3-S0 run that passed the hop1 H3 gate '
+-                         'or E-0023 readiness rule R')
++        raise ValueError('the common start must be a formal V3-S0 run whose E-0023 readiness rule R passed '
++                         'on calibration (--ready-run)')
+     return {'run': str(run.resolve()), 'checkpoint_files': files, 'expected_adapter_sha256': expected_sha256,
+             'source_manifest': file_record(run/'manifest.json'), 'optimizer_state_loaded': False,
+             'formal_start': formal, 'hop1_gate_passed': gate, 'readiness': readiness}
+@@ -1132,10 +1132,13 @@ def validate_arm_run(run, reference, start):
+             or metrics.get('variant') != asdict(arm_variant(arm))):
+         raise ValueError(f'{arm}: configuration or variant differs from the arm definition')
+     started = metrics.get('start', {})
++    if not start.get('readiness'):
++        raise ValueError('the analysis start has no passed readiness record (E-0023 rule 1)')
+     if (started.get('expected_adapter_sha256') != start['expected_adapter_sha256']
+             or started.get('formal_start') is not True or started.get('run') != start['run']
+-            or started.get('checkpoint_files') != start['checkpoint_files']):
+-        raise ValueError(f'{arm}: not trained from the passed common start')
++            or started.get('checkpoint_files') != start['checkpoint_files']
++            or started.get('readiness') != start['readiness']):
++        raise ValueError(f'{arm}: not trained from the readiness-checked common start')
+     schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
+     if (schedule.get('steps') != STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
+             or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']
