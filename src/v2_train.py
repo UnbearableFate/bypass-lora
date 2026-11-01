@@ -22,7 +22,7 @@ from transformers import AutoTokenizer
 
 from bypass_model import BranchModel
 from calibrate import MODEL, REVISION, load_base
-from v2_memory import CONTROLS, collate, config, evaluate_batch, train_forward
+from v2_memory import CONTROLS, DIAGNOSTIC_CONTROLS, collate, config, evaluate_batch, train_forward
 from v2r_data import METADATA_SHA256, load_variant
 from v2_schedule import (DATA_HASHES, load_data, lr_multiplier, make_curriculum_schedule, make_schedule,
                          make_step_schedule)
@@ -117,8 +117,11 @@ def _summary(records, prior_token):
 
 
 @torch.no_grad()
-def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None):
+def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None, capture=None):
     """Fixed global cyclic donors make shuffled independent of batch boundaries.
+
+    E-0015: controls may include DIAGNOSTIC_CONTROLS; ``capture`` (a dict) receives
+    each mode's last-position F_out increments [episodes, d] in row order.
 
     Diagnostic scalar means are weighted by valid question tokens, matching the
     offline evaluator's all-valid-question scope. EM/NLL and strata are episode
@@ -135,10 +138,10 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
     device = next(model.parameters()).device
     all_metrics, all_predictions = {}, {}
     for mode in controls:
-        if mode not in CONTROLS:
+        if mode not in CONTROLS + DIAGNOSTIC_CONTROLS:
             raise ValueError('invalid control')
         records, diag_sum, diag_weight, batch_percentiles = [], defaultdict(float), defaultdict(int), []
-        diag_max, ratios_all = {}, defaultdict(list)
+        diag_max, ratios_all, increments = {}, defaultdict(list), []
         for start in range(0, len(rows), EVAL_BATCH_SIZE):
             selected = rows[start:start+EVAL_BATCH_SIZE]
             batch = collate(selected, pad_id, device)
@@ -180,6 +183,8 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
             for name in RATIO_NAMES:
                 if details.get(f'_{name}_all') is not None:
                     ratios_all[name].append(details[f'_{name}_all'])
+            if capture is not None:
+                increments.append(details['_last_fusion'])
             weight = int(batch.question_mask.sum())
             for key, value in details.items():
                 if key.startswith('_') or key in ('nll', 'em') or not isinstance(value, (float, int)) or isinstance(value, bool):
@@ -213,6 +218,8 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
                 handle.write(json.dumps(record, allow_nan=False)+'\n')
         all_metrics[mode] = metrics
         all_predictions[mode] = [r['prediction'] for r in records]
+        if capture is not None:
+            capture[mode] = torch.cat(increments)
     write_json(output/f'{split}.metrics.json', all_metrics)
     return all_metrics, all_predictions
 
