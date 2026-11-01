@@ -44,8 +44,9 @@ from bypass_model import SideBranch
 from v1_data import derive_seed
 
 RUNS = Path('/work/xg24i002/x10041/bypass-lora/runs')
-CONTRACT = 'E-0022@2'
-EXPERIMENT = 'E-0022'
+CONTRACT = 'E-0023@1'  # E-0023 continues the E-0022 matrix (D-0031); E-0022 takes no more runs
+EXPERIMENT = 'E-0023'
+START_CONTRACTS = ('E-0022@2', 'E-0023@1')  # V3-S0 ran under E-0022@2; an E-0023 second start under E-0023@1
 START_RUN = 'ATT-0159-1'  # D5 seed 0
 START_ADAPTER_SHA256 = 'c4f3f9f8c24a55a89142cd251e845a39ac4c235fb22aa244afb8e7cc3425b794'
 STEPS = 6000
@@ -184,7 +185,10 @@ class TokenwiseKernelSide(SideBranch):
     """V3-06: the question phase replaces the memory loop by tokenwise_loop (no memory read).
     The support phase is SideBranch's own, so the write protocol and accounting are unchanged."""
 
-    def forward(self, u, features, state, valid, phase, write_mask=None):
+    def forward(self, u, features, state, valid, phase, write_mask=None, runtime=None):
+        # runtime: SideBranch's RB option (2f1687b); not defined for this arm.
+        if runtime:
+            raise ValueError('RB runtime options are not defined for the tokenwise kernel arm')
         if phase != 'query':
             if phase != 'support':
                 raise ValueError('the tokenwise kernel arm is defined on the M-line protocol only')
@@ -839,8 +843,26 @@ def _data(tokenizer, eval_limit=0):
     return train_rows, dev, prior, info
 
 
-def start_provenance(run, expected_sha256, smoke=False):
-    """A completed formal V3-S0 run whose common-start gate passed and adapter.pt has the pinned digest.
+def readiness_provenance(ready_run, start_files):
+    """E-0023 stage 0: a completed formal readiness run (v3_ready) whose rule R passed for exactly this start."""
+    from v2r16_train import file_record
+    ready_run = Path(ready_run)
+    manifest = json.loads((ready_run/'manifest.json').read_text())
+    if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
+            or manifest.get('contract') != CONTRACT or manifest.get('command') != 'ready'
+            or manifest.get('eligible_as_evidence') is not True or manifest.get('smoke_only') is not False
+            or manifest.get('metrics', {}).get('readiness_passed') is not True):
+        raise ValueError('the readiness run must be a completed formal E-0023 stage-0 run whose rule R passed')
+    if (manifest.get('start') or {}).get('checkpoint_files') != start_files:
+        raise ValueError('the readiness run checked a different common start')
+    return {'run': str(ready_run.resolve()), 'source_manifest': file_record(ready_run/'manifest.json'),
+            'criteria': manifest['metrics'].get('readiness_criteria')}
+
+
+def start_provenance(run, expected_sha256, smoke=False, ready_run=None):
+    """A completed V3-S0 run whose adapter.pt has the pinned digest. It is a formal start only when
+    it is formal and has an E-0023 readiness run whose rule R passed on calibration for exactly this
+    start (``ready_run``; E-0023 rule 1). The old E-0010@2 hop1 H3 result is kept as metadata only.
     A smoke job (smoke=True) may start from a completed smoke V3-S0 run; its output is smoke too."""
     from v2r16_train import checkpoint_records, file_record
     if not (isinstance(expected_sha256, str) and len(expected_sha256) == 64
@@ -848,20 +870,23 @@ def start_provenance(run, expected_sha256, smoke=False):
         raise ValueError('an expected lowercase hex sha256 of the common start adapter.pt is required')
     run = Path(run)
     manifest = json.loads((run/'manifest.json').read_text())
-    formal = (manifest.get('eligible_as_evidence') is True
-              and manifest.get('metrics', {}).get('hop1_gate', {}).get('passed') is True)
     if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
-            or manifest.get('arm') != 'V3-S0' or manifest.get('contract') != CONTRACT
-            or not (formal or (smoke and manifest.get('smoke_only') is True))):
-        raise ValueError('the common start must be a completed formal V3-S0 run that passed the hop1 H3 gate')
+            or manifest.get('arm') != 'V3-S0' or manifest.get('contract') not in START_CONTRACTS):
+        raise ValueError('the common start must be a completed V3-S0 run')
     files = checkpoint_records(run/'adapter')
     if files != manifest.get('checkpoint_files') or set(files) != {'adapter.pt', 'config.json', 'variant.json'}:
         raise ValueError('common start files differ from the run manifest')
     if files['adapter.pt']['sha256'] != expected_sha256:
         raise ValueError('common start adapter.pt differs from the pinned digest')
+    readiness = readiness_provenance(ready_run, files) if ready_run is not None else None
+    gate = manifest.get('metrics', {}).get('hop1_gate', {}).get('passed') is True  # metadata only (E-0023)
+    formal = manifest.get('eligible_as_evidence') is True and readiness is not None
+    if not (formal or (smoke and manifest.get('smoke_only') is True)):
+        raise ValueError('the common start must be a formal V3-S0 run whose E-0023 readiness rule R passed '
+                         'on calibration (--ready-run)')
     return {'run': str(run.resolve()), 'checkpoint_files': files, 'expected_adapter_sha256': expected_sha256,
             'source_manifest': file_record(run/'manifest.json'), 'optimizer_state_loaded': False,
-            'formal_start': formal}
+            'formal_start': formal, 'hop1_gate_passed': gate, 'readiness': readiness}
 
 
 def _reviewed(model, dev, pad_id, destination, prior, controls):
@@ -961,7 +986,8 @@ def run_arm(args, output, result):
     from v2r16_train import checkpoint_records
     from v3_loop import attach_paths, compare_to_reviewed
     arm = args.arm
-    provenance = start_provenance(args.start_run, args.start_sha256, smoke=bool(args.smoke_steps))
+    provenance = start_provenance(args.start_run, args.start_sha256, smoke=bool(args.smoke_steps),
+                                  ready_run=args.ready_run)
     result['start'] = provenance
     start_directory = Path(args.start_run)/'adapter'
     tokenizer, pad_id = _tokenizer()
@@ -1098,7 +1124,7 @@ def validate_arm_run(run, reference, start):
             or manifest.get('eligible_as_evidence') is not True or manifest.get('smoke_only') is not False
             or manifest.get('smoke_steps') or manifest.get('eval_limit') or manifest.get('contract') != CONTRACT
             or manifest.get('command') != 'arm' or arm not in ARMS):
-        raise ValueError(f'{run} is not a completed formal E-0022@2 arm run')
+        raise ValueError(f'{run} is not a completed formal {CONTRACT} arm run')
     _verified_artifact(manifest, run/'metrics.json')
     metrics = json.loads((run/'metrics.json').read_text())
     expected_config = asdict(arm_config(config('direct_hidden', 'soft_slot', 'F_out'), arm))
@@ -1106,10 +1132,13 @@ def validate_arm_run(run, reference, start):
             or metrics.get('variant') != asdict(arm_variant(arm))):
         raise ValueError(f'{arm}: configuration or variant differs from the arm definition')
     started = metrics.get('start', {})
+    if not start.get('readiness'):
+        raise ValueError('the analysis start has no passed readiness record (E-0023 rule 1)')
     if (started.get('expected_adapter_sha256') != start['expected_adapter_sha256']
             or started.get('formal_start') is not True or started.get('run') != start['run']
-            or started.get('checkpoint_files') != start['checkpoint_files']):
-        raise ValueError(f'{arm}: not trained from the passed common start')
+            or started.get('checkpoint_files') != start['checkpoint_files']
+            or started.get('readiness') != start['readiness']):
+        raise ValueError(f'{arm}: not trained from the readiness-checked common start')
     schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
     if (schedule.get('steps') != STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
             or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']
@@ -1183,7 +1212,7 @@ def analyze_runs(runs, reference, start):
 def run_analyze(args, output, result):
     """Validates the ten formal arm runs against the passed common start and the released data,
     then applies the rules and the bootstrap to their records."""
-    start = start_provenance(args.start_run, args.start_sha256)
+    start = start_provenance(args.start_run, args.start_sha256, ready_run=args.ready_run)
     if start['formal_start'] is not True:
         raise ValueError('analysis needs the formal common start')
     result.update(analyze_runs(args.arm_runs, analysis_reference(), start))
@@ -1202,6 +1231,7 @@ def main():
     parser.add_argument('--arm', choices=tuple(ARMS))
     parser.add_argument('--start-run', type=Path, help='the V3-S0 run directory (arm, analyze)')
     parser.add_argument('--start-sha256', help='pinned adapter.pt digest of the common start (arm, analyze)')
+    parser.add_argument('--ready-run', type=Path, help='E-0023 stage-0 readiness run of the common start (arm, analyze)')
     parser.add_argument('--arm-run', type=Path, help='the S_M* arm run directory (intervene)')
     parser.add_argument('--arm-sha256', help='pinned adapter.pt digest of the S_M* arm (intervene)')
     parser.add_argument('--arm-runs', type=Path, nargs='*', default=(), help='the ten arm run directories (analyze)')
