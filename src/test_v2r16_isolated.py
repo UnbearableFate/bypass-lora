@@ -1,4 +1,5 @@
 """E-0016 D4/D5 isolated-encoding write path. Execute in a GPU allocation."""
+import json
 import time
 
 import pytest
@@ -156,3 +157,45 @@ def test_a_few_optimizer_steps_lower_the_isolated_loss_and_time_them(base, tok):
             losses.append(float(loss))
         print('isolated losses', [round(x, 3) for x in losses], 'step seconds', [round(x, 3) for x in seconds])
         assert losses[-1] < losses[0]
+
+
+# ---- D4/D5 runner pieces -------------------------------------------------------------
+
+def summary(em, nll, weight=None, last_weight=None, correct=0):
+    return {'em': em, 'nll': nll, 'count': 1000, 'correct_count': correct,
+            'diagnostics': {} if weight is None else {'address.target_weight': weight},
+            'last_position': {'target_weight_mean': last_weight}}
+
+
+def test_isolated_gate_uses_the_e0010_h3_thresholds():
+    import v2r16_isolated as runner
+    passing = {'normal': summary(.30, 3.0, .2, .3, 300), 'zero': summary(.01, 9.0), 'shuffled': summary(.19, 4.0)}
+    result = runner.gate(passing)
+    assert result['passed'] and abs(result['em_margin'] - .11) < 1e-12
+    assert result['correct'] == {'normal': 300, 'zero': 0, 'shuffled': 0}
+    assert result['target_weight_last_position'] == .3
+    assert not runner.gate(dict(passing, shuffled=summary(.21, 4.0)))['passed']      # margin < 10 pp
+    assert not runner.gate(dict(passing, shuffled=summary(.01, 2.9)))['passed']      # NLL not below
+    assert not runner.gate(dict(passing, normal=summary(.30, 3.0, .124)))['passed']  # all-position weight
+
+
+def test_r1_provenance_accepts_the_recorded_run_and_rejects_changes(tmp_path):
+    import shutil
+    import v2r16_isolated as runner
+    cfg = config('direct_hidden', 'soft_slot', 'F_out')
+    record = runner.r1_provenance(runner.R1_RUN, cfg)
+    assert set(record['checkpoint_files']) == {'adapter.pt', 'config.json'}
+    assert record['adapter_only'] and record['optimizer_state_loaded'] is False
+    copy = tmp_path/'r1'
+    (copy/runner.ARM_DIR).mkdir(parents=True)
+    shutil.copytree(runner.R1_RUN/runner.ARM_DIR/'adapter', copy/runner.ARM_DIR/'adapter')
+    shutil.copy(runner.R1_RUN/'metrics.json', copy/'metrics.json')
+    manifest = json.loads((runner.R1_RUN/'manifest.json').read_text())
+    (copy/'manifest.json').write_text(json.dumps(dict(manifest, smoke_steps=20)))
+    with pytest.raises(ValueError, match='completed formal'):
+        runner.r1_provenance(copy, cfg)
+    (copy/'manifest.json').write_text(json.dumps(manifest))
+    assert runner.r1_provenance(copy, cfg)['checkpoint_files'] == record['checkpoint_files']
+    (copy/runner.ARM_DIR/'adapter'/'optimizer.pt').write_bytes(b'x')
+    with pytest.raises(ValueError, match='only adapter'):
+        runner.r1_provenance(copy, cfg)
