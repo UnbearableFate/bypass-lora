@@ -12,7 +12,7 @@
 
 后续契约要带上的条款：
 
-- M 线 V3 训练矩阵契约（T-0021 之后）：镜像 E-0021 的循环联合解读条款；建立后 `rl link <V3 契约> compared_with E-0021`。
+- M 线 V3 训练矩阵契约：已完成。E-0022（DOC-0211）镜像了 E-0021 的循环联合解读条款，并已 `rl link E-0022 compared_with E-0021`。
 - RB1 任务建立、E-0021 封存时：`rl link E-0021 compared_with E-0003`（concat 的跨线解读）。
 - RB5 契约：LoRA28 r1 对照的 LR 校准规则与分析约定（配对分层 bootstrap、Holm）与 E-0013 对齐，在 RB 训练行上重新训练；不复用 V5 checkpoint；用 D-0025 的 A2 确认集。
 - V4（H-0004，或 KernelMatrix 版 D5）：把 RB1 的读诊断列为参照。
