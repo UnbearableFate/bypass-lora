@@ -77,3 +77,24 @@ expansion/ownership,and BF16prefix/reference expanded-batch agreement are added.
 The original BF16expansion comparison is retained in named D0027 diagnostics
 with its actual error and whether it meets the unchanged bound. No fixture or
 tolerance has been changed. No more per-case rulings are needed for this rule.
+
+ATT0188/PBS3767999/RES0183 complete:397checks passed;all10startup cases completed
+20warmups+4measured steps on verified2g mg1098. Required D0026/27 gates passed;
+the original BF16shape-change exceedances remain recorded as diagnostics.
+Prefix/T0/LoRA startup steps0.209-0.241s;referenceS1 1.56685s. These are only
+four measured steps,not the final100-step result. Scheduler221MIGseconds
+imported once;T0022 subtotal457s=0.03173611node_h before full timing.
+
+Measured plans after A2/excluding PIQA5528:RBc1096steps/2192examples/200229tokens;
+RB1 13115steps/26230examples/2000069tokens;RB5 3epochs26165steps/52329examples/
+3629259tokens. All per-arm counts and source hashes remain in ATT0188 outputs.
+
+Full timing expected about900s/request1350s(debug-mig),from120times the sum of
+startup step times(~427s),32rows/task sample evaluations(~144s),one complete
+dev pass(~183s),seven512/128 latency cases(~65s) and setup/planning(~40s).
+Request is1.5times expected. This is a planning estimate,not measured usage.
+Full benchmark also reports Base latency. RBc cost estimates now scale the
+dev-based pass estimate by4096calibration/2000dev rows,explicitly an approximation
+that does not measure calibration length differences. No training/loss/model
+path changed after the397passing checks;the new cost branch and Base timing
+are exercised in the full benchmark. The experiment ceiling remains1node_h.
