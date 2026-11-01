@@ -109,6 +109,7 @@ runs/ 按类别分：
 | **以上合计** | 317 项，互不重叠 | **7.738 GB** | | |
 | 另：E-0017（H-0009、H-0012），T-0019 accepted | 回归张量 8 个 2.338 GB；adapter 21 个；临时目录 44 个；快照 1 个 | 2.423 GB | predictions 0.108 GB | ATT-0166-1、ATT-0167-1：ATT-0172-1、ATT-0173-1 的起点。ATT-0172-1、ATT-0173-1：E-0018 契约点名。这些 → H-0005 paused 或 stopped |
 | 另：E-0020（RBc，H-0013），T-0024 accepted | 尚未出计划 | – | | lr-lock（research/artifacts/T-0024/lr-lock.json）登记的 16 个 calibration manifest：RB1 的分析、干预与延迟脚本会重新校验它们的 sha256（RV-0069）→ T-0025 accepted、E-0021 分析完成。manifest 本来属于 keep，这里只是写明依赖 |
+| 另：H-0005（E-0011、E-0018、E-0022、E-0023），T-0010、T-0021、T-0023、T-0026 accepted，H-0005@2 paused（D-0036） | pytest 临时目录 435 个 0.424 GB；checkpoint 27 个 0.063 GB；快照 22 个 0.182 GB | 0.669 GB | data-copy 0.093 GB，metadata 0.128 GB，predictions 0.028 GB | 被结果引用的 8 个 checkpoint 从计划中删去：共同起点 ATT-0196-1（重开时可复用）、阶段 A 的 ATT-0233/0234/0235-1、pilot 的 ATT-0256/0257-1、E-0011 的 ATT-0091/0092-1。计划目录 20261102-h0005，确认值见 confirm.txt，等用户同意后执行 |
 | 另：E-0013（V5，H-0008） | 无：REFUSED（T-0020 waiting，ATT-0179-1 queued） | 0 | | 0.132 GB 一直 hold 到 T-0020 accepted、ATT-0179-1 结束 |
 
 按假说出计划的例子：
