@@ -34,6 +34,8 @@ class AdapterConfig:
     read_gain: float = 1.
     eps_norm: float = 1e-6
     eps_read: float = 1e-6
+    write_scope: str = 'visible_fact_delimiter'
+    slot_capacity: int = 16
     model_revision: str = 'da87bfb608c14b7cf20ba1ce41287e8de496c0cd'
 
     def __post_init__(self):
@@ -47,6 +49,8 @@ class AdapterConfig:
             raise ValueError('unknown recurrence')
         if self.readout not in ('increment', 'full'):
             raise ValueError('unknown readout')
+        if self.write_scope not in ('visible_fact_delimiter', 'all_support_tokens') or self.slot_capacity < 1:
+            raise ValueError('invalid support write scope or slot capacity')
 
 
 class LowDimProjection(nn.Module):
@@ -135,7 +139,7 @@ class SideBranch(nn.Module):
             self.A = nn.Parameter(torch.randn(d, config.rank) / d ** .5)
         self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features)
 
-    def forward(self, u, features, state, valid, phase):
+    def forward(self, u, features, state, valid, phase, write_mask=None):
         cfg = self.config
         if cfg.branch != 'memory':
             z = u.float() @ self.A
@@ -144,10 +148,12 @@ class SideBranch(nn.Module):
             return z * valid.unsqueeze(-1), state, None
         q, k, v = self.projection(features['q'], features['k'], features['v'])
         result = process_sequence(q, k, v, self.reader, state=state, valid=valid,
-                                  write=valid if phase != 'query' else torch.zeros_like(valid),
+                                  write=(write_mask if phase == 'support' else valid) if phase != 'query' else torch.zeros_like(valid),
                                   read=valid if phase != 'support' else torch.zeros_like(valid),
                                   steps=cfg.steps, mode=cfg.mode, update=cfg.update,
                                   readout=cfg.readout, backend=cfg.backend)
+        if phase == 'support' and cfg.backend != 'kernel_matrix' and (result.state.counts > cfg.slot_capacity).any():
+            raise ValueError('support slot capacity exceeded')
         return result.outputs, result.state, result.accounting
 
 
@@ -175,7 +181,7 @@ class AdaptedLayer(nn.Module):
                 position_embeddings=None, **kwargs):
         if self.request is None:
             raise RuntimeError('use BranchModel.forward to supply state ownership and token mask')
-        valid, state, phase = self.request
+        valid, state, phase, write_mask = self.request
         layer = self.original
         n = layer.input_layernorm(hidden_states)
         with FeatureTap(layer.self_attn, self.side.config.tap).capture(n) as features:
@@ -185,7 +191,7 @@ class AdaptedLayer(nn.Module):
                                   position_embeddings=position_embeddings, **kwargs)
         h = hidden_states + o
         u = layer.post_attention_layernorm(h)
-        z, state, counts = self.side(u, features, state, valid, phase)
+        z, state, counts = self.side(u, features, state, valid, phase, write_mask)
         self.result = (state, counts)
         if phase == 'support':
             return h + layer.mlp(u)
@@ -232,7 +238,8 @@ class BranchModel(nn.Module):
         for layer in self.adapters().values():
             yield from layer.side.parameters()
 
-    def forward(self, input_ids, attention_mask=None, cache=None, memory=None, phase='F', use_cache=False):
+    def forward(self, input_ids, attention_mask=None, cache=None, memory=None, phase='F', use_cache=False,
+                write_mask=None):
         if phase not in ('F', 'support', 'query'):
             raise ValueError('unknown protocol phase')
         if self.model.is_gradient_checkpointing:
@@ -247,15 +254,32 @@ class BranchModel(nn.Module):
             raise ValueError('provide cache or memory, not both')
         if phase == 'query' and cache is None and memory is None:
             raise ValueError('query requires explicit support memory')
+        if phase != 'support' and write_mask is not None:
+            raise ValueError('write_mask is only accepted in support phase')
         if attention_mask is None:
             if cache is not None:
                 raise ValueError('cached forward needs the complete attention mask')
             attention_mask = torch.ones_like(input_ids)
         valid = attention_mask[:, -input_ids.shape[1]:].bool()
+        if phase == 'support':
+            if write_mask is None:
+                if self.config.write_scope == 'visible_fact_delimiter':
+                    raise ValueError('visible_fact_delimiter requires an explicit write_mask')
+                write_mask = valid
+            if write_mask.shape != valid.shape or write_mask.dtype != torch.bool:
+                raise ValueError('write_mask must be boolean with the input shape')
+            if (write_mask & ~valid).any():
+                raise ValueError('write_mask must be a subset of valid tokens')
+        if cache is not None:
+            if cache.backbone is None or cache.backbone.get_seq_length() != attention_mask.shape[1] - input_ids.shape[1]:
+                raise ValueError('stale or reused cache; reorder/copy before reuse and request use_cache=True')
         states = cache.memory if cache else (memory if memory is not None else {})
+        if phase == 'query' and self.config.branch == 'memory':
+            if any(states.get(i) is None for i in self.config.layers):
+                raise ValueError('query is missing support memory for an adapter layer')
         before = {i: dict(layer.calls) for i, layer in self.adapters().items()}
         for i, layer in self.adapters().items():
-            layer.request = (valid, states.get(i), phase)
+            layer.request = (valid, states.get(i), phase, write_mask)
         try:
             position_ids = (attention_mask.cumsum(-1) - 1).clamp_min(0)[:, -input_ids.shape[1]:]
             output = self.model(input_ids, attention_mask=attention_mask, position_ids=position_ids,

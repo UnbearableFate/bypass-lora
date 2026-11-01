@@ -18,13 +18,20 @@ def _record_error(record_property, name, actual, expected):
 
 
 @pytest.mark.parametrize("rank", [32, 128])
+@pytest.mark.parametrize("slots", [1, 5, 17])
 @pytest.mark.parametrize("steps", [1, 2, 4])
-def test_kernel_matrix_equals_slot_reference_outputs_and_qkv_gradients(rank, steps, record_property):
-    torch.manual_seed(11 + rank)
-    batch, slots = 3, 5
+def test_kernel_matrix_equals_slot_reference_outputs_and_qkv_gradients(
+        rank, slots, steps, record_property):
+    torch.manual_seed(11 + rank + slots)
+    batch = 3
     q0 = torch.randn(batch, rank)
-    k0 = torch.rand(batch, slots, rank) + 0.1
+    k0 = torch.randn(batch, slots, rank)
     v0 = torch.randn(batch, slots, rank)
+    write_mask = torch.rand(batch, slots) > 0.35
+    write_mask[0] = False  # Include an empty-memory row.
+    if slots > 1:
+        write_mask[1, 0] = True
+        write_mask[1, -1] = True
     probe = torch.randn(batch, rank)
     reader = LatentReader(rank)
     outputs, grads = [], []
@@ -34,7 +41,10 @@ def test_kernel_matrix_equals_slot_reference_outputs_and_qkv_gradients(rank, ste
         v = v0.clone().requires_grad_()
         state = MemoryState.empty(batch, rank, backend)
         for index in range(slots):
-            state = state.write(k[:, index], v[:, index])
+            if slots > 1 and index == slots // 2:
+                reset_rows = torch.tensor([False, True, False])
+                state = state.reset(reset_rows)
+            state = state.write(k[:, index], v[:, index], write_mask[:, index])
         out = reader(q, state, steps=steps)
         loss = (out * probe).sum()
         grad = torch.autograd.grad(loss, (q, k, v))
@@ -122,6 +132,22 @@ def test_sequence_padding_causality_and_accounting(mode):
     torch.testing.assert_close(result.outputs[:, :3], rerun.outputs[:, :3], atol=2e-5, rtol=2e-5)
 
 
+def _assert_prefix_invariant(run, values):
+    changed = values.clone()
+    changed[:, 3] += 1000
+    torch.testing.assert_close(run(values)[:, :3], run(changed)[:, :3], atol=2e-5, rtol=2e-5)
+
+
+def _assert_write_contract(result, valid):
+    per_row = valid.sum(dim=1)
+    assert result.accounting["writes"] == int(per_row.sum().item())
+    assert torch.equal(result.state.counts, per_row)
+
+
+def _assert_read_contract(result, expected):
+    assert result.accounting["reads"] == expected
+
+
 def test_strict_current_token_cannot_read_its_own_value():
     rank = 32
     q = torch.randn(1, 1, rank)
@@ -173,30 +199,102 @@ def test_write_only_then_read_only_memory_is_unchanged():
         torch.testing.assert_close(support_result.outputs, torch.zeros_like(support_result.outputs))
 
 
-def test_negative_controls_detect_future_leak_repeated_write_and_padding_write():
-    # Future leak: an intentionally broken all-sequence aggregate changes the prefix.
-    k = torch.tensor([[[1.0], [2.0]]])
-    v = torch.tensor([[[3.0], [4.0]]])
-    future_changed = v.clone()
-    future_changed[:, 1] = 40
-    broken_prefix = (k * v).sum(dim=1)[:, 0]
-    broken_changed_prefix = (k * future_changed).sum(dim=1)[:, 0]
-    with pytest.raises(AssertionError):
-        torch.testing.assert_close(broken_prefix, broken_changed_prefix)
+def test_negative_control_full_sequence_future_leak_uses_prefix_assertion():
+    torch.manual_seed(39)
+    q, k, v = (torch.randn(2, 4, 32) for _ in range(3))
+    valid = torch.ones(2, 4, dtype=torch.bool)
+    reader = LatentReader(32)
 
-    # Repeated write: an intentionally broken S-step writer accumulates S copies.
-    one = MemoryState.empty(1, 1).write(torch.ones(1, 1), torch.ones(1, 1))
-    repeated = one.write(torch.ones(1, 1), torch.ones(1, 1)).write(
-        torch.ones(1, 1), torch.ones(1, 1))
-    with pytest.raises(AssertionError):
-        torch.testing.assert_close(one.M, repeated.M)
+    def causal_run(values):
+        return process_sequence(q, k, values, reader, valid=valid).outputs
 
-    # Padding write: intentionally ignore valid=False; correct and broken states differ.
-    correct = MemoryState.empty(1, 1).write(torch.ones(1, 1), torch.ones(1, 1),
-                                            torch.tensor([False]))
-    broken = MemoryState.empty(1, 1).write(torch.ones(1, 1), torch.ones(1, 1))
+    _assert_prefix_invariant(causal_run, v)
+
+    def full_sequence_leak(values):
+        support = process_sequence(q, k, values, reader, valid=valid,
+                                   read=torch.zeros_like(valid))
+        query = process_sequence(q, k, values, reader, state=support.state,
+                                 valid=valid, write=torch.zeros_like(valid))
+        return query.outputs
+
     with pytest.raises(AssertionError):
-        torch.testing.assert_close(correct.M, broken.M)
+        _assert_prefix_invariant(full_sequence_leak, v)
+
+
+@pytest.mark.parametrize("steps", [2, 4])
+def test_negative_control_repeated_write_uses_write_count_assertion(monkeypatch, steps):
+    torch.manual_seed(2)
+    q, k, v = (torch.randn(2, 4, 32) for _ in range(3))
+    valid = torch.tensor([[True, True, False, True], [True, False, True, True]])
+    original_write = MemoryState.write
+
+    def run():
+        return process_sequence(q, k, v, LatentReader(32), valid=valid, steps=steps)
+
+    _assert_write_contract(run(), valid)
+
+    def repeated_write(self, key, value, write_valid=None):
+        for _ in range(steps):
+            self = original_write(self, key, value, write_valid)
+        return self
+
+    monkeypatch.setattr(MemoryState, "write", repeated_write)
+    with pytest.raises(AssertionError):
+        _assert_write_contract(run(), valid)
+
+
+def test_negative_control_padding_write_uses_write_count_assertion(monkeypatch):
+    torch.manual_seed(3)
+    q, k, v = (torch.randn(2, 4, 32) for _ in range(3))
+    valid = torch.tensor([[True, True, False, True], [True, False, True, True]])
+    original_write = MemoryState.write
+
+    def run():
+        return process_sequence(q, k, v, LatentReader(32), valid=valid)
+
+    _assert_write_contract(run(), valid)
+    monkeypatch.setattr(MemoryState, "write",
+                        lambda self, key, value, write_valid=None:
+                        original_write(self, key, value, None))
+    with pytest.raises(AssertionError):
+        _assert_write_contract(run(), valid)
+
+
+@pytest.mark.parametrize("steps", [1, 2, 4])
+def test_read_accounting_uses_performed_reader_calls(monkeypatch, steps):
+    torch.manual_seed(19)
+    q, k, v = (torch.randn(2, 4, 32) for _ in range(3))
+    valid = torch.tensor([[True, True, False, True], [True, False, True, True]])
+    reader = LatentReader(32)
+    result = process_sequence(q, k, v, reader, valid=valid, steps=steps)
+    _assert_read_contract(result, 6 * steps)
+    assert reader.last_read_calls == steps
+
+    original_forward = LatentReader.forward
+
+    def skip_step(self, *args, **kwargs):
+        if len(args) >= 3:
+            args = (args[0], args[1], max(0, args[2] - 1), *args[3:])
+        else:
+            kwargs["steps"] = max(0, kwargs.get("steps", 1) - 1)
+        return original_forward(self, *args, **kwargs)
+
+    monkeypatch.setattr(LatentReader, "forward", skip_step)
+    skipped = process_sequence(q, k, v, reader, valid=valid, steps=steps)
+    with pytest.raises(AssertionError):
+        _assert_read_contract(skipped, 6 * steps)
+    assert skipped.accounting["reads"] == 6 * max(0, steps - 1)
+
+
+@pytest.mark.parametrize("mode", ["inclusive", "strict"])
+def test_key_normalization_uses_reader_epsilon(mode):
+    rank = 32
+    q = torch.zeros(1, 1, rank)
+    k = torch.full_like(q, 1e-3)
+    v = torch.ones_like(q)
+    default = process_sequence(q, k, v, LatentReader(rank), mode=mode)
+    configured = process_sequence(q, k, v, LatentReader(rank, eps_norm=1e-2), mode=mode)
+    assert not torch.allclose(default.state.M, configured.state.M, atol=2e-5, rtol=2e-5)
 
 
 def test_kernel_identity_negative_control():
@@ -218,6 +316,5 @@ def test_depth_does_not_multiply_write_count(steps):
     q,k,v = (torch.randn(2,4,32) for _ in range(3))
     valid = torch.tensor([[True,True,False,True],[True,False,True,True]])
     result = process_sequence(q,k,v,LatentReader(32),valid=valid,steps=steps)
-    assert result.accounting['writes'] == 6
-    assert result.accounting['reads'] == 6*steps
-    assert result.state.counts.tolist() == [3,3]
+    _assert_write_contract(result, valid)
+    _assert_read_contract(result, 6*steps)

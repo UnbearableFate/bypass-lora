@@ -41,12 +41,22 @@ mask for chunked or tokenwise decode. Side state is returned explicitly. Start a
 new sequence with cache=None. Functional MemoryState.reset/reorder handles row
 resets and owner/beam maps. Callers must apply the same map to token inputs.
 
-M memory: support=model(ids, phase='support'); query=model(query_ids,
+M memory: support=model(ids, phase='support', write_mask=delimiter_mask); query=model(query_ids,
 phase='query', memory=support.cache.memory). Support produces no backbone KV.
 Each independent query starts from the same supplied memory snapshot. A query
 may use its own returned cache for subsequent query/answer decoding. Cross-phase
 backbone caches are rejected. Support memory must be recomputed after every
 parameter update; never cache trainable M/c/slots across optimizer steps.
+
+The default visible_fact_delimiter scope requires an explicit boolean write_mask,
+a subset of valid tokens, constructed from public fact delimiters. Support-only
+write masks are rejected in F/query phases. Slot backends reject support counts
+above the configured capacity (default16). The explicit all_support_tokens scope
+permits omission of write_mask for separately registered variants. Physical slot
+columns are padded across batch rows; per-owner counts record effective writes.
+Backbone KV caches are consumed by HF in place: copy via cache.reorder before
+branching. A stale/reused cache with mismatched prefix length is rejected, as is
+query memory missing a configured adapter layer.
 
 The original attention/MLP each execute once per selected layer call. Hooks
 capture pre-RoPE Q/K and pre-repeat V without repeating projections. Fusion

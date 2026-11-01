@@ -68,7 +68,8 @@ def test_two_step_grad_start_frozen_input_jacobian(base, branch, record_property
     # A lower adapter forces the gradient to traverse 21 frozen upper blocks.
     with adapted(base, AdapterConfig(layers=(6,), branch=branch, steps=2)) as model:
         side = model.adapters()[6].side
-        originals = {n: p for n,p in base.named_parameters() if not p.requires_grad}
+        originals = {n: p for n,p in base.named_parameters() if '.side.' not in n}
+        assert not any(p.requires_grad for p in originals.values())
         # GPU clone is ~1.2 GB and checks every frozen parameter, not a sample.
         before = {n: p.detach().clone() for n,p in originals.items()}
         optimizer = torch.optim.SGD(model.adapter_parameters(), lr=.1)
@@ -120,16 +121,25 @@ def test_fusion_identity(rank, record_property):
     # Also test the actual Fusion path with the constrained matrices.
     fusion = Fusion('C_dual',rank,d,m)
     del fusion.C_g, fusion.C_u
-    fusion.C_g, fusion.C_u = cg,cu
+    p2 = p.detach().clone().requires_grad_()
+    fusion.C_g, fusion.C_u = p2 @ mlp.gate_proj.weight.T, p2 @ mlp.up_proj.weight.T
     actual = fusion(h,u,z,mlp,nn.Identity())
     measure(actual,pre,record_property,'fusion.implementation',atol=TOL['fp32_atol'])
+    actual_grad = torch.autograd.grad((actual*target).sum(),p2)[0]
+    pre_fusion = Fusion('F_pre',rank,d,m)
+    del pre_fusion.P
+    pre_fusion.P = p2
+    pre_actual = pre_fusion(h,u,z,mlp,nn.Identity())
+    pre_grad = torch.autograd.grad((pre_actual*target).sum(),p2)[0]
+    torch.testing.assert_close(actual_grad,pre_grad,atol=TOL['fp32_atol'],rtol=TOL['fp32_rtol'])
+    record_property('fusion.implementation_gradient.max_abs_err',(actual_grad-pre_grad).abs().max().item())
 
 
 def nonzero_exits(model):
     with torch.no_grad():
         for layer in model.adapters().values():
             for p in layer.side.fusion.parameters():
-                p.normal_(std=.02)
+                p.normal_(std=.1)
 
 
 def chunked(model,ids,mask,chunk,phase='F',memory=None):
@@ -151,9 +161,15 @@ def test_cache_causality_padding(base,mode,rank,steps,record_property):
     mask = torch.ones_like(ids)
     mask[0,:2] = 0
     mask[1,-2:] = 0
+    with torch.no_grad():
+        pos = (mask.cumsum(-1)-1).clamp_min(0)
+        base_logits = base(ids,attention_mask=mask,position_ids=pos,use_cache=False).logits
     with adapted(base,AdapterConfig(layers=(14,),branch='memory',rank=rank,steps=steps,mode=mode)) as model, torch.no_grad():
         nonzero_exits(model)
         full = model(ids,attention_mask=mask)
+        effect = (full.logits[mask.bool()].float()-base_logits[mask.bool()].float()).abs().max().item()
+        record_property('side_effect.max_abs',effect)
+        assert effect > 2*TOL['bf16_atol']
         for chunk in (3,1):
             actual,cache = chunked(model,ids,mask,chunk)
             measure(actual[mask.bool()],full.logits[mask.bool()],record_property,f'cache.chunk{chunk}')
@@ -195,7 +211,7 @@ def test_m_line_access_ownership(base,backend,record_property):
     ids = fixture()
     with adapted(base,AdapterConfig(layers=(14,),branch='memory',backend=backend,steps=2)) as model, torch.no_grad():
         nonzero_exits(model)
-        support = model(ids,phase='support')
+        support = model(ids,phase='support',write_mask=torch.ones_like(ids,dtype=torch.bool))
         assert support.cache.backbone is None
         assert support.accounting[14]['side']['reads'] == 0
         assert support.accounting[14]['side']['writes'] == ids.numel()
@@ -210,8 +226,14 @@ def test_m_line_access_ownership(base,backend,record_property):
         again = model(ids[:,:4],memory=snapshot,phase='query')
         measure(again.logits,query.logits,record_property,'shared_support',atol=0)
         assert query.accounting[14]['side']['writes'] == 0
+        assert query.accounting[14]['side']['reads'] == 2*ids[:,:4].numel()
         assert torch.equal(snapshot[14].M,query.cache.memory[14].M)
         assert snapshot[14].slot_count == query.cache.memory[14].slot_count
+        swapped = support.cache.reorder(torch.tensor([1,0],device=ids.device))
+        swapped_query = model(ids[:,:4],memory=swapped.memory,phase='query')
+        effect = (swapped_query.logits.float()-query.logits.float()).abs().max().item()
+        record_property('support_owner_effect.max_abs',effect)
+        assert effect > TOL['bf16_atol']
         for size in (1,3):
             logits,_ = chunked(model,ids[:,:4],torch.ones_like(ids[:,:4]),size,'query',snapshot)
             measure(logits,query.logits,record_property,f'query.cache{size}')
@@ -259,3 +281,44 @@ def test_export_reload(base,tmp_path,record_property):
         for i,layer in reloaded.adapters().items():
             for h in layer.handles: h.remove()
             base.model.layers[i] = layer.original
+
+
+@pytest.mark.parametrize('backend',['kernel_matrix','kernel_slot_reference','soft_slot'])
+def test_support_delimiter_write_scope_and_capacity(base,backend):
+    ids=fixture()
+    mask=torch.ones_like(ids,dtype=torch.bool)
+    mask[:,:2]=False
+    delimiters=torch.zeros_like(mask)
+    delimiters[:,[3,7]]=True
+    with adapted(base,AdapterConfig(layers=(14,),branch='memory',backend=backend)) as model,torch.no_grad():
+        support=model(ids,attention_mask=mask,phase='support',write_mask=delimiters)
+        state=support.cache.memory[14]
+        assert support.accounting[14]['side']['writes']==4
+        assert state.counts.tolist()==[2,2]
+        assert state.slot_count==(None if backend=='kernel_matrix' else 2)
+        for phase in ('query','F'):
+            with pytest.raises(ValueError,match='only accepted'):
+                model(ids,phase=phase,memory=support.cache.memory if phase=='query' else None,write_mask=delimiters)
+        with pytest.raises(ValueError,match='explicit write_mask'):
+            model(ids,phase='support')
+        invalid=delimiters.clone(); invalid[:,0]=True
+        with pytest.raises(ValueError,match='subset'):
+            model(ids,attention_mask=mask,phase='support',write_mask=invalid)
+    if backend!='kernel_matrix':
+        with adapted(base,AdapterConfig(layers=(14,),branch='memory',backend=backend,slot_capacity=1)) as model:
+            with pytest.raises(ValueError,match='capacity exceeded'):
+                model(ids,phase='support',write_mask=delimiters)
+
+
+def test_reject_missing_memory_and_reused_cache(base):
+    ids=fixture()
+    with adapted(base,AdapterConfig(layers=(14,),branch='memory')) as model,torch.no_grad():
+        with pytest.raises(ValueError,match='missing support memory'):
+            model(ids,phase='query',memory={})
+        prefix=model(ids[:,:3],use_cache=True).cache
+        copied=prefix.reorder(torch.arange(ids.shape[0],device=ids.device))
+        first=model(ids[:,3:4],cache=prefix,attention_mask=torch.ones_like(ids[:,:4]),use_cache=True)
+        same=model(ids[:,3:4],cache=copied,attention_mask=torch.ones_like(ids[:,:4]),use_cache=True)
+        torch.testing.assert_close(first.logits,same.logits,atol=0,rtol=0)
+        with pytest.raises(ValueError,match='stale or reused cache'):
+            model(ids[:,3:4],cache=prefix,attention_mask=torch.ones_like(ids[:,:4]),use_cache=True)

@@ -190,6 +190,7 @@ class LatentReader(nn.Module):
         self.read_gain = float(read_gain)
         self.eps_norm = eps_norm
         self.eps_read = eps_read
+        self.last_read_calls = 0
         self.Rq = nn.Parameter(torch.eye(rank))
         self.Ro = nn.Parameter(torch.eye(rank))
 
@@ -204,6 +205,7 @@ class LatentReader(nn.Module):
             raise ValueError("update must be 'accumulate' or 'anchored'")
         if readout not in {"increment", "full"}:
             raise ValueError("readout must be 'increment' or 'full'")
+        self.last_read_calls = 0
         z0 = qbar
         z = z0
         fixed_q = elu_plus_one(rmsnorm_no_affine(z0, self.eps_norm) @ self.Rq) if fixed_query else None
@@ -211,6 +213,7 @@ class LatentReader(nn.Module):
             query = fixed_q if fixed_query else elu_plus_one(
                 rmsnorm_no_affine(z, self.eps_norm) @ self.Rq)
             a = state.read(query, self.eps_read) * self.read_gain
+            self.last_read_calls += 1
             candidate = z0 if update == "anchored" else z
             z = candidate + self.eta * (a @ self.Ro)
         return z - z0 if readout == "increment" else z
@@ -266,19 +269,23 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
         do_read = active & read[:, t]
         valid_count += int(active.sum().item())
         if mode == "inclusive" and bool(do_write.any()):
-            state = state.write(elu_plus_one(rmsnorm_no_affine(kbar[:, t])), vbar[:, t], do_write)
+            state = state.write(
+                elu_plus_one(rmsnorm_no_affine(kbar[:, t], reader.eps_norm)),
+                vbar[:, t], do_write)
         # Skip the reader entirely for a fully padded timestep.
         read_rows = torch.nonzero(do_read, as_tuple=False).flatten()
         if read_rows.numel():
             read_values = reader(qbar[:, t].index_select(0, read_rows),
                                  state.reorder(read_rows), steps, update, readout, fixed_query)
             z = torch.zeros_like(qbar[:, t]).index_copy(0, read_rows, read_values)
-            reads += int(read_rows.numel()) * steps
+            reads += reader.last_read_calls * int(read_rows.numel())
         else:
             z = torch.zeros_like(qbar[:, t])
         outs.append(z)
         if mode == "strict" and bool(do_write.any()):
-            state = state.write(elu_plus_one(rmsnorm_no_affine(kbar[:, t])), vbar[:, t], do_write)
+            state = state.write(
+                elu_plus_one(rmsnorm_no_affine(kbar[:, t], reader.eps_norm)),
+                vbar[:, t], do_write)
         writes += int(do_write.sum().item())
     outputs = torch.stack(outs, dim=1) if outs else qbar.new_zeros(batch, 0, rank)
     return SequenceResult(outputs, state, {
