@@ -89,8 +89,12 @@ Final run ATT-0069-1, result RES-0075. All run paths below are relative to
 
 Subject copying on all rows reflects the27/13 valid self-edge answers, not a
 nonself copying failure. Rank is1+number of vocabulary logits strictly higher
-than the target. The single calibration error is being inspected by the saved
-output audit; no claim that mean rank1.2368 means broad retrieval failure.
+than the target. The audit identifies one nonself calibration error, episode
+84b4525aaac41599f3d4146c2abf2d05ea077eae4b3e811e6d9b4af4e76d48ac:
+target41187, prediction6798, subject12375, NLL31.875, target rank486. This
+single confident error accounts for almost all aggregate calibration NLL;
+the other2047 rows are correct. No claim of broad retrieval failure follows
+from mean rank1.2368. Dev has no errors.
 
 | Optimizer step | Dev EM | Dev NLL | Use |
 |---|---:|---:|---|
@@ -118,7 +122,8 @@ trajectory and exact reload; RES-0058. RV-0018 passed the code recheck.
 The saved-output audit `src/v2_fline_audit.py` (commitc09e6a7) independently
 recomputes schedule/counts, every finite training record, original/reloaded
 identity/target alignment, summary EM/NLL/copy/ranks, curve EM/NLL, and records
-the error/outlier. ATT-0076-1 audit result and final output review pending.
+the error/outlier. ATT-0076-1 audit passed, result RES-0076; final diagnostic
+evidence EV-0062 links the final run and audit. Final output review pending.
 This audit is read-only and does not perform fresh inference.
 
 | Attempt | PBS job | Wall seconds | node-hours |
