@@ -24,12 +24,12 @@ where the CLI reads them.
   - 计算 [用户 2026-11-01]：只通过 miyabi-mcp 向 Miyabi-G PBS（group xg24i002）提交作业。登录节点只做控制工作：编辑、记录、暂存小型源码快照、依赖解析与下载。测试、冒烟检查、训练、评估与数据分析都放进作业，即使输入很小也不在登录节点运行。
 - Resource ceiling (per experiment / per batch / total; units such as CPU-h, GPU-h, node-h; queues):
   - V0+V1 总算力 [用户 2026-11-01]：≤ **200 node·h**（Miyabi-G；MIG 作业按 miyabi-mcp 账本的实际计量计入）。达到 80% 时协调者先报告，超出前必须由用户同意。
-  - 训练 tokens [plan §6.4, §7.3, §14]：V0+V1 ≤ 18M 非 padding 输入 tokens，按样本呈现次数累计（V0 校准 ≤ 2M，其中 V1 三个家族约 1.2M；V1 八组每组 ≤ 2M，合计 ≤ 16M）。完整条件路线的规划上限是 480M（核心 448M + 储备 32M），只是规划值，不视为已授权。
+  - 训练 tokens [用户 2026-11-01]：取消训练 tokens 上限（原为 V0+V1 ≤ 18M 非 padding 输入 tokens，来自 plan §6.4、§7.3、§14）。tokens 仍按样本呈现次数如实记录，但不再作为资源上限；算力只受上面的 node·h 上限约束。[协调者默认] 实验契约中每个 arm 的 token 数属于实验设计（各 arm 相同的样本预算），不是资源上限，改动按契约修订处理。
   - 每个作业 [plan §14.4；协调者默认，用户 2026-11-01 未改]：单节点；walltime 按实测 × 1.5 申请，普通作业 ≤ 1 h，有实测结果和 scale-up 说明时 ≤ 2 h；debug 队列 ≤ 30 min；同时运行的作业 ≤ 4 个；作业不得跨越 2026-11-25 09:00 JST 的计划停机。
   - 预算核算 [plan §14.4]：每个 arm 实测加载、稳定训练步、评估与保存时间；node·h 只按实测换算。时间不足时统一缩短所有 arm 的步数，不允许各 arm 停在不同的样本预算上。
   - 角色与订阅 [用户 2026-11-01]：研究者优先用 codex，审核者用 Claude；顾问轮次 ≤ `advice.max_rounds`（3）。
 - Actions that need the user's decision first:
   - 改变研究目标、范围内主张、backbone、数据集或确认集封存规则。
-  - 超出上述 node·h 或 tokens 上限；释放 V2 及以后阶段的预算；推荐正式（确认性）实验；开启 V6 分支。
+  - 超出上述 node·h 上限；释放 V2 及以后阶段的预算；推荐正式（确认性）实验；开启 V6 分支。
   - 把代码、数据或结果推送、发布到项目外（GitHub、共享页面等）。
   - 任何不可撤销的项目外操作，例如删除其他目录的数据、修改 miyabi-mcp 的 policy、取消非本项目提交的作业。
