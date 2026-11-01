@@ -1,7 +1,9 @@
 import json
+import copy
 
 from v1_data import (
     build_training_stream,
+    audit_training_exclusions,
     collate_encoded,
     derive_seed,
     encode_candidates,
@@ -56,6 +58,83 @@ def test_interleaving_balances_task_order_and_changes_by_epoch():
     assert sorted((row["task"], row["id"]) for row in stream) == sorted(
         [("piqa", i) for i in range(5)] + [("boolq", i) for i in range(2)])
     assert stream != build_training_stream(splits, epoch=1)
+
+
+def test_training_exclusions_filter_after_shuffle_and_preserve_heldout():
+    splits = {
+        "piqa": {"train": [{"task": "piqa", "id": i} for i in range(8)],
+                 "dev": [{"task": "piqa", "id": "dev"}],
+                 "calibration": [{"task": "piqa", "id": "cal"}]},
+        "boolq": {"train": [{"task": "boolq", "id": i} for i in range(5)],
+                  "dev": [{"task": "boolq", "id": "dev"}],
+                  "calibration": [{"task": "boolq", "id": "cal"}]},
+    }
+    before = copy.deepcopy(splits)
+    baseline = build_training_stream(splits, epoch=3)
+    filtered = build_training_stream(splits, epoch=3, excluded={("piqa", 3), ("boolq", 1)})
+
+    for task, excluded_id in (("piqa", 3), ("boolq", 1)):
+        baseline_task_ids = [row["id"] for row in baseline if row["task"] == task]
+        filtered_task_ids = [row["id"] for row in filtered if row["task"] == task]
+        assert filtered_task_ids == [i for i in baseline_task_ids if i != excluded_id]
+    assert len(filtered) == len(baseline) - 2
+    assert splits == before
+
+
+def test_audit_reports_known_encoding_failure_and_leaves_nontrain_splits_untouched():
+    splits = {
+        "piqa": {"train": [{"task": "piqa", "id": 0, "goal": "g",
+                             "solutions": ["ok", "x" * 536], "label": 0}],
+                 "dev": [{"task": "piqa", "id": 42, "preserve": True}],
+                 "calibration": [{"task": "piqa", "id": 43, "preserve": True}]},
+        "boolq": {"train": [], "dev": [{"task": "boolq", "id": 42, "preserve": True}],
+                  "calibration": [{"task": "boolq", "id": 43, "preserve": True}]},
+    }
+    # Exactly one percent is permitted; two percent is covered separately.
+    splits['piqa']['train'].extend(
+        {'task':'piqa','id':i,'goal':'g','solutions':['ok','fine'],'label':0}
+        for i in range(1,100))
+    before_heldout = {(task,name): copy.deepcopy(splits[task][name])
+                      for task in ("piqa", "boolq")
+                      for name in ("dev", "calibration")}
+
+    excluded = audit_training_exclusions(splits, CharacterTokenizer())
+
+    assert excluded == [{"task": "piqa", "id": 0, "candidate_lengths": [3, 537],
+                        "reason": "a complete candidate exceeds max_length"}]
+    assert {(task,name): splits[task][name] for task in ("piqa", "boolq")
+            for name in ("dev", "calibration")} == before_heldout
+
+
+def test_audit_rejects_more_than_one_percent_exclusions():
+    rows = [{"task": "piqa", "id": i, "goal": "g", "solutions": ["ok", "fine"], "label": 0}
+            for i in range(98)]
+    rows.extend({"task": "piqa", "id": i, "goal": "g", "solutions": ["ok", "x" * 536], "label": 0}
+                for i in range(98, 100))
+    splits = {"piqa": {"train": rows}, "boolq": {"train": []}}
+
+    try:
+        audit_training_exclusions(splits, CharacterTokenizer())
+    except ValueError as exc:
+        assert "piqa training exclusions exceed 1%: 2/100 rows" in str(exc)
+    else:
+        raise AssertionError("expected exclusion-rate rejection")
+
+
+def test_audit_propagates_unrelated_tokenizer_value_errors():
+    class BrokenTokenizer:
+        def encode(self, text, add_special_tokens=False):
+            raise ValueError("tokenizer backend failure")
+
+    splits = {"piqa": {"train": [{"task": "piqa", "id": 1, "goal": "g",
+                                    "solutions": ["a", "b"], "label": 0}]},
+              "boolq": {"train": []}}
+    try:
+        audit_training_exclusions(splits, BrokenTokenizer())
+    except ValueError as exc:
+        assert str(exc) == "tokenizer backend failure"
+    else:
+        raise AssertionError("expected tokenizer failure to propagate")
 
 
 def test_candidate_encoding_uses_shared_prompt_and_completion_only_loss():

@@ -371,3 +371,58 @@ def test_valid_smoke_requires_complete_finite_evaluation_and_exact_reload():
 
     assert all(not v1_smoke.valid_smoke(candidate, steps=5)
                for candidate in invalid_manifests)
+
+
+def test_intermediate_evaluation_preserves_training_trajectory(monkeypatch, tmp_path):
+    import random
+    import numpy as np
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    monkeypatch.setattr(v1_run, 'batch_tensors', lambda encoded, pad_id: tensor_batch(encoded))
+
+    class StochasticModel(TinyCausalModel):
+        def forward(self, input_ids, **kwargs):
+            logits = super().forward(input_ids).logits
+            return SimpleNamespace(logits=F.dropout(logits, p=.3, training=self.training))
+
+    states, schedules, random_next = [], [], []
+    for with_evaluation in (False, True):
+        torch.manual_seed(123)
+        random.seed(456)
+        np.random.seed(789)
+        model = StochasticModel()
+        model.embedding.eval()  # A mixed mode must survive an evaluation callback.
+        output = tmp_path / str(with_evaluation)
+        output.mkdir()
+        batches = [[{'input_ids':[1,2,3], 'labels':[-100,2,3], 'epoch':0}]]*8
+        points = []
+
+        def callback(step, current):
+            points.append(step)
+            current.eval()
+            torch.rand(37)
+            random.random()
+            np.random.rand(19)
+
+        v1_run.train(model, batches, MainTokenizer(), .001, output,
+                     intermediate=callback if with_evaluation else None)
+        assert model.training
+        assert points == ([2,4,6] if with_evaluation else [])
+        states.append({key:value.detach().clone() for key,value in model.state_dict().items()})
+        schedules.append([{k:v for k,v in json.loads(line).items() if k != 'seconds'}
+                          for line in (output/'steps.jsonl').read_text().splitlines()])
+        random_next.append((torch.rand(1).item(),random.random(),np.random.rand()))
+    assert schedules[0] == schedules[1]
+    assert random_next[0] == random_next[1]
+    for key in states[0]:
+        assert torch.equal(states[0][key],states[1][key])
+
+
+def test_preserved_evaluation_restores_mixed_modes_on_exception():
+    model = TinyCausalModel().train()
+    model.embedding.eval()
+    modes = [module.training for module in model.modules()]
+    with pytest.raises(RuntimeError):
+        with v1_run.preserved_evaluation_state(model):
+            model.eval()
+            raise RuntimeError('evaluation failed')
+    assert [module.training for module in model.modules()] == modes
