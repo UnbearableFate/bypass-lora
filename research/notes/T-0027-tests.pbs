@@ -1,0 +1,38 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0027"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+set +e
+"$PY" -m pytest -q -p no:cacheprovider src/test_rb_read_diagnostics.py src/test_rb_sink_read.py \
+  src/test_rb1_intervene.py > "$OUT/pytest.txt" 2>&1
+rc=$?
+set -e
+"$PY" - "$OUT" "$rc" <<'PYEOF'
+import json, os, sys
+out, rc = sys.argv[1], int(sys.argv[2])
+json.dump({'status': 'complete' if rc == 0 else 'failed', 'contract': 'E-0024@1',
+           'spec_digest': os.environ['SR_SPEC_DIGEST'], 'stage': 'unit_tests',
+           'metrics': {'pytest_exit': rc},
+           'artifacts': [{'path': f'{out}/pytest.txt', 'role': 'pytest.txt'}],
+           'validator': {'name': 'pytest', 'passed': rc == 0}}, open(f'{out}/manifest.json', 'w'), indent=1)
+PYEOF
+exit "$rc"
