@@ -14,6 +14,30 @@ from bypass_model import AdapterConfig
 
 
 CONTROLS = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
+# E-0015@3 read substitutions (diagnostic only; CONTROLS keep their V2 behaviour).
+ISOLATED_CONTROLS = ('iso_kv', 'iso_v', 'iso_oracle_value', 'iso_wrong_oracle')
+DIAGNOSTIC_CONTROLS = ('last_only', 'oracle_last', 'oracle_last_only', 'uniform', 'last_only_shuffled',
+                       'wrong_oracle') + ISOLATED_CONTROLS
+# Controls that keep an increment only at the last question position or replace it there.
+LAST_POSITION_CONTROLS = ('last_only', 'oracle_last', 'oracle_last_only', 'last_only_shuffled')
+# Controls whose increment is recomputed from a substituted read at every question position.
+RECOMPUTED_CONTROLS = ('oracle_key', 'oracle_value', 'iso_oracle_value', 'wrong_oracle', 'iso_wrong_oracle', 'uniform')
+DONOR_CONTROLS = ('shuffled', 'last_only_shuffled')
+# E-0015@3 magnitude sweep: '<read>@a<alpha>' scales the increment at all question
+# positions (read normal or oracle_value); 'nonfinal@a<alpha>' scales only the
+# non-final positions under the normal read.
+SWEEP_ALPHAS = (.1, .3)
+SWEEP_CONTROLS = tuple(f'{read}@a{alpha}' for read in ('normal', 'oracle_value', 'nonfinal') for alpha in SWEEP_ALPHAS)
+
+
+def parse_control(mode):
+    """(read mode, alpha, scope) of a control name; scope is 'all' or 'nonfinal'."""
+    if mode in CONTROLS + DIAGNOSTIC_CONTROLS:
+        return mode, None, None
+    if mode in SWEEP_CONTROLS:
+        read, alpha = mode.split('@a')
+        return ('normal', float(alpha), 'nonfinal') if read == 'nonfinal' else (read, float(alpha), 'all')
+    raise ValueError('unknown control')
 BACKENDS = ('kernel_matrix', 'soft_slot', 'centered_cos_slot')
 
 
@@ -128,6 +152,79 @@ def build_support(model, batch, observe=False):
     return Snapshot(out.cache.memory, keys, values, valid), out.accounting
 
 
+def observe_writes(model, ids, mask, write_mask):
+    """Compact per-delimiter write tensors of a support pass (offline diagnostics).
+
+    Returns transformed keys (as written to slots), values (A_v output, as stored),
+    the frozen projection input at the value tap (E-0015 Pf) and validity, each in
+    support order. Unlike build_support, no memory state is returned.
+    """
+    if model.training or torch.is_grad_enabled():
+        raise ValueError('support observation is offline only')
+    side = model.adapters()[14].side
+    seen = {}
+    handle = side.projection.register_forward_pre_hook(lambda module, args: seen.update(features=args[2]))
+    try:
+        with capture_projection(side) as projected:
+            model(ids, mask, phase='support', write_mask=write_mask)
+    finally:
+        handle.remove()
+    n = int(write_mask.sum(-1).max())
+    b, _, r = projected['k'].shape
+    keys = projected['k'].new_zeros(b, n, r)
+    values = keys.clone()
+    features = seen['features'].new_zeros(b, n, seen['features'].shape[-1])
+    valid = torch.zeros(b, n, device=keys.device, dtype=torch.bool)
+    for i in range(b):
+        count = int(write_mask[i].sum())
+        keys[i, :count] = elu_plus_one(rmsnorm_no_affine(projected['k'][i, write_mask[i]], side.reader.eps_norm))
+        values[i, :count] = projected['v'][i, write_mask[i]]
+        features[i, :count] = seen['features'][i, write_mask[i]]
+        valid[i, :count] = True
+    return {'keys': keys, 'values': values, 'features': features, 'valid': valid}
+
+
+def isolated_writes(model, rows, pad_id, device):
+    """E-0015 isolated encoding: each fact of each row encoded alone, in support order.
+
+    rows[i]['_isolated'] lists, per fact in support order, the single-fact support
+    (E=1 format) as {'ids', 'delimiter'}. The resulting slot j of row i holds fact j.
+    """
+    sequences = [(i, j, item) for i, row in enumerate(rows) for j, item in enumerate(row['_isolated'])]
+    if any(len(row['_isolated']) != len(row['facts']) for row in rows):
+        raise ValueError('isolated encoding needs one sequence per fact')
+    ids, mask = pad([item['ids'] for _, _, item in sequences], pad_id, device)
+    write_mask = torch.zeros_like(mask)
+    for k, (_, _, item) in enumerate(sequences):
+        if not 0 <= item['delimiter'] < len(item['ids']):
+            raise ValueError('isolated delimiter outside its sequence')
+        write_mask[k, item['delimiter']] = True
+    single = observe_writes(model, ids, mask, write_mask)
+    n = max(len(row['facts']) for row in rows)
+    result = {}
+    for name in ('keys', 'values', 'features'):
+        x = single[name]
+        result[name] = x.new_zeros(len(rows), n, x.shape[-1])
+    result['valid'] = torch.zeros(len(rows), n, dtype=torch.bool, device=device)
+    for k, (i, j, _) in enumerate(sequences):
+        for name in ('keys', 'values', 'features'):
+            result[name][i, j] = single[name][k, 0]
+        result['valid'][i, j] = True
+    return result
+
+
+def isolated_snapshot(original, isolated, mode):
+    """iso_kv: isolated keys and values; iso_v / iso_oracle_value: contextual keys, isolated values."""
+    if mode not in ISOLATED_CONTROLS:
+        raise ValueError('not an isolated-encoding control')
+    if not torch.equal(isolated['valid'], original.valid):
+        raise ValueError('isolated slots must match the contextual support slots')
+    keys = isolated['keys'] if mode == 'iso_kv' else original.keys
+    values = isolated['values']
+    states = {i: memory_from_slots(keys, values, original.valid, s.backend) for i, s in original.memory.items()}
+    return Snapshot(states, keys, values, original.valid)
+
+
 def answer_logits(output, mask):
     last = mask.long().sum(-1) - 1  # collate uses right padding
     return output.logits[torch.arange(len(last), device=last.device), last].float()
@@ -220,8 +317,16 @@ def control_snapshot(snapshot, mode):
     return snapshot
 
 
-def read_vectors(qbar, snapshot, reader, backend, target, mode='normal'):
-    """Independent explicit-slot read, used only for diagnostics/oracle evaluation."""
+def read_vectors(qbar, snapshot, reader, backend, target, mode='normal', last=None):
+    """Independent explicit-slot read, used only for diagnostics/oracle evaluation.
+
+    E-0015 modes return the read actually used per position: oracle_last(_only) the
+    target value at the last question position (``last``); last_only,
+    last_only_shuffled and oracle_last_only zero at the other positions; uniform the
+    equal-weight mean of valid slot values everywhere; iso_oracle_value the target
+    value of the (isolated) snapshot everywhere; (iso_)wrong_oracle the value of
+    fact (target+1) mod E everywhere.
+    """
     b, t, _ = qbar.shape
     row = torch.arange(b, device=qbar.device)
     q = elu_plus_one(rmsnorm_no_affine(qbar, reader.eps_norm) @ reader.Rq)
@@ -249,6 +354,28 @@ def read_vectors(qbar, snapshot, reader, backend, target, mode='normal'):
     raw = weights @ snapshot.values
     if mode == 'oracle_value':
         raw = snapshot.values[row, target][:, None].expand_as(raw)
+    elif mode == 'iso_oracle_value':
+        raw = snapshot.values[row, target][:, None].expand_as(raw)
+    elif mode in ('wrong_oracle', 'iso_wrong_oracle'):
+        count = snapshot.valid.sum(-1)
+        if not bool((count >= 2).all()):
+            raise ValueError('the wrong-fact oracle needs at least two facts')
+        raw = snapshot.values[row, (target + 1) % count][:, None].expand_as(raw)
+    elif mode == 'uniform':
+        count = snapshot.valid.sum(-1, keepdim=True)
+        if not bool((count > 0).all()):
+            raise ValueError('uniform read needs at least one valid slot')
+        mean = (snapshot.values * snapshot.valid[..., None]).sum(1) / count
+        raw = mean[:, None].expand_as(raw)
+    elif mode in LAST_POSITION_CONTROLS:
+        if last is None:
+            raise ValueError('last-position controls need the last question position')
+        at_last = torch.zeros(b, t, 1, dtype=torch.bool, device=raw.device)
+        at_last[row, last] = True
+        replacement = (raw if mode in ('last_only', 'last_only_shuffled')
+                       else snapshot.values[row, target][:, None].expand_as(raw))
+        others = raw if mode == 'oracle_last' else torch.zeros_like(raw)
+        raw = torch.where(at_last, replacement, others)
     return raw, weights, scores, denominator
 
 
@@ -289,21 +416,29 @@ def read_metrics(raw, weights, scores, denominator, target_value, target, valid_
 def evaluate_batch(model, batch, mode='normal', donor_batch=None):
     if model.training:
         raise ValueError('diagnostics/oracles require model.eval()')
-    if mode not in CONTROLS:
-        raise ValueError('unknown control')
+    mode, alpha, scope = parse_control(mode)
     if model.config.steps != 1 or model.config.readout != 'increment' or model.config.layers != (14,):
         raise ValueError('offline diagnostics require the V2 single-layer single-read protocol')
     original, _ = build_support(model, batch, observe=True)
     selected_original = original.select(batch.owners)
     if donor_batch is not None:
-        if mode != 'shuffled' or len(donor_batch.rows) != len(batch.rows):
+        if mode not in DONOR_CONTROLS or len(donor_batch.rows) != len(batch.rows):
             raise ValueError('explicit donors require shuffled mode and one donor per query')
         if any(a['episode_id'] == b['episode_id'] for a, b in zip(batch.rows, donor_batch.rows)):
             raise ValueError('shuffled donor must differ from recipient')
         donor, _ = build_support(model, donor_batch, observe=True)
         snapshot = donor.select(donor_batch.owners)
+    elif mode in ISOLATED_CONTROLS:
+        if not torch.equal(batch.owners, torch.arange(len(batch.rows), device=batch.owners.device)):
+            raise ValueError('isolated controls need one question per support owner, in order')
+        # Right padding under the causal mask: the pad id never reaches valid positions.
+        isolated = isolated_writes(model, batch.rows, 0, batch.support_ids.device)
+        snapshot = isolated_snapshot(original, isolated, mode).select(batch.owners)
     else:
-        snapshot = control_snapshot(original, mode).select(batch.owners)
+        # Without explicit donors last_only_shuffled uses shuffled's in-batch donors; the
+        # other diagnostic controls substitute the read of the original memory.
+        memory_mode = {'last_only_shuffled': 'shuffled'}.get(mode, 'normal' if mode in DIAGNOSTIC_CONTROLS else mode)
+        snapshot = control_snapshot(original, memory_mode).select(batch.owners)
     target = torch.tensor([r['query']['target_fact_index'] for r in batch.rows], device=batch.labels.device)
     row = torch.arange(len(target), device=target.device)
     if ((target < 0) | (target >= selected_original.valid.sum(-1))).any():
@@ -324,16 +459,38 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
     with capture_projection(side) as seen:
         def observe(module, args, output):
             z, state, accounting = output
-            raw, weights, scores, denominator = read_vectors(seen['q'], snapshot, side.reader, model.config.backend, target, mode)
-            if mode in ('oracle_key', 'oracle_value'):
+            raw, weights, scores, denominator = read_vectors(seen['q'], snapshot, side.reader, model.config.backend,
+                                                             target, mode, last)
+            at_last = torch.zeros_like(batch.question_mask)
+            at_last[row, last] = True
+            at_last = at_last[..., None]
+            if mode in RECOMPUTED_CONTROLS:
                 # Match S=1 increment's arithmetic, including cancellation rounding.
                 qbar = seen['q']
                 z = (qbar + side.reader.eta * (raw * side.reader.read_gain @ side.reader.Ro)) - qbar
                 z = z * batch.question_mask[..., None]
+            elif mode in LAST_POSITION_CONTROLS:
+                # Replace only the declared positions: the last question token gets the
+                # deployed (last_only, last_only_shuffled) or oracle increment, the others
+                # keep the deployed increment (oracle_last) or receive none.
+                if mode in ('last_only', 'last_only_shuffled'):
+                    replacement = z
+                else:
+                    qbar = seen['q']
+                    replacement = ((qbar + side.reader.eta * (raw * side.reader.read_gain @ side.reader.Ro)) - qbar)
+                others = z if mode == 'oracle_last' else torch.zeros_like(z)
+                z = torch.where(at_last, replacement, others) * batch.question_mask[..., None]
+            factor = 1.
+            if alpha is not None:
+                # E-0015@3 magnitude sweep: scale the increment at the declared positions.
+                factor = torch.full_like(z[..., :1], alpha)
+                if scope == 'nonfinal':
+                    factor = torch.where(at_last, torch.ones_like(factor), factor)
+                z = z * factor
             details.update(read_metrics(raw, weights, scores, denominator, target_value, target,
                                        batch.question_mask, snapshot.valid,
-                                       address_target_available=mode != 'shuffled'))
-            if mode == 'shuffled':
+                                       address_target_available=mode not in DONOR_CONTROLS))
+            if mode in DONOR_CONTROLS:
                 details['address.target_unavailable_reason'] = 'recipient target is undefined in donor memory'
             details['output.z_norm'] = float(z[batch.question_mask].norm(dim=-1).mean())
             for name in ('P', 'C_g', 'C_u'):
@@ -341,7 +498,7 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
                     delta = z @ getattr(side.fusion, name)
                     details['output.'+name+'_norm'] = float(delta[batch.question_mask].norm(dim=-1).mean())
             details['read.used_norm'] = float((raw * side.reader.read_gain)[batch.question_mask].norm(dim=-1).mean())
-            details['read.reconstruction_max_abs'] = float((z - ((seen['q'] + side.reader.eta*(raw * side.reader.read_gain @ side.reader.Ro)) - seen['q']) * batch.question_mask[..., None]).abs().max())
+            details['read.reconstruction_max_abs'] = float((z - ((seen['q'] + side.reader.eta*(raw * side.reader.read_gain @ side.reader.Ro)) - seen['q']) * batch.question_mask[..., None] * factor).abs().max())
             details['_clean_vectors'] = target_value.detach().cpu()
             details['_read_vectors'] = raw[row, batch.question_mask.sum(-1)-1].detach().cpu()
             # E-0014 last-question-position read and E-0012 L4 increment geometry.
@@ -350,10 +507,12 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
             details['_last_argmax'] = torch.where(has_slots, last_weights.argmax(-1), -1).tolist()
             prob = last_weights / last_weights.sum(-1, keepdim=True).clamp_min(1e-30)
             details['_last_n_eff'] = torch.where(has_slots, 1 / prob.square().sum(-1).clamp_min(1e-30), 0).tolist()
-            details['_last_target_weight'] = (None if mode == 'shuffled'
+            details['_last_target_weight'] = (None if mode in DONOR_CONTROLS
                                               else last_weights[row, target].tolist())
             if side.fusion.kind == 'F_out':
                 norms['fusion'] = (z @ side.fusion.P).float().norm(dim=-1)
+                # E-0015 Pz input: the FP32 F_out increment at the last question position.
+                details['_last_fusion'] = (z[row, last] @ side.fusion.P).float().cpu()
             if side.prior is not None:
                 norms['prior'] = side.prior(args[0], args[3]).float().norm(dim=-1)
             return z, state, accounting
