@@ -34,35 +34,53 @@
     {
       "attempt": "ATT-0134-1",
       "result": "RES-0152"
-    }
-  ],
-  "pending_formal": [
-    "ATT-0135-1",
-    "ATT-0136-1",
-    "ATT-0137-1"
-  ],
-  "plain_diagnostics": [
-    {
-      "attempt": "ATT-0103-2",
-      "result": "RES-0144"
     },
     {
-      "attempt": "ATT-0107-2",
-      "result": "RES-0145"
+      "attempt": "ATT-0135-1",
+      "result": "RES-0165"
     },
     {
-      "attempt": "ATT-0157-1",
-      "result": "RES-0146"
+      "attempt": "ATT-0136-1",
+      "result": "RES-0166"
+    },
+    {
+      "attempt": "ATT-0137-1",
+      "result": "RES-0167"
     }
   ],
+  "pending_formal": [],
+  "latency": {
+    "attempt": "ATT-0174-1",
+    "job_id": "3767640.opbs",
+    "code_commit": "388f2f82cfa91253830343c299db52537bbfffd5",
+    "notification": "N-20261102-011115-6426",
+    "status": "running",
+    "host": "mg1098",
+    "profile": "2g.24gb",
+    "guard_passed": true,
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1"
+  },
+  "all_nine_checkpoint_preflight_passed": true,
+  "paired_orders_match": true,
+  "training_evidence": "EV-0101",
+  "checkpoint_inventory": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/checkpoint-inventory.json",
+    "sha256": "2886d4981d2fe954bfc022b2d5b6641af638d1d0529d0012755538bd60619619",
+    "bytes": 10830
+  },
+  "training_summary": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0174-1/training-summary.json",
+    "sha256": "7d2c35cef7a5c8816d653b291e73ccfa3397989cf22f39ad72611aedf694f377",
+    "bytes": 41028
+  },
   "slice_comparison_canceled": true,
   "actual_slice_comparison_executed": false,
   "all_2g_lock_executed": false,
   "original_lock_final": true,
-  "notification": "N-20261101-211800-4e24",
-  "formal_completed_MIG_seconds": 36130,
+  "formal_completed_MIG_seconds": 73357,
   "other_completed_T0013_MIG_seconds": 10147,
-  "known_completed_MIG_seconds": 46277,
-  "known_completed_node_h": 3.2136805555555554,
-  "usage_note": "Three LoRA runs still pending;their unreported usage is not zero. Completed observations/usage above already imported once."
+  "known_completed_MIG_seconds": 83504,
+  "known_completed_node_h": 5.7988888888888885,
+  "usage_note": "All9 formal plus prior ancillary usage imported once. Latency usage pending, not zero.",
+  "validation_accessed": false
 }
