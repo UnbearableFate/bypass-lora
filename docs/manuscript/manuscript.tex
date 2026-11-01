@@ -1,0 +1,366 @@
+% Manuscript draft. `rl manuscript` refreshes each block between "% rl:begin" and "% rl:end" from the
+% records on every run and builds the PDF with manuscript.latex; all other text is yours and is kept. Replace
+% each [write: ...] placeholder (\towrite) with prose; correct a block's facts in the records (rl), not in the
+% block. For Chinese or Japanese text, build with xelatex or lualatex and load a CJK package here (e.g. xeCJK,
+% luatexja).
+\documentclass[11pt]{article}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[hidelinks]{hyperref}
+\newcommand{\towrite}[1]{\textbf{[write:} #1\textbf{]}}
+
+\title{Bypass-LoRA: 低维循环注意力与 FFN 条件融合 v2}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本文记录 Bypass-LoRA v2 计划第一个里程碑（V0+V1）的结果。研究问题是：在冻结的 Qwen3-0.6B-Base 上加入低维侧分支后，把同一低维信号注入 FFN 的 gate/up（条件融合），是否优于加法写回。方法分两步：先用预先锁定容差的实现检查验证侧分支语义（E-0001 修正后 85/85 项通过，E-0004 130/130 项通过）；再在 PIQA+BoolQ 上用不含记忆的 tokenwise proxy 比较八组接口（E-0003，每组 2M tokens，seed 0）。按运行前固定的规则，最好的 concat 接口 C\_dual（78.15\%）只比加法 F\_out（77.80\%）高 0.35 pp，未达 1 pp 门槛；两个参数相近的 LoRA（79.20\%、79.05\%）都更高。这是单 seed 筛选证据，H-0002 记为 challenged。V2 所需的数据与流水线已就绪；Base 诊断显示，16 条事实同时在上下文中时，Base 几乎总是复制问题主语。主要限制是单 seed、单一 dev 切分、接口之间参数不相等。
+\end{abstract}
+
+\section{Introduction}
+
+Bypass-LoRA v2 在冻结主干旁加一条低维循环侧分支：从注意力的 Q/K/V 取特征，压缩成低维状态，经记忆读写与循环更新，再通过 FFN 融合写回主干。计划把研究拆成几个阶段：V0 验证实现语义（H-0001）；V1 在没有记忆与循环的 tokenwise proxy 下比较融合接口，检验把信号注入 FFN 的 gate/up 是否优于加法写回（H-0002）；从 V2 起研究丢弃 support 主干 KV、只保留低维记忆时的单跳读取（H-0003），后续还有读算子选择性（H-0004）、多次读取（H-0005）与实用适配（H-0006）。本文报告 V0 与 V1 的结果，以及为 V2 所做的数据、流水线与 Base 难度准备。各假设的陈述、范围与当前状态如下。
+
+% rl:begin hypotheses
+\begin{itemize}
+\item H-0001@1 (supported, active) V0 实现语义与恒等式正确: 新侧分支实现（QKV tap、因果 KernelMatrix、低维累加循环、FFN 融合、M/F 协议）语义正确：出口全零时与未修改 Base 输出一致；两步梯度启动后 Q/K/V 压缩与 Rq/Ro 获得非零梯度且主干参数不更新；KernelMatrix 与 KernelSlot 的输出及 Q/K/V 梯度一致；Cg=PWg、Cu=PWu 约束下 C\_dual 与 F\_pre 的输出及对同一 P 的梯度一致；改动后缀不改变前缀输出；一次 prefill、分块 prefill 与逐 token decode 一致；padding 不写不读、reset/batch 重排不串状态；同 token 只写一次且 S 不改变写次数；M 线 support 主干 KV 不进入 query forward。 (scope: Qwen/Qwen3-0.6B-Base（锁定 revision）；FP32 小张量参考用严格阈值；GPU BF16 容差由同一 Base 的重复测量预先锁定，看到失败后不得放宽；检查围绕 plan §6.3 列出的风险，不要求重跑无关实验)
+\item H-0002@1 (challenged, paused) FFN gate/up 条件融合优于加法写回（V1 tokenwise proxy）: F 线（保留原 attention 上下文）、4 层 [6,13,20,27]、r32、无侧支记忆与循环的 tokenwise proxy Z=SiLU(UA) 下，把同一 Z 注入冻结 FFN 的 gate/up（C\_gate/C\_up/C\_dual）比加法写回（F\_out/F\_pre）在非天花板 dev 切片上取得更好的任务准确率与更低 NLL；且该优势不能仅由线性退化组（Z=UA + C\_dual，即共享 A 的 gate/up LoRA）或参数相近的 LoRA（4 层 all-7 rank10；28 层 all-7 rank2）解释。 (scope: F 线；真实任务 train/dev（PIQA+BoolQ 官方 train 切分）或预先锁定的非天花板切片；每组 \ensuremath{\leq}2M 非 padding 输入 tokens、seed 0 单 seed 筛选（screening）；接口间不等参，只筛位置与信号，不据此宣称参数效率；无记忆 proxy 的负结果不否定有记忆 concat（V2 保留 C\_dual 交互探针）)
+\item H-0003@1 (untested, active) M 线单跳：learned memory 读取产生可用信号（V2）: M 线（问答阶段丢弃 support 主干 KV，仅保留声明的低维 memory）、单层 0-based index14、r128、S=1、T1 单跳（E=16 事实、4 关系、visible\_fact\_delimiter 写入、all\_valid\_question 读取）、仅答案 CE 从 Base 训练时，2\ensuremath{\times}2\ensuremath{\times}2 析因（特征 direct\_hidden/qknorm\_pre\_rope \ensuremath{\times} 读算子 KernelMatrix/SoftmaxSlot \ensuremath{\times} 融合 F*/C*）中至少一组在新 dev 上正常 memory 的 EM 同时比 zero 与 shuffled memory 高至少 10 pp 且 NLL 更低，并有可用正对照与非退化读出。 (scope: study\_id concat\_loop\_v2 的 V2 数据（独立 phase/seed 命名空间，不复用旧验证集）；每组 \ensuremath{\leq}4M 输入 tokens、单 seed 筛选；门槛须在 V2 release 前锁定；是否继续有限循环探索的研究门槛，不是统计确认，也不替代旧 writer 的 80\% gate)
+\item H-0004@1 (untested, candidate) 读算子选择性：SoftmaxSlot 读取比 KernelMatrix 更集中且更可用: 在相同正核 q/k 特征、相同写读位置与训练条件下，SoftmaxSlot（s0=sqrt(dk)、tau=1、g=1）比 KernelMatrix 产生更高的目标 key 权重、更少的有效读取项数、更低的归一化读误差与更高的单跳 EM；若 SoftmaxSlot 有效而 KernelMatrix 无效，瓶颈在读权重的选择性与混合，而非 memory 中的信息缺失。 (scope: V2 析因内的读算子主效应与交互；单 seed 筛选；差异只称读算子差异，不归因于``保存 KV 消除了矩阵压缩''；KernelSlot 只作恒等检查，不作训练 arm)
+\item H-0005@1 (untested, candidate) 固定记忆下演化 query 的多次读取有独立收益（V3\ensuremath{\rightarrow}V4）: 固定 memory（同一 token 的各步共享 M、c）下，累加循环 S=2/4 的 hops2--3 EM 优于独立训练的 S1，且该收益不被固定 query 精确幅度对照（Z=S\ensuremath{\cdot}eta\ensuremath{\cdot}a\ensuremath{\cdot}Ro）、固定总步长、同源 tokenwise 核、MAC/延迟匹配的更宽 S1、同核锚定更新与完整状态读出解释。 (scope: M 线，沿用 V2 选定的特征/融合/rank/scope；T2 可组合图任务（训练与 dev 仅 hops1--3，hops4/6/8 封存外推）；V3 每组 \ensuremath{\leq}5M 单 seed 筛选；确认（V4）需预注册：hops2--3 平均 EM 差 \ensuremath{\geq} +3 pp、配对区间下界 \textgreater{}0、3 个新 seeds 方向均正、hop1 差不低于 \ensuremath{-}1 pp)
+\item H-0006@1 (untested, candidate) 保留原 attention 的实用适配价值（V5）: F 线（4 层 r32，保留原 attention 上下文）的 PIQA+BoolQ 适配中，C* 多读相对参数匹配的强 LoRA（全 28 层 all-7）宏平均准确率提升至少 +1 pp 且每任务下降不超过 1 pp；并且侧支历史相对同参 tokenwise T0 与 zero/shuffle/permute 干预有可测贡献；同时报告延迟与状态成本。 (scope: 官方 validation 封存为确认集，配置与分析锁定后只开一次；3 seeds \ensuremath{\times} \ensuremath{\leq}12M、最多 3 epochs；95\% 配对区间 + Holm 校正；WikiText-103 保留 split 的 NLL 作能力保持；参数、状态与计算不同时等量，不宣称同时公平)
+\item H-0007@1 (untested, paused) 冻结 S-RE：已学 K/V 换用槽位读算子后更可用（旧资产诊断）: 冻结旧 S-RE（DPFP 实际 key 768 / value 128、原读位置、memory-only）的 writer 与低维 reader，仅把原生 ridge read 在所有正常读取位置同时替换为 SoftSlot 或 HardSlot（温度/增益只在独立 calibration 上按 NLL 选择），旧 1,000 个验证 episode 的 EM 高于原生读取（旧参考 723/1,000，NLL 1.642）。 (scope: 需要旧 S-RE 推理资产（writer.pt 与 looplora.llm.sq2.load\_inference）；只回答既有 learned K/V 在另一读算子下能否更有效使用，不证明训练后极限；复现旧验证只证明兼容性；冻结诊断上限 1 node\ensuremath{\cdot}h)
+\end{itemize}
+% rl:end hypotheses
+
+\section{Related work}
+
+目前的记录中还没有核查过的文献条目，因此这里不对相关工作作任何断言。与本工作最直接相关的是同一计划此前的 LoopLora 实现（UnbearableFate/LoopLora @ a255e81）。本研究只把它作为只读的数据重叠核对来源：E-0005 的新数据与其 registry 重叠为 0。本研究没有复现它的结果；冻结 S-RE 诊断因缺少推理资产而暂停（D-0001）。V1 中的 LoRA 只作为参数相近的对照。系统的文献核查留待后续阶段。
+
+% rl:begin related
+\begin{itemize}
+\item none recorded
+\end{itemize}
+% rl:end related
+
+\section{Method}
+
+所有实验都使用 Qwen/Qwen3-0.6B-Base（锁定 revision da87bfb6），BF16 冻结主干、FP32 新参数、eager attention，硬件为 GH200 MIG 2g.24gb；所有工作负载都在 PBS 作业中运行。E-0001 与 E-0004 是不训练的实现检查，容差在检查前由同一 Base 的重复测量锁定（BF16 atol 0.50002，FP32 2e-5），失败后不放宽。E-0002 从 PIQA 与 BoolQ 的官方 train 中切出 train、calibration 与 dev（dev 每任务 1,000 条，官方 validation 封存不读），在三个代表结构上用 0.2M tokens 比较 1e-4 与 3e-4，按 calibration NLL 选学习率，三个家族都选中 3e-4。E-0003 用 seed 0 训练八组：proxy $Z=\mathrm{SiLU}(UA)$（4 层 [6,13,20,27]，r32）分别接 F\_out、F\_pre、C\_gate、C\_up、C\_dual；线性退化组 $Z=UA$ 接 C\_dual；以及 4 层 rank10 与 28 层 rank2 的 LoRA。每组在累计 2M 非 padding 输入 tokens 的那一步停止（13,077 步，batch 2），warmup 5\% 后 cosine；主结果用最终 checkpoint，并要求重载后复评逐条一致。主指标是 dev 上 PIQA 与 BoolQ 准确率的宏平均。F*、C*、“有效”与“concat 胜出”的规则都在第一个正式 run 之前写进契约，按点估计判定；配对 bootstrap 区间（10,000 次，按任务分层）只作描述。E-0005 生成 V2 的单跳合成任务（每个 episode 16 条事实、4 种关系、单 token 答案），并在 dev 上评估 Base 的 M 线（只有问题）与 F 线（事实在上下文中）。E-0006 实现 M 线训练与诊断流水线并做冒烟。E-0007 在 calibration 切片上诊断 Base 在 F 线上失败的原因。各实验的契约摘要如下。
+
+% rl:begin method
+\subsection*{E-0001 V0 实现与不变量检查}
+
+\begin{itemize}
+\item question: 新侧分支实现能否通过 plan §6.3 的针对性检查（函数保持、两步梯度启动、冻结输入 Jacobian、同核恒等、约束融合恒等、因果、cache、reset/padding、所有权、read/write 计数、M 线信息访问、导出重载），从而可以进入训练？
+\item intervention: 在 src/ 实现 FeatureTap（qknorm\_pre\_rope 为主，另有 raw\_qkv、direct\_hidden；K/V 在 repeat\_kv 之前压缩，不重复执行原投影）、LowDimProjection、MemoryBackend（kernel\_matrix、kernel\_slot\_reference、soft\_slot；M、c 用 FP32 累积，空记忆显式输出零）、LatentReader（累加与锚定更新，readout=increment 或 full，eta=0.25 与 g=1 固定）、Fusion（F\_out、F\_pre、F\_attnres、C\_gate、C\_up、C\_dual，出口零初始化）、Protocol（M 线 support write-only、query read-only、support 主干 KV 不进 query；F 线 inclusive/strict 因果写入）与 Accounting；原 attention 与原 FFN 每层每次前向只执行一次；用 pytest 在 Miyabi-G 作业中检查
+\item comparator: 未修改的 Qwen3-0.6B-Base 前向（同输入、同 dtype）；KernelSlot 参考读取；用同一 P 构造的 F\_pre；一次 prefill 对分块 prefill 与逐 token decode；固定 query 时的精确幅度关系 Z=S\ensuremath{\cdot}eta\ensuremath{\cdot}a\ensuremath{\cdot}Ro
+\item metric: plan §6.3 每项检查的 pass/fail；输出与梯度的最大绝对/相对误差对比预先锁定的容差（FP32 严格阈值；BF16 容差由同一 Base 的重复测量锁定，并在检查运行前写入配置）；各参数组的梯度范数；主干参数更新量（应为 0）；write/read/原块调用计数
+\item scope: Qwen/Qwen3-0.6B-Base（锁定 model 与 tokenizer revision）；F 线 layers [6,13,20,27]、M 线 layer [14]；r \ensuremath{\in} \{32,128\}；S \ensuremath{\in} \{1,2,4\}；FP32 小张量参考与真实模型（BF16 主干 + FP32 分支）两种设置；shared\ensuremath{\rightarrow}untied 复制恒等推迟到 V3 之前
+\item contract: E-0001@1, sealed as DOC-0003@1 (research/experiments/E-0001.md)
+\end{itemize}
+
+\subsection*{E-0002 V1 任务切片与家族学习率校准}
+
+\begin{itemize}
+\item question: PIQA+BoolQ（从官方 train 切出 train/dev/calibration，纯文本固定模板）在 4 层 r32 设置下是否处于可学习且未饱和的区间？LoRA、tokenwise 加法、tokenwise concat 三个家族在 calibration 上各取哪个学习率？
+\item intervention: Base 只评估不训练；三个家族各两个学习率 \{1e-4, 3e-4\}，每个 run 0.2M 非 padding 输入 tokens，seed 0，相同数据顺序：LoRA（4 层 [6,13,20,27] all-7 rank10）、tokenwise 加法（proxy Z=SiLU(UA) + F\_out）、tokenwise concat（proxy Z=SiLU(UA) + C\_dual）
+\item comparator: Base；同一家族的两个学习率之间
+\item metric: calibration NLL（选择依据，运行前固定）与准确率；Base 与 LoRA 在 dev 上的 PIQA、BoolQ 准确率（地板/天花板检查）；实测吞吐（tokens/s）、每步时间、加载/评估/保存时间与 node\ensuremath{\cdot}h
+\item scope: F 线 context-retained；max length 512；AdamW betas (0.9, 0.999)、eps 1e-8、矩阵 weight decay 0.01；warmup 占实际优化步数 5\% 后 cosine；global-norm clip 1.0 并记录 pre-clip 范数；dropout 0；PAD 与 EOS 同 ID 时按实际 padding 位置屏蔽；模板、标签 token、候选打分与多 token 标签归一化规则在本实验内固定并写入 release；官方 validation 不开封
+\item contract: E-0002@1, sealed as DOC-0019@1 (research/experiments/E-0002.md)
+\end{itemize}
+
+\subsection*{E-0003 V1 FFN 融合接口筛选（八组）}
+
+\begin{itemize}
+\item question: tokenwise proxy 下，哪种接口能把低维状态转成任务收益：加法写回（F\_out/F\_pre）还是 FFN gate/up 条件融合（C\_gate/C\_up/C\_dual）？这种优势是否超出线性退化组与参数相近的 LoRA？
+\item intervention: V1-01 至 V1-05：proxy Z=SiLU(UA)（4 层 [6,13,20,27]，r32）分别接 F\_out、F\_pre、C\_gate、C\_up、C\_dual；V1-06：线性 Z=UA + C\_dual
+\item comparator: V1-07：同 4 层 all-7 LoRA rank10（约 0.92M 参数）；V1-08：全 28 层 all-7 LoRA rank2（约 1.26M 参数）；V1-06 线性退化组；Base 只评估
+\item metric: dev 上 PIQA、BoolQ 准确率及其宏平均（主指标）与 dev NLL；stored、trainable 与实际有梯度的参数数；实测吞吐、wall time 与 node\ensuremath{\cdot}h；所有 arm 在相同 dev 样本上评估
+\item scope: F 线；沿用 V1 切片与学习率校准锁定的模板、切分、各家族学习率与优化配方；seed 0 单 seed 筛选（screening），不作确认；max length 512；checkpoint 选择规则在运行前固定且所有 arm 相同；接口间不等参，不宣称参数效率；官方 validation 不开封
+\item contract: E-0003@2, sealed as DOC-0040@2 (research/experiments/E-0003.md)
+\end{itemize}
+
+\subsection*{E-0004 记忆路径就绪检查（RV-0002 跟进）}
+
+\begin{itemize}
+\item question: V2 用到的记忆路径在分块缓存与支持写入容量两处是否正确：FP32 下 chunk3 的记忆状态是否与整段前向一致；支持写入容量保护是否对所有 backend 一致生效？
+\item intervention: 按 RV-0002 两条 low 跟进：为 chunk3 比较 cache.memory[14] 的 M、c（slot backend 还有 slots）与整段前向的 FP32 状态，并记录 cache.chunk3.state.max\_abs\_err；在 visible\_fact\_delimiter 的 support 阶段，对所有 backend（含 kernel\_matrix）执行 counts \textless{}= slot\_capacity
+\item comparator: 整段前向的记忆状态；slot backend 已有的容量保护行为
+\item metric: 检查通过数；chunk3 状态 max\_abs\_err（FP32 atol/rtol 2e-5，来自已锁定的 tolerances.json）；chunk1 状态误差只作诊断；kernel\_matrix 在 slot\_capacity=1 时按预期报错
+\item scope: 单层 index14、r128（V2 默认）与 r32；KernelMatrix、KernelSlot、SoftmaxSlot；GH200 MIG 2g.24gb；容差不改
+\item contract: E-0004@1, sealed as DOC-0047@1 (research/experiments/E-0004.md)
+\end{itemize}
+
+\subsection*{E-0005 M 线合成任务生成器与 Base 上下限（concat\_loop\_v2）}
+
+\begin{itemize}
+\item question: 新的 concat\_loop\_v2 合成关系任务能否按 plan §8.1、§13.1--13.2 的协议确定性生成、与旧 LoopLora 数据不重叠，并且 Base 在 M 线（只有问题）下接近先验基线、在 F 线（支持事实在上下文中）下明显高于先验基线，从而适合 V2 的单跳记忆读取研究？
+\item intervention: 实现生成器、episode registry 与切分；生成 V2 的 T1 单跳任务（E=16 个支持事实、4 种关系、固定公开渲染模板、单 token 答案）：train、calibration 2,048、dev 1,000，以及只登记身份与哈希的封存 confirmation 2,000；多跳（训练/dev hops 1--3，封存外推 hops 4/6/8）只实现接口与身份；Base 只在 dev 上评估 M 线与 F 线
+\item comparator: 旧 LoopLora registry（UnbearableFate/LoopLora @ a255e81，只读）；先验基线（按 train 答案频率的最佳常数答案）；M 线 Base 对 F 线 Base
+\item metric: 两次生成哈希一致；各 split 的 episode 身份互不相交；与旧 registry 重叠为 0；答案都是单 token；各轴统计（关系、事实数、干扰项、文本长度、名字池与 tokenization 长度、支持顺序）；每条事实恰好一个写入分隔符位置；Base dev 的完整词表 EM 与答案 NLL（M 线、F 线）
+\item scope: study\_id=concat\_loop\_v2，phase V2；seed 由 derive\_seed(20261029, "concat\_loop\_v2", phase, purpose) 派生，derive\_seed 与 T-0002 的定义相同；write\_scope=visible\_fact\_delimiter，read\_scope=all\_valid\_question；不训练；封存切片不做任何模型评估；GH200 MIG 2g.24gb
+\item contract: E-0005@1, sealed as DOC-0048@1 (research/experiments/E-0005.md)
+\end{itemize}
+
+\subsection*{E-0006 V2 M 线训练与诊断流水线（实现与冒烟）}
+
+\begin{itemize}
+\item question: 按 plan §8.1 的 M 线协议（support write-only、query read-only、单层 index14、r128、S=1）实现的训练与评估流水线，以及 §8.3、§8.4 规定的诊断，是否在小规模冒烟中行为正确（初始化时与 Base 相同、梯度按预期流动、因果对照与 oracle 开关按定义改变读出）？
+\item intervention: 实现 M 线训练/评估入口：support 阶段只写、问题阶段从同一只读快照读取、按 episode owner 索引、单 token 答案 CE、完整词表 EM 与 NLL；§8.3 诊断（寻址 top-1、margin、目标权重、熵、n\_eff，读误差，输出范数，数值统计）；zero / shuffled / permuted memory 因果对照；§8.4 oracle 开关（真实 key 替换 query、直接提供目标 value、zero memory、其他 episode 的 memory，只作离线评估）
+\item comparator: Base（出口零初始化时应与之完全相同）；正对照小任务上 normal memory 对 zero memory
+\item metric: 检查通过数；初始化时与 Base 的 logits 差；各控制与 oracle 开关的读出变化；冒烟步时、显存与吞吐（为记忆家族校准与 V2 估算成本）
+\item scope: 特征 direct\_hidden 与 qknorm\_pre\_rope；读算子 KernelMatrix 与 SoftmaxSlot（g=1，s0=sqrt(dk)，tau=1）；融合 F\_out 与 C\_dual；write\_scope=visible\_fact\_delimiter，read\_scope=all\_valid\_question；GH200 MIG 2g.24gb；只做冒烟，不做正式训练
+\item contract: E-0006@1, sealed as DOC-0053@1 (research/experiments/E-0006.md)
+\end{itemize}
+
+\subsection*{E-0007 F 线 Base 难度诊断（concat\_loop\_v2）}
+
+\begin{itemize}
+\item question: E-0005 中 Base 的 F 线 EM 接近先验（dev 1.3\%，先验 1.5\%）；协调者只读核查已有预测，dev 上 F 线 argmax 有 94.4\% 是问题主语，M 线为 76.7\%。Base 是在上下文中找到了正确实体、只是被复制问题主语的倾向压过，还是在 E=16 时根本没有找到？失败是否来自提示格式或评估实现？
+\item intervention: 在 calibration 切片上沿用 E-0005 的 Base 提示与评分路径，逐条输出完整词表 top-5、正确答案的秩与概率、问题主语的概率与 top-1 类别；计算限定候选准确率；F 线另做事实数梯度 E \ensuremath{\in} \{1,2,4,8,16\}：保留被问事实，其余事实按派生 seed 确定性抽取并保持原相对顺序，用生成器原模板重新渲染
+\item comparator: E-0005 的 Base dev 结果（M 1.1\%、F 1.3\%、先验 1.5\%）；同一 calibration 上的 M 线；按候选数计算的随机基线；E=1 作为最容易的正对照
+\item metric: 完整词表 EM 与答案 NLL；正确答案的秩与概率；问题主语复制率；top-1 类别分布；限定候选准确率：(a) 支持中出现的全部不同名字，(b) 同一集合去掉问题主语，(c) 与被问事实同关系的事实的不同尾实体；按 E、被问事实位置、关系、support\_order 与 answer\_frequency\_stratum 分层
+\item scope: 只用 Base（Qwen3-0.6B-Base @ da87bfb608c14b7cf20ba1ce41287e8de496c0cd），不训练；只用 calibration 切片（runs/ATT-0039-1/data/calibration.jsonl，sha256 c08753365165216b5a9f4c3d629271b2183e1323973886256867e826c1712f18）；dev 不再评估，confirmation 不读取；E 变体只是诊断视图，不是新切分；不改 E-0005 的协议、模板与数据；diagnostic 证据，不支持也不挑战 H-0003
+\item contract: E-0007@2, sealed as DOC-0063@2 (research/experiments/E-0007.md)
+\end{itemize}
+% rl:end method
+
+\section{Results}
+
+下列表格给出各实验可用 attempt 的描述性均值，不是统计检验。E-0001 与 E-0004 是 diagnostic 证据：V0 修正后 85/85 项、E-0004 130/130 项检查通过。E-0003 是单 seed 的 screening 证据：Base 的 dev 宏平均为 70.15\%，各训练组在 77.05\%--79.20\% 之间。大部分提升来自 BoolQ（Base 68.0\%，训练组 80.8\%--83.6\%）；PIQA 只从 72.3\% 升到 73.0\%--74.9\%。按预先固定的规则，F*=F\_out（77.80\%），C*=C\_up（77.70\%）。最好的 concat 组 C\_dual（78.15\%）只比 F* 高 0.35 pp（描述区间 [$-$0.60, 1.35]），记为 concat 未胜。C* 比 4 层与 28 层 LoRA 分别低 1.50 与 1.35 pp；C\_dual 对线性退化组只高 0.15 pp [$-$0.70, 1.00]。E-0005 与 E-0007 是 diagnostic 证据。Base 在 dev 上的 M 线与 F 线 EM 分别为 1.1\% 与 1.3\%，先验基线为 1.5\%。在 calibration 上，上下文事实数 E 为 1、2、4、8、16 时，F 线 EM 依次为 67.0\%、6.9\%、2.2\%、1.4\%、1.4\%；$E\geq 2$ 时，91\%--96\% 的回答是问题主语；E=16 时，在支持中的名字（去掉主语）里选对的比例为 14.2\%，随机为 3.7\%。E-0007 有一项实现检查按原规则未通过：BF16 下 batch 1 与 batch 8 的逐条 NLL 平均绝对差为 0.088，门槛为 0.05。FP32 对照把该差异降到 1e-5 量级，因此判为 BF16 数值敏感。
+
+% rl:begin results
+\begin{table}[H]
+\centering\small
+\caption{E-0001 V0 实现与不变量检查: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & bf16\_atol & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_k\_grad.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_k\_grad.max\_rel\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_output.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_output.max\_rel\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_q\_grad.max\_abs\_err \\
+\midrule
+base\_calibration & 173 & 1 ended/success & 0.5 (n=1) & - & - & - & - & - \\
+hardware\_probe & 0 & 1 ended/failed, 1 ended/success & - & - & - & - & - & - \\
+invariant\_checks & 42 & 2 ended/failed, 2 ended/success & - & 1.176e-08 (n=2) & 1.176 (n=2) & 2.384e-07 (n=2) & 8.265e-06 (n=2) & 1.922e-08 (n=2) \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0001.}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{E-0002 V1 任务切片与家族学习率校准: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & C\_dual.calibration.boolq.accuracy & C\_dual.calibration.boolq.examples & C\_dual.calibration.boolq.loss\_tokens & C\_dual.calibration.boolq.nll & C\_dual.calibration.nll & C\_dual.calibration.piqa.accuracy \\
+\midrule
+base-eval & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+cal-cdual-1e-4 & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+cal-cdual-3e-4 & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+cal-fout-1e-4 & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+cal-fout-3e-4 & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+cal-lora-1e-4 & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+cal-lora-3e-4 & 0 & 1 ended/cancelled, 1 ended/success & - & - & - & - & - & - \\
+release-schedule-estimate & 0 & 1 ended/success & - & - & - & - & - & - \\
+selection-boundary-audit & 0 & 1 ended/success & - & - & - & - & - & - \\
+selection-release-audit & 0 & 1 ended/failed & - & - & - & - & - & - \\
+smoke & 0 & 1 ended/success & 0.6562 (n=1) & 32 (n=1) & 32 (n=1) & 1.415 (n=1) & 1.998 (n=1) & 0.5625 (n=1) \\
+smoke-corrected & 0 & 1 ended/success & 0.75 (n=1) & 32 (n=1) & 32 (n=1) & 1.746 (n=1) & 2.164 (n=1) & 0.5625 (n=1) \\
+smoke-reloadfix & 0 & 1 ended/success & 0.75 (n=1) & 32 (n=1) & 32 (n=1) & 1.746 (n=1) & 2.164 (n=1) & 0.5625 (n=1) \\
+smoke-reviewfix & 0 & 1 ended/success & 0.75 (n=1) & 32 (n=1) & 32 (n=1) & 1.746 (n=1) & 2.164 (n=1) & 0.5625 (n=1) \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0002.}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{E-0003 V1 FFN 融合接口筛选（八组）: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & C\_dual.dev.boolq.accuracy & C\_dual.dev.boolq.examples & C\_dual.dev.boolq.loss\_tokens & C\_dual.dev.boolq.nll & C\_dual.dev.nll & C\_dual.dev.piqa.accuracy \\
+\midrule
+Base & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-01 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-02 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-03 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-04 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-05 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-06 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-07 & 0 & 1 ended/success & - & - & - & - & - & - \\
+V1-08 & 0 & 1 ended/success & - & - & - & - & - & - \\
+analysis-regression & 0 & 1 ended/success & - & - & - & - & - & - \\
+base-dev-comparison & 0 & 1 ended/success & - & - & - & - & - & - \\
+formal-analysis & 0 & 1 ended/success & - & - & - & - & - & - \\
+smoke-eight-arms & 0 & 1 ended/failed, 1 ended/success & 0.625 (n=1) & 32 (n=1) & 32 (n=1) & 1.053 (n=1) & 1.923 (n=1) & 0.6875 (n=1) \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0003.}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{E-0004 记忆路径就绪检查（RV-0002 跟进）: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_k\_grad.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_k\_grad.max\_rel\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_output.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_output.max\_rel\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_q\_grad.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_q\_grad.max\_rel\_err \\
+\midrule
+readiness & 42 & 1 ended/success & 1.176e-08 (n=1) & 1.176 (n=1) & 2.384e-07 (n=1) & 8.265e-06 (n=1) & 1.922e-08 (n=1) & 1.922 (n=1) \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0004.}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{E-0005 M 线合成任务生成器与 Base 上下限（concat\_loop\_v2）: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & F.elapsed\_s & F.em & F.examples & F.nll & M.elapsed\_s & M.em \\
+\midrule
+base-dev-MF & - & 1 ended/success & 4.633 (n=1) & 0.013 (n=1) & 1000 (n=1) & 5.706 (n=1) & 4.569 (n=1) & 0.011 (n=1) \\
+base-dev-smoke & - & 1 ended/success & 0.1641 (n=1) & 0 (n=1) & 32 (n=1) & 5.918 (n=1) & 0.2871 (n=1) & 0 (n=1) \\
+data-generation & - & 1 ended/success & - & - & - & - & - & - \\
+data-smoke & - & 1 ended/success & - & - & - & - & - & - \\
+legacy-inventory & - & 1 ended/success & - & - & - & - & - & - \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0005.}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{E-0006 V2 M 线训练与诊断流水线（实现与冒烟）: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & arms\_completed & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_k\_grad.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_k\_grad.max\_rel\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_output.max\_abs\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_output.max\_rel\_err & check.src/test\_core.py::test\_kernel\_matrix\_equals\_slot\_reference\_outputs\_and\_qkv\_gradients[1-1-128].kernel\_q\_grad.max\_abs\_err \\
+\midrule
+eight-arm-E0005-integration & 2100042 & 1 ended/success & - & - & - & - & - & - \\
+eight-arm-copy32 & 2100042 & 1 ended/success & 8 (n=1) & - & - & - & - & - \\
+eight-arm-timing & 2100042 & 1 ended/success & 8 (n=1) & - & - & - & - & - \\
+invariant-checks & 2100042 & 1 ended/success & - & 1.176e-08 (n=1) & 1.176 (n=1) & 2.384e-07 (n=1) & 8.265e-06 (n=1) & 1.922e-08 (n=1) \\
+shuffled-diagnostic-regression & 2100042 & 1 ended/failed, 1 ended/success & - & - & - & - & - & - \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0006.}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{E-0007 F 线 Base 难度诊断（concat\_loop\_v2）: descriptive means over usable attempts}
+\begin{tabular}{llp{0.3\linewidth}llllll}
+\toprule
+arm & seeds & attempts & F.E1.em & F.E1.nll & F.E1.subject\_copy\_rate & F.E16.em & F.E16.nll & F.E16.subject\_copy\_rate \\
+\midrule
+diagnostic-smoke32 & 20261029 & 1 ended/failed & - & - & - & - & - & - \\
+diagnostic-smoke32-fixed & 20261029 & 1 ended/success & 0.625 (n=1) & 1.519 (n=1) & 0.4062 (n=1) & 0.03125 (n=1) & 5.297 (n=1) & 0.9688 (n=1) \\
+fp32-calibration256-and-saved-bf16-audit & 173 & 1 ended/success & - & - & - & - & - & - \\
+full-calibration2048 & 20261029 & 1 ended/success & 0.6699 (n=1) & 1.422 (n=1) & 0.293 (n=1) & 0.01416 (n=1) & 5.58 (n=1) & 0.9595 (n=1) \\
+postmerge-regression & 20261029 & 1 ended/success & - & - & - & - & - & - \\
+scoring-difference-audit & 20261029 & 1 ended/success & - & - & - & - & - & - \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize Per-attempt records: rl run show E-0007.}
+\end{table}
+% rl:end results
+
+% rl:begin evidence
+\noindent Evidence (level, validity):
+
+\begin{itemize}
+\item EV-0001 [diagnostic, valid] Allocated environment probe passed on mg1098 GH200 MIG 2g.24gb; driver615.71.09; outbound HTTPS available. No adapter correctness evidence yet.; scope: Execution environment only [code review: ATT-0001-2 not needed: Environment discovery only; no model or core operator execution]
+\item EV-0002 [diagnostic, valid] 54/60 checks passed; six failures all at suffix-causality comparison including two padded rows. Cache comparisons before assertion passed. Pinned eager masking uses finite minimum then softmax, so padded query outputs need Base diagnosis; no hypothesis conclusion.; scope: Implementation checks with pending padding-test diagnosis [code review: ATT-0003-1 not needed: Deterministic E0 invariant checks before code review; no training or costly run]
+\item EV-0003 [diagnostic, valid] 61/61 V0 tests passed on GH200 MIG 2g.24gb, fixed FP32 and Base-calibrated BF16 tolerances. Zero exits match Base; two-step grads and frozen backbone checks pass; kernel output/QKV gradient and constrained-fusion identities, causality on valid tokens, cache, padding/reset, ownership, counts, M-line access and export/reload pass. Base-only diagnostic confirms previous failures were padded query logits (13.443359375 vs valid-prefix 0). Code review RV-0001 pending; no training or mechanism claim. (supports H-0001@1) [code review: ATT-0004-1 not needed: Deterministic E0 checks and Base padding diagnosis; unchanged production code and tolerances]
+\item EV-0004 [diagnostic, valid] RV-0001 fixes: 79/85 pass; six new positive-control failures measure rank32 effects only .359-.781 and swapped support effect .383, below detection thresholds based on unchanged BF16 calibration. Strengthen only nonzero test exits to demonstrate sensitivity before recheck; no production initialization change.; scope: Positive-control fixture adequacy [code review: ATT-0005-1 not needed: Deterministic checks of RV-0001 fixes before recheck; no training]
+\item EV-0005 [diagnostic, valid] 85/85 expanded V0 checks pass after RV-0001 fixes: real mutation controls rejected, delimiter support mask/capacity and stale-cache/missing-memory guards pass, masked/reset/empty kernel gradient identities pass, observed read accounting and configured key epsilon verified, actual fusion hook gradient identity passes. Nonzero fixture effects1.84375-6.890625 and swapped-owner effects3.53125-3.6484375 exceed unchanged BF16 thresholds. No training or mechanism claim; recheck pending. (supports H-0001@1) [code review: ATT-0006-1 not needed: Deterministic review-fix checks with stronger positive-control fixture; fixed production init and tolerances]
+\item EV-0006 [diagnostic, valid] V1 initial smoke:96 invariant tests passed and three20-step train/eval/reload paths passed;11586 train tokens. Training loss reduction subsequently superseded by coordinator MSG-0025; smoke establishes engineering compatibility/timing only, not LR or interface evidence. [code review: ATT-0007-1 not needed: deterministic regressions and 20-step three-family smoke before code review]
+\item EV-0007 [diagnostic, valid] Corrected equal-example V1 smoke:98 invariant tests passed including loss reduction and failed-LR continuation;three5-step training/evaluation/reload paths passed with exact reload equality.2943tokens,116s,.032222MIGh. Engineering diagnostic only; no LR selection or interface comparison. [code review: ATT-0008-1 not needed: corrected loss and divergence invariant regression plus5-step three-family smoke before review]
+\item EV-0008 [diagnostic, valid] RV0003fix smoke:104 invariant tests passed, including nongold NaN/Inf evaluation, retained failed-LR usage/continuation, Base nonfinite and finite reload mismatch errors, strict smoke acceptance.3families completed5steps and exact reload,2943tokens,114s,.031667MIGh=.00791675nodeh. No calibration or interface claim. [code review: ATT-0009-1 not needed: RV-0003 failure-path fixes deterministic checks and5step smoke before recheck]
+\item EV-0009 [diagnostic, valid] Reload classification fix:106checks passed, including finite initial evaluation then actual NaN/Inf candidate guard during reload -\textgreater{} partial engineering error retaining usage without failed-LR flags. Existing initial-evaluation failure and finite reload mismatch behaviors pass.3families complete5steps/exact reload;2943tokens,119s,.033056MIGh=.008264nodeh. [code review: ATT-0010-1 not needed: RV-0004 reload error classification regression before coordinator-required new review round]
+\item EV-0010 [diagnostic, valid] base-eval complete finite calibration NLL 2.3312495373933837, calibration accuracies PIQA 0.72802734375 BoolQ 0.689453125; dev PIQA 0.723 BoolQ 0.68; exact reload passed. Base no training. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0011-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0011 [diagnostic, valid] cal-lora-1e-4 complete finite calibration NLL 1.6253322842401003, calibration accuracies PIQA 0.7255859375 BoolQ 0.78955078125; dev PIQA 0.723 BoolQ 0.766; exact reload passed. 200280 input tokens,1103 steps,280 overshoot. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0012-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0012 [diagnostic, valid] cal-lora-3e-4 complete finite calibration NLL 1.6021037854622986, calibration accuracies PIQA 0.728515625 BoolQ 0.80419921875; dev PIQA 0.733 BoolQ 0.78; exact reload passed. 200280 input tokens,1103 steps,280 overshoot. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0013-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0013 [diagnostic, valid] cal-fout-1e-4 complete finite calibration NLL 1.6600830964101538, calibration accuracies PIQA 0.71923828125 BoolQ 0.7958984375; dev PIQA 0.723 BoolQ 0.777; exact reload passed. 200280 input tokens,1103 steps,280 overshoot. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0014-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0014 [diagnostic, valid] cal-fout-3e-4 complete finite calibration NLL 1.6157966926032628, calibration accuracies PIQA 0.72119140625 BoolQ 0.79833984375; dev PIQA 0.725 BoolQ 0.78; exact reload passed. 200280 input tokens,1103 steps,280 overshoot. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0015-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0015 [diagnostic, valid] cal-cdual-1e-4 complete finite calibration NLL 1.6392950516932028, calibration accuracies PIQA 0.72607421875 BoolQ 0.7919921875; dev PIQA 0.722 BoolQ 0.767; exact reload passed. 200280 input tokens,1103 steps,280 overshoot. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0016-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0016 [diagnostic, valid] cal-cdual-3e-4 complete finite calibration NLL 1.6024291552247223, calibration accuracies PIQA 0.72705078125 BoolQ 0.798828125; dev PIQA 0.728 BoolQ 0.777; exact reload passed. 200280 input tokens,1103 steps,280 overshoot. Diagnostic LR/slice evidence only, not interface comparison. [code review: ATT-0017-2 covered by RV-0004 issues, medium open, approved by the coordinator, RV-0005 pass, RV-0006 pass]
+\item EV-0017 [diagnostic, valid] Deterministic E0002 audit selects3e-4 allfamilies; relative NLL gaps1.4499\%,2.7408\%,2.3006\%; slice gate passes. E3 full train audit finds exactly1PIQA row id5528 candidates537/537tokens (.007654\% of13065), BoolQ0/6379. Not in calibration prefix. E3 filter authorized MSG0058, production implementation deferred next task. No H0002 interface claim. [code review: ATT-0019-1 not needed: deterministic selection audit and identification of overlength E3 examples; unchanged data/encoding rules]
+\item EV-0018 [diagnostic, valid] Diagnostic-only post-shuffle/pre-interleave exclusion of PIQA5528 under MSG0058 yields E3 schedule13077steps,2000040tokens,26154examples,epoch index1; dev steps3270/6539/9808. Production filter not implemented; next task must implement/review and verify same schedule. Costs are family-based projections,28layer LoRA only conservative unmeasured bound. [code review: ATT-0020-1 not needed: cost/schedule estimate only under coordinator MSG0058; production filter and review deferred next task]
+\item EV-0019 [diagnostic, invalid] ATT-0021-1: 116 passed, one new audit fixture incorrectly expected success for 100 percent excluded train rows; actual guard correctly rejected \textgreater{}1 percent. No arm trained. Fixture repaired to exactly 1 percent without changing production guard. PBS21s, 0.005833333333333333 MIGh / 0.0014583333333333333 nodeh.; scope: Engineering regression fixture failure, not scientific evidence [code review: ATT-0021-1 not needed: Pre-review regression and twenty-step smoke for all eight arms]
+\item EV-0020 [diagnostic, valid] 126 tests passed; all eight arms match Base at initialization and reload exactly after20steps; parameter counts match contract, intermediate evaluation preserves training trajectory in regression, identical full 13077step/2000040token schedule with one excluded PIQA5528 row and points3270/6539/9808. LoRA28 measured steady .435291s/step. Cost .122778 MIGh=.0306945nodeh,30896inputtokens; not interface-effectiveness evidence.; scope: Implementation readiness only, eight twenty-step smokes on 32 dev examples/task [code review: ATT-0022-1 not needed: Pre-review regression and twenty-step smoke after fixture fix; revised E3 analysis]
+\item EV-0021 [diagnostic, valid] 145tests passed with0failures/errors/skips on e55eea3, including actual ATT0022 smoke rejection, duplicate/aliased paths, incorrect arm/config/schedule/data/order/parameter/fullsize membership, and complete correctlymapped fixture acceptance. Existing paired bootstrap/selection arithmetic and V0/V1 suite preserved. PBS28s=.007778MIGh=.0019445nodeh; no trainingtokens.; scope: RV0007 formal-input validation regression only [code review: ATT-0023-1 not needed: Regression of RV-0007 validation fix before recheck]
+\item EV-0022 [diagnostic, valid] Rerun Base full1000/task dev and reload passed. PBS comparison validated formal Base input and exact equality of all2000 prediction records including scores/NLL, dev metric dictionary and split map againstATT0011-2. PIQA.723 BoolQ.680 macro.7015 devNLL2.3374779898760703. Base307s=.085278MIGh=.0213195nodeh; comparator1s=.000278MIGh=.0000695nodeh; no trainingtokens.; scope: Full untrained Base dev rerun and exact E-0002 comparison [code review: ATT-0024-1 covered by RV-0008 pass; ATT-0033-1 not needed: Cheap deterministic equality comparison using reviewed Base reader; no training or selection]
+\item EV-0023 [diagnostic, valid] E-0004 deterministic readiness checks: 130/130 V0, V1, and added state cases pass. Chunk3 FP32 state max\_abs\_err r32=0 and r128=3.814697265625e-6 across all three backends, inclusive/strict, S=1/4; chunk1 diagnostics r32=0.17662876844406128 and r128=0.2529714107513428. Capacity boundary 2 accepted and overflow at 1 rejected for all backends. Per-component state corruption controls rejected. Fixed tolerances unchanged. Code review pending; no training or mechanism claim. (supports H-0001@1) [code review: ATT-0034-1 not needed: Deterministic E0 readiness checks; review requested after validation per task contract]
+\item EV-0024 [diagnostic, valid] Read-only probe succeeded on mg1098/PBS 3760163.opbs: 169 run registry rows, 129 distinct referenced sample paths with zero locally available; nine committed sample archives contain episode/query IDs and predictions but no support facts or question text. Content-level overlap remains unverified. Pinned Qwen tokenizer confirms semicolon ID 26 and space-semicolon ID 2587. Measured PBS 9s = 0.0025 MIG-instance-h = 0.000625 node-h; usage imported from executor observation.; scope: Legacy public assets at a255e814740ff85ab3b4ec4836c88f0a8f802b2d only; no claim about H-0003 or content-level overlap. [code review: ATT-0035-1 not needed: Read-only data schema and tokenizer smoke; no model evaluation]
+\item EV-0025 [diagnostic, valid] 123 core/model/M-line tests passed in 46.37 seconds on registered GH200 MIG job. Eight-arm M-line Base identity, two-step gradient startup, owner reorder and snapshot isolation, offline controls/oracles and hand-computed read metrics passed. Extended smoke and code review pending.; scope: Pipeline correctness only; no support or challenge to H-0003 [code review: ATT-0036-1 not needed: Deterministic protocol checks and two-step gradient smoke before code review; no costly run]
+\item EV-0026 [diagnostic, valid] Eight PBS regression tests passed; 80 smoke identities and canonical contents unique; independent regeneration SHA256 matched; 92 seen and 89 unseen single-leading-token names. Legacy pinned source/registry checks establish zero labeled fact-set+question overlap by disjoint relation construction (MSG-0093), not by enumerating legacy episode content. Full dataset generation and Base evaluation pending.; scope: Generator and metric code smoke only; no Base results or H-0003 claim. [code review: ATT-0037-1 not needed: Deterministic generator and metric regression smoke before code review; no Base model evaluation]
+\item EV-0027 [diagnostic, valid] Eight two-step copy-fixture arms completed, 672 training input tokens, application elapsed 9.26s. Stable step about 0.128-0.172s, 244-328 tokens/s; initialization max\_abs=0. Two-step positive-control normal-vs-zero/shuffled criterion not yet met; planned longer smoke follows.; scope: Timing only; two updates are not the positive-control completion test [code review: ATT-0038-1 not needed: Two-step eight-arm timing smoke after 123 passing invariant checks, before review]
+\item EV-0028 [diagnostic, valid] All eight arms completed 32 smoke updates, all have normal-memory answer NLL below zero and shuffled; 10752 input tokens, 42.53s application elapsed, 303-317 input tokens/s. Validates learnability on tiny copy positive control only.; scope: Two-example copy fixture only; not evidence supporting H-0003 or single-hop generalization [code review: ATT-0040-1 not needed: Task-authorized 32-step tiny copy-fixture smoke before review; measured pilot 9.26s, expected under one minute, no formal training]
+\item EV-0029 [diagnostic, valid] Full V2 dataset generated twice with matching hashes and 21432 unique episode identities and semantic contents: train16384/calibration2048/dev1000/sealed confirmation2000. 8 tests pass, delimiter and single-token answer checks pass. Train has1381843 input tokens per epoch, 4145529 in three epochs, covering4M per arm. Constant prior dev EM0.015. Legacy overlap0 by authorized disjoint-relation construction proof, not empirical episode enumeration. RV-0010 code review passes with zero findings.; scope: Full generator/data contract validation; no Base or memory-mechanism claim. [code review: ATT-0039-1 not needed: Deterministic data materialization after 8 passing PBS invariants; approximately 30s; no model evaluation]
+\item EV-0030 [diagnostic, valid] Exact commit 94fb78b integration passed 124 regression tests, eight four-update E16 smoke arms, checkpoint roundtrip and independent train/calibration probe path. 5248 smoke forwarded input tokens; 672 protocol-gradient tokens separately reported. 800-959 tokens/s, training-only V2 extrapolation 2.424 node-hours; two-backend two-LR calibration 0.0588-0.0653 node-hours. Tiny sample is not scientific validation.; scope: E-0005 provisional interface and timing; excludes shuffled address fields pending RV-0011; no H-0003 conclusion [code review: ATT-0041-1 not needed: Coordinator MSG-0106 authorizes provisional E-0005 integration smoke while RV-0010/RV-0011 pending. Four updates per eight arms, plus split probe and regression checks; no formal training.]
+\item EV-0031 [diagnostic, valid] Reviewed frozen Base evaluator ran with finite full-vocabulary metrics. M32 EM0 NLL9.32865; F32 EM0 NLL5.91752. Measured model load0.849s, M0.287s, F0.164s; used for full-dev walltime sizing, without changing data or protocol.; scope: 32-example dev-prefix timing smoke only; not a task-suitability estimate. [code review: ATT-0042-1 covered by RV-0010 pass]
+\item EV-0032 [diagnostic, valid] Full dev fixed-protocol Base: M EM0.011 NLL9.2494026874; F EM0.013 NLL5.7063963076; train-selected constant prior EM0.015. M\textless{}=prior+0.05 passes; F\textgreater{}=prior+0.20 fails (required0.215). Per E-0005 outcome\_actions this is task-difficulty information for V2 design, not a reason to tune the protocol or a memory-mechanism refutation. Review RV-0010 passed; metrics/predictions complete and finite. Qwen3-0.6B-Base pinned revision, BF16 eager, no training.; scope: Frozen Base dev1000 M/F bounds only. Does not support or challenge H-0003 memory-read hypothesis; no confirmation evaluation. [code review: ATT-0043-1 covered by RV-0010 pass]
+\item EV-0033 [diagnostic, invalid] Five of six focused checks passed; SoftSlot regression hit exact NLL equality using fused mean CE vs evaluator none-then-mean CE, despite identical logits. Difference 4.77e-7. Corrected test to use defined evaluator reduction without changing production code or tolerance.; scope: Test-reference reduction mismatch; not mechanism evidence [code review: ATT-0044-1 not needed: Focused deterministic regression for RV-0011 medium diagnostic fix before recheck; no training]
+\item EV-0034 [diagnostic, valid] Six focused checks passed; both backends omit shuffled target-dependent address metrics and preserve entropy/neff. Distinct facts and differing targets with owners[1,0,1] produce identical diagnostic/unhooked logits and defined NLL/EM. Original-target read errors agree within1.27e-7 overall and4.47e-8 shuffled. Normal/permuted address metrics unchanged. PBS3760300.opbs exit0,12s.; scope: RV-0011 diagnostic correction only, no training [code review: ATT-0045-1 not needed: Focused deterministic RV-0011 regression rerun with matching CE reduction; no training]
+\item EV-0035 [diagnostic, valid] Post-merge regression on commit 3ccde7d: 155 tests passed, zero failures/errors/skips, 46.759s pytest, 49s PBS GH200 MIG; 0.013611 MIG h = 0.00340275 node h. No hypothesis inference. [code review: ATT-0046-1 not needed: post-merge regression]
+\item EV-0036 [diagnostic, valid] Initial diagnostic smoke: 13 tests passed, then strict E16 original-path NLL check failed. Independent PBS audit reproduced CPU versus CUDA CE reduction difference on identical logits (max 0.00006485 first M batch), zero top1 disagreements in M/F smoke. This is implementation diagnostic only; smoke scientific summaries not produced. Fix preserves original CUDA batch scoring without tolerance changes. [code review: ATT-0047-1 not needed: diagnostic Base evaluation, seconds; reviewed with outputs before delivery; ATT-0048-1 not needed: bounded diagnostic of failed smoke outputs]
+\item EV-0037 [diagnostic, valid] Fixed 32-calibration smoke: 13 tests passed; diagnostic E16 exactly matches original batch8 predictions and NLL. Prefix-only batch1/8 F top1 agreement 0.96875 and NLL MAD 0.10860 miss stability thresholds; this is timing/smoke evidence, full2048 comparison still required. Application6.635s. [code review: ATT-0049-1 not needed: diagnostic Base evaluation, seconds; reviewed with outputs before delivery]
+\item EV-0038 [diagnostic, valid] Full calibration2048: diagnostic E16 exactly matches original batch8 EM/NLL. Implementation gate fails: F batch1/8 NLL MAD0.088144 exceeds0.05 (top1 agreement99.2676\% passes99\%); M passes both. E1 F NLL1.421515 below M9.233152 passes. Per E0007@2 first outcome, investigate implementation and do not use F results for V2 design yet. Descriptive full-vocab EM M0.8301\%, F E16 1.4160\%, F E1 66.9922\%. No H0003 inference; independent code/output review pending. [code review: ATT-0050-1 not needed: diagnostic Base evaluation, seconds; reviewed with outputs before delivery]
+\item EV-0039 [diagnostic, valid] MSG0135 follow-up after strict BF16 gate failure: true FP32/eager first256 calibration, TF32 off, batch1/8 top1 agreement100\% M/F; NLL MAD M3.98e-6 F9.56e-6 versus same-prefix BF16 M0.01325 F0.10252. Supports BF16 numerical batch/padding sensitivity rather than an observed scoring/masking defect in tested path. Full BF16 F absDeltaNLL correlation padding +0.2240, prompt length -0.2165;347 unpadded rows zero difference. Saved12288 records/6 groups audited. Strict original @2 failure retained; MSG0135 diagnostic interpretation allows weak E16 retrieval branch (candidate-b14.209\%\textless{}50\%). No H0003 inference; review pending. [code review: ATT-0051-1 not needed: coordinator MSG0135 authorized bounded FP32 diagnosis; reviewed with outputs before delivery]
+\item EV-0040 [screening, valid] V1-01 F\_out: dev PIQA 0.738, BoolQ 0.818, macroNLL 1.5767698148424294. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0025-1 covered by RV-0008 pass]
+\item EV-0041 [screening, valid] V1-02 F\_pre: dev PIQA 0.73, BoolQ 0.811, macroNLL 1.567339824867386. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0026-1 covered by RV-0008 pass]
+\item EV-0042 [screening, valid] V1-03 C\_gate: dev PIQA 0.734, BoolQ 0.808, macroNLL 1.5777984531278557. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0027-1 covered by RV-0008 pass]
+\item EV-0043 [screening, valid] V1-04 C\_up: dev PIQA 0.736, BoolQ 0.818, macroNLL 1.5652449947787976. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0028-1 covered by RV-0008 pass]
+\item EV-0044 [screening, valid] V1-05 C\_dual: dev PIQA 0.739, BoolQ 0.824, macroNLL 1.5619847145143861. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0029-1 covered by RV-0008 pass]
+\item EV-0045 [screening, valid] V1-06 linear: dev PIQA 0.735, BoolQ 0.825, macroNLL 1.5582456389768808. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0030-1 covered by RV-0008 pass]
+\item EV-0046 [screening, valid] V1-07 LoRA4: dev PIQA 0.748, BoolQ 0.836, macroNLL 1.5496020224121514. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0031-1 covered by RV-0008 pass]
+\item EV-0047 [screening, valid] V1-08 LoRA28: dev PIQA 0.749, BoolQ 0.832, macroNLL 1.5535729848258581. Complete13077steps/2000040inputtokens/40overshoot,26154examples,388094loss tokens, matching order and parameters, exact reload. Full paired analysis and comparisons in ATT-0052-1. Single-seed screening only.; scope: E-0003@2 seed0 final checkpoint; 1000 dev examples per task; no confirmation [code review: ATT-0032-1 covered by RV-0008 pass]
+\item EV-0048 [screening, valid] Reviewed PBS analysis selects Fstar=F\_out77.80\%, Cstar=C\_up77.70\%. Best concat Cdual78.15\% exceeds Fstar by0.35pp\textless{}1pp, hence concat\_not\_win. Cdual exceeds Cgate by1.05pp (fixed flag true), but nonlinear-vs-linear difference only0.15pp95CI[-.70,1.00]. Cstar trails LoRA4 by1.50pp95CI[-2.40,-.60] and LoRA28 by1.35pp[-2.50,-.20]. All8complete/exactreload/identical schedule2,000,040tokens. 10000paired stratified bootstrap seed20261029 descriptive only. Challenges broad H0002 superiority in this setting; no hypothesis-state change or V2 conclusion. Full tables and limitations in T-0003-results.md. (challenges H-0002@1); scope: E-0003@2 tokenwise F-line proxy, seed0, full fixed dev1000/task, final checkpoint; screening only [code review: ATT-0025-1, ATT-0026-1, ATT-0027-1, ATT-0028-1, ATT-0029-1, ATT-0030-1, ATT-0031-1, ATT-0032-1, ATT-0052-1 covered by RV-0008 pass]
+\end{itemize}
+% rl:end evidence
+
+\section{Discussion}
+
+证据支持两点。第一，V0 侧分支在所测试的恒等式与隔离项上实现正确（diagnostic，D-0003）。第二，在 V1 的固定配方下，gate/up 条件融合没有显示出预期的、超过加法写回 1 pp 的优势（screening，D-0004）。证据不支持以下推断：任何关于有记忆读取（H-0003）的结论；对其他 seed、接口专属学习率或总体效应大小的推断（最佳 concat 对 F* 的描述区间上限为 1.35 pp，仍覆盖 1 pp 的优势）；以及参数效率比较（接口之间参数不相等）。效度方面的威胁包括：单 seed 与单一 dev 切分；学习率只按家族在两个候选中校准；PIQA 提供的区分信号较弱；配对区间不含训练 seed 的变异，也没有做多重比较校正。V2 准备方面，E=16 的 F 线对 Base 很难，主要原因是问题主语复制；事实增多时，在名字中的检索也明显变弱。因此 V2 需要一个训练后的 F 线正对照，才能判断 M 线的失败是否来自任务本身。E-0007 保留了未通过的原始实现检查；FP32 对照是看到结果后补做的诊断。决策如下：H-0001 记为 supported，继续作为后续阶段的基础；H-0002 记为 challenged 并暂停，V2 保留 F*=F\_out、C*=C\_up 与 C\_dual 交互探针；阶段决定为继续探索，V2 是否释放由用户决定。
+
+% rl:begin decisions
+\begin{itemize}
+\item D-0001 route:pause --- 旧 S-RE 推理资产（writer.pt、sq2 loader 所需文件）不在本文件系统：/work/xg24i002/x10041/LoopLora 目录不存在，只有 GitHub 源码 a255e81 可读。用户 2026-11-01 选择按计划 fallback 跳过冻结 S-RE 诊断（plan §6.1），新方案直接从 Base 实现；不声称旧指标已复现。 (reopen if: 用户提供 S-RE 推理资产（writer.pt 及 looplora.llm.sq2.load\_inference 所需的归一化 buffers 与配置）的位置，并为该诊断分配 \ensuremath{\leq}1 node\ensuremath{\cdot}h)
+\item D-0002 route:continue --- V0 实现检查 85/85 通过（ATT-0006-1/RES-0006/EV-0005，GH200 MIG 2g.24gb，容差在适配代码前锁定且未改动）；代码审核 RV-0001 的问题全部修复，RV-0002 通过，两条 low 跟进（FP32 chunk3 状态比较、KernelMatrix 支持容量保护）只约束分块/缓存记忆实验与 V2，不影响 V1 tokenwise 路径。按用户授权的 V0+V1 里程碑进入 V1：先做 E-0002（PIQA/BoolQ 切片与三个家族的学习率校准），再按实测成本生成 E-0003 八组 release。H-0001 的证据状态暂不改为 supported，等 V1 阶段报告时一并做结论审核。V0 实际用量 0.045 MIG instance-h，0 训练 tokens。
+\item D-0003 route:continue-\textgreater{}supported --- V0 侧分支实现语义在测试范围内成立（diagnostic，E0）：E-0001 修正后 85/85 项检查通过（RV-0002 pass），E-0004 130/130 项通过（RV-0009 pass）。覆盖陈述中的全部恒等式与隔离项；prefill、分块与逐 token decode 的输出在预先锁定的 BF16 容差内一致；chunk3 FP32 记忆状态在 2e-5 内一致。逐 token（chunk1）记忆状态的 FP32 差异 0.18--0.25 只作诊断记录，不宣称相等；全 padding 的 query 行无语义约定。结论审核 RV-0014 通过、零发现。范围只是实现正确性，不涉及学习效果或机制价值。下一步：实现作为 V1/V2 的基础继续使用；用到逐 token 缓存记忆的实验前，先查清 chunk1 差异的来源。 [conclusion review RV-0014 pass (same\_family\_unverified)]
+\item D-0004 route:pause-\textgreater{}challenged --- 按 E-0003@2 运行前固定的规则（RV-0008 代码审核通过；RV-0015 结论审核通过、零发现）：在 Qwen3-0.6B-Base、F 线、四层 r32 tokenwise proxy、预先锁定的家族校准配方（三族均为 3e-4）、seed 0、每任务 1,000 条 dev、最终 checkpoint 的条件下，最佳 concat（C\_dual 78.15\%）只比 F*（F\_out 77.80\%）高 0.35 pp，未达到 +1 pp 的筛选标准，记为 concat 未胜；所选 C*（C\_up 77.70\%）的观测准确率低于两个 LoRA（79.20\%、79.05\%）；非线性 proxy 对线性退化组只高 0.15 pp [-0.70, 1.00]。因此 H-0002 在该设置下记为 challenged（screening）。这不排除其他训练 seed、接口专属调参或总体上 \ensuremath{\geq}1 pp 的真实效应（最佳 concat 对 F* 的描述区间上限为 1.35 pp），也不否定有记忆的 concat（H-0003）。按契约，V2 保留 C\_dual 作为交互探针，融合用 F*=F\_out 与 C*=C\_up。此决定不释放 V2 预算。 (reopen if: V2 中有记忆的 C*（C\_up）或 C\_dual 交互探针明显优于 F*（F\_out），或用户要求用多个 seed 复核 V1 筛选) [conclusion review RV-0015 pass (same\_family\_unverified)]
+\item D-0005 stage:continue\_probe --- V0+V1 里程碑完成，总用量 11.25 MIG-h \ensuremath{\approx} 2.81 node\ensuremath{\cdot}h（预算 200）。V1 没有发现 gate/up 融合相对加法写回的优势（H-0002 暂停），但 V2 的问题（有记忆的单跳读取，H-0003）不由无记忆的 V1 proxy 决定；按 E-0003 契约，V2 融合用 F*=F\_out 与 C*=C\_up，并保留 C\_dual 交互探针。E-0007 显示 E=16 的 F 线对 Base 很难（问题主语复制 96\%，限定候选 (b) 14.2\%，随机 3.7\%；E=1 时 EM 67\%），所以建议 V2 分两步：先用训练后的 F 线正对照确认任务在上下文中可学，同时做记忆家族学习率校准；正对照达到预先锁定的水平后，再跑八组析因。V2 是否释放、预算多少由用户决定。
+\end{itemize}
+% rl:end decisions
+
+\section{Conclusion}
+
+在锁定的 Qwen3-0.6B-Base、F 线 tokenwise proxy、每组 2M tokens、seed 0 的范围内，把低维信号注入 FFN 的 gate/up 没有优于加法写回，两个参数相近的 LoRA 表现更好；这是筛选证据，不是确认。侧分支的实现语义已通过检查，V2 所需的数据、记忆路径与 M 线流水线已经就绪。建议的下一步是 V2，分两步进行：先训练 F 线正对照并做记忆家族学习率校准，确认 16 条事实的单跳任务在上下文中可学；达到预先锁定的水平后，再跑特征 $\times$ 读算子 $\times$ 融合的八组析因。V2 的释放与预算由用户决定。
+
+\appendix
+
+\section{Records}
+
+% rl:begin records
+\begin{itemize}
+\item records at data\_version 805; plan DOC-0001@1 (docs/plan.md); constraints docs/constraints.md
+\item experiments: E-0001@1 (DOC-0003@1), E-0002@1 (DOC-0019@1), E-0003@2 (DOC-0040@2), E-0004@1 (DOC-0047@1), E-0005@1 (DOC-0048@1), E-0006@1 (DOC-0053@1), E-0007@2 (DOC-0063@2)
+\item attempts: 60 (7 ended/cancelled, 7 ended/failed, 46 ended/success)
+\item reviews and advice: RV-0001 answered issues, RV-0002 answered pass, RV-0003 answered issues, RV-0004 answered issues, RV-0005 answered pass, RV-0006 answered pass, RV-0007 answered issues, RV-0008 answered pass, RV-0009 answered pass, RV-0010 answered pass, RV-0011 answered issues, RV-0012 answered pass, RV-0013 answered pass, RV-0014 answered pass, RV-0015 answered pass
+\item resource use: 0.00583333 mig\_instance\_hours compute on GH200-MIG-2g.24gb (measured); 11.2442 mig\_instance\_hours gpu\_mig\_instance on GH200 MIG 2g.24gb (measured); 1.2221e+06 input\_tokens training on - (measured)
+\end{itemize}
+% rl:end records
+
+\end{document}
