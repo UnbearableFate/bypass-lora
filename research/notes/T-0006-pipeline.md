@@ -1,0 +1,124 @@
+# T-0006 M-line pipeline implementation and smoke
+
+Status: implementation and fixture smoke complete; exact-final-code integration and
+independent review RV-0011 in progress. This is not a delivery or V2 release.
+
+## Implementation
+
+Candidate code commit `94fb78b37d9a8c6ec8c426a88d78093db95469f8` adds:
+
+- `src/v2_memory.py`: collate public delimiter writes, support-owner indexing,
+  answer-only CE, offline projected-fact observation, read diagnostics, zero,
+  cross-episode derangement, permuted key/value association, and key/value oracles.
+- `src/v2_run.py`: bounded 1..64-step smoke CLI, eight fixed arms, zero-exit Base
+  checks, gradient/clip statistics, step timing, peak allocated memory,
+  checkpoint tensor roundtrip, full-vocabulary NLL/EM and relation/write-age slices.
+- `src/v2_probe.py`: independent clean/read ridge probes, trained only on train
+  vectors and evaluated on disjoint calibration/dev identities and canonical
+  contents. These diagnostic heads never enter ordinary predictions.
+- `src/v2_report.py`: training-throughput cost projection, with explicit exclusions.
+- `src/test_v2_memory.py`: protocol/gradient/ownership/control/metric/probe checks.
+
+No edits to `bypass_core.py`, `bypass_model.py`, `v1_*.py`, `v2_data.py`, locked
+numerical tolerances or dependencies. Ordinary training invokes the existing
+BranchModel support/query paths without oracle hooks. Short-lived hooks exist
+only under no-grad evaluation; target facts do not enter `train_forward`.
+
+All eight arms are layer14/r128/S1, gain1, default fixed softmax scale, F_out or
+C_dual, direct_hidden or qknorm_pre_rope, kernel_matrix or soft_slot. Matrix
+fact slots retained for offline diagnostics are compact projected delimiter
+features; production memory remains M/c. Permuted association rebuilds M/c
+from original keys and cyclically permuted values. Shuffled control deranges
+support owners before the question-owner selection. Query memory is never
+mutated, and support backbone KV is discarded.
+
+The copy fixture is deliberately easy: two episodes with identical questions,
+contrasting names, and repeated same-name facts. It tests that memory can carry
+an answer signal; it does not test single-hop addressing or generalization.
+
+## Evidence so far
+
+- ATT-0036-1 / RES-0028 / EV-0025: commit e6c956f, 123 tests passed in 46.37s.
+  Real GH200 MIG 2g.24gb, PBS 3760226.opbs on mg1098, exit0, 49s walltime.
+  All eight arms pass Base identity, zero/nonzero gradient startup, immutable
+  snapshot reuse, owner reordering, metadata exclusion, and oracle/control
+  checks; numerical diagnostics match constructed hand calculations.
+- ATT-0038-1 / RES-0030 / EV-0027: two-update timing pilot, eight arms, 672
+  forwarded input tokens. Application elapsed9.26s. Positive-control comparison
+  not yet met after two updates; this was a timing pilot, not the acceptance run.
+- ATT-0040-1 / RES-0031 / EV-0028: 32-update copy fixture, all eight arms have
+  normal NLL below both zero and shuffled. 10,752 forwarded input tokens,
+  application elapsed42.53s, throughput303–317 tokens/s. No H-0003 support claim.
+- ATT-0041-1: exact candidate integration, pending. Checks plus four updates per
+  arm on two E=16 episodes, independent train/calibration probes and cost report.
+
+## Data interface
+
+Researcher-3 confirmed delimiter indices use separately tokenized support with
+add_special_tokens=False; spans cover semicolons and may share whitespace tokens.
+`identity` is nested, facts are in rendered support order, and target_fact_index
+indexes that order. Training only accesses delimiter positions and answer labels.
+
+Coordinator MSG-0106 permits provisional integration with read-only ATT-0037-1
+smoke artifacts before T-0005 merge. Source train SHA256:
+`602d79131873d05ef22465022d2347854c68725cba8ab819cfbcffcacdb2c6fe`;
+calibration SHA256:
+`437f85e99be5fdd01b5869ba005e40fa3d42c538107b2fc4370627f7c30837ec`.
+Both checksums are asserted in the integration PBS wrapper. No generator import
+or copy, and no confirmation data read. If the accepted schema changes, repeat
+integration using the accepted artifacts as directed by the coordinator.
+
+## Limits and open review item
+
+RV-0011 reviewer correctly identified that shuffled address metrics cannot be
+interpreted using the recipient target index in donor memory. Proposed remedy:
+omit those address metrics and record their unavailable status; keep full-vocab
+NLL/EM and read error against the original recipient learned target. Await the
+review verdict before editing the reviewed files.
+
+Throughput counts actual support plus question tokens forwarded; the single-token
+answer is a CE label rather than another forwarded input. Larger-study contracts
+must state whether their 4M budget counts labels as well. Cost reports use actual
+forwarded inputs and are planning extrapolations, not authorization. Calibration
+feature/fusion choice is not set by this task: report the range across the four
+choices per backend for the two LR runs. Evaluation/checkpoint schedules and
+startup overhead must be added to the training-only estimate.
+
+No full V2 training or learning-rate calibration has been run.
+
+## Exact-candidate integration result
+
+ATT-0041-1 / RES-0033: 124 checks pass. All eight E=16 arms completed four
+updates (5,248 forwarded training tokens total); the protocol-gradient tests
+separately report672 forwarded tokens. Probe path fitted on8 train and evaluated
+on8 calibration episodes; clean/read probe accuracies0.125/0.0 are tiny-smoke
+outputs only and cannot support a representation conclusion. PBS3760269.opbs
+exit0, measured77s. All scheduler observations and usage for attempts36/38/40/41
+are imported from `research/artifacts/T-0006/scheduler-through-integration.json`.
+
+Measured stable step and throughput on the two E=16 episodes (three timed steps
+per arm after warmup):
+
+| Feature | Read | Fusion | sec/step | input tokens/sec | peak allocated bytes |
+|---|---|---|---:|---:|---:|
+| direct_hidden | kernel_matrix | F_out |0.18029|909.63|1318665216|
+| direct_hidden | kernel_matrix | C_dual |0.17266|949.83|1326362624|
+| direct_hidden | soft_slot | F_out |0.17649|929.25|1318727168|
+| direct_hidden | soft_slot | C_dual |0.20492|800.30|1326424576|
+| qknorm_pre_rope | kernel_matrix | F_out |0.17193|953.90|1320238080|
+| qknorm_pre_rope | kernel_matrix | C_dual |0.17093|959.48|1327935488|
+| qknorm_pre_rope | soft_slot | F_out |0.17602|931.72|1320300032|
+| qknorm_pre_rope | soft_slot | C_dual |0.17784|922.19|1327997440|
+
+Training-only projection uses tokens/throughput/3600×0.25 for the MIG conversion:
+
+- V2 eight arms ×4M forwarded tokens: **2.42391 node·h** total.
+- KernelMatrix two LRs ×0.2M: **0.02895–0.03054 node·h** across feature/fusion.
+- SoftSlot two LRs ×0.2M: **0.02981–0.03471 node·h**.
+- Combined calibration: **0.05876–0.06525 node·h**.
+
+Each six-control evaluation on the two episodes measured0.71–0.81s;
+checkpoint export/reload measured0.0064–0.0092s. The report does not extrapolate
+those without an evaluation/checkpoint schedule. Allocation peak can exceed
+PyTorch allocated bytes; no whole-job GPU-memory claim is made. These estimates
+come from three steady steps on two fixed episodes and are provisional.
