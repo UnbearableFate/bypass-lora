@@ -10,6 +10,7 @@ import rb1_latency as latency
 from rb_train import FAMILIES, PARAMETERS, adapter_config
 from v1_lora import LoRAConfig
 from v1_run import lr_factor
+from calibrate import REVISION
 
 
 def _digest(path):
@@ -46,6 +47,9 @@ def _formal_run(root, arm):
     (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in steps))
     params = PARAMETERS[arm]
     metrics = {'failed': False, 'reload.identical': True, 'params.stored': params,
+        'model_revision': REVISION, 'tokenizer_revision': REVISION,
+        'environment.lock_sha256': _digest(Path(__file__).resolve().parents[1]/'uv.lock'),
+        'source.commit': 'c'*40, 'plan.order_sha256': 'a'*64,
         'params.trainable': params, 'params.with_grad': params,
         'learning_rate': .001, 'lr_lock.sha256': _digest(lock),
         'split_manifest.sha256': split_hash, 'plan.steps': 1954, 'train.steps': 1954,

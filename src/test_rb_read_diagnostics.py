@@ -1,10 +1,13 @@
 """Explicit causal-slot checks for normalized RB read diagnostics."""
 from dataclasses import replace
+import importlib.util
+from pathlib import Path
+import sys
 
 import pytest
 import torch
 
-from bypass_core import LatentReader, kernel_prefix_states, read_kernel_prefix
+from bypass_core import LatentReader, kernel_prefix_states, read_kernel_prefix, process_prefix
 from bypass_model import AdapterConfig
 from rb_history import run_history
 from rb_read_diagnostics import prefix_read_metrics, ReadSummary
@@ -75,7 +78,7 @@ def test_observer_sees_native_first_and_last_queries_without_changing_outputs_or
     ga = torch.autograd.grad(normal.sum(), params, retain_graph=True)
     gb = torch.autograd.grad(observed.sum(), params)
     assert all(torch.equal(a, b) for a, b in zip(ga, gb))
-    cfg = AdapterConfig(rank=4, steps=4, impl='prefix')
+    cfg = AdapterConfig(branch='memory', rank=4, steps=4, impl='prefix')
     with torch.no_grad():
         traced = run_history(q, k, v, reader, valid, cfg, {'trace_reads': True})
         plain = run_history(q, k, v, reader, valid, cfg, {})
@@ -99,3 +102,28 @@ def test_gold_answer_query_scope_excludes_padding_and_uses_preceding_position():
     assert report['all_valid_input']['means']['n_eff'] == 2
     assert report['answer_prediction']['count'] == 1
     assert report['answer_prediction']['means']['readable_positions'] == 2
+
+
+@pytest.mark.parametrize('steps,mode,fixed', [(1, 'inclusive', False), (4, 'strict', False), (4, 'inclusive', True)])
+def test_default_prefix_outputs_and_training_gradients_bitwise_match_reviewed_pre_observer_source(steps, mode, fixed):
+    path = Path('/work/xg24i002/x10041/bypass-lora/snapshots/6df9e479b229feb3d5edfac588b06264612c7839/src/bypass_core.py')
+    spec = importlib.util.spec_from_file_location('_rb1_pre_observer_core', path)
+    old = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = old
+    spec.loader.exec_module(old)
+    torch.manual_seed(331)
+    inputs = [torch.randn(2, 17, 8).requires_grad_() for _ in range(3)]
+    legacy_inputs = [x.detach().clone().requires_grad_() for x in inputs]
+    current_reader, old_reader = LatentReader(8), old.LatentReader(8)
+    old_reader.load_state_dict(current_reader.state_dict())
+    valid = torch.arange(17)[None] < torch.tensor([[17], [13]])
+    kwargs = {'valid': valid, 'steps': steps, 'mode': mode, 'fixed_query': fixed}
+    current = process_prefix(*inputs, current_reader, **kwargs)
+    previous = old.process_prefix(*legacy_inputs, old_reader, **kwargs)
+    assert torch.equal(current.outputs, previous.outputs)
+    assert torch.equal(current.state.M, previous.state.M)
+    assert torch.equal(current.state.c, previous.state.c)
+    assert torch.equal(current.state.counts, previous.state.counts)
+    ga = torch.autograd.grad(current.outputs.square().sum(), (*inputs, *current_reader.parameters()))
+    gb = torch.autograd.grad(previous.outputs.square().sum(), (*legacy_inputs, *old_reader.parameters()))
+    assert all(torch.equal(a, b) for a, b in zip(ga, gb))

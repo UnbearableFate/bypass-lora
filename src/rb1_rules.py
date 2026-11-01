@@ -6,7 +6,8 @@ paired row outcomes for descriptive bootstrap intervals.
 
 ``counts`` has shape ``{label: {task: (correct, total)}}``. Required labels are
 ``Base`` and ``RB1-01`` through ``RB1-09``; optional extra labels such as
-``RB1-02/iv_swap`` represent intervention conditions. ``nll`` has the same
+``RB1-02/normal`` and ``RB1-02/iv_swap`` represent intervention conditions.
+``nll`` has the same
 shape, with each task value either ``(nll_sum, loss_tokens)`` or a scalar mean
 NLL. Counts determine all accuracy decisions through :class:`Fraction`.
 
@@ -246,16 +247,19 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
     c_star = (min(near_best, key=lambda arm: (PARAMS[arm], -score[arm], _macro_nll(nll, arm)))
               if near_best else None)
     gc_margin = concat_best - score['RB1-02']
-    gc = gc_margin >= ONE_PP
+    gc_raw = gc_margin >= ONE_PP
+    # A GC progression/release needs a selected, effective concat arm. The
+    # raw contrast remains available for Rule 11 even when C*_RB is absent.
+    gc = gc_raw and c_star is not None
 
-    training_within_base = all(abs(score[arm] - base) <= ONE_PP for arm in ARM_IDS)
+    training_within_base = all(
+        base - ONE_PP <= score[arm] < base + ONE_PP for arm in ARM_IDS)
     rb1_t0_effective = score['RB1-01'] >= base + ONE_PP
     rule9_gate_condition = g0 and not gr and not gc
-    rule9 = rule9_gate_condition and not training_within_base
+    rule9 = rule9_gate_condition
     rule9_trigger = {
         'triggered': rule9,
         'gate_condition_met': rule9_gate_condition,
-        'blocked_by_rule10': bool(rule9_gate_condition and training_within_base),
         't0_effective': rb1_t0_effective if rule9 else None,
         'gradient_started': gradient_started if rule9 else None,
         'next_check': (
@@ -270,8 +274,6 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
 
     if not g0:
         progression = 'stop_at_implementation_and_learnability_check'
-    elif training_within_base:
-        progression = 'implementation_and_learnability_check_only'
     elif gr or gc:
         progression = 'draft_RB5_and_review_conclusion'
     elif rule9:
@@ -287,7 +289,7 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
     main_challenge = (score['RB1-02'] < base + ONE_PP or gr_margin <= 0)
     gh_direction = _direction(gh, history_margin)
     gl_direction = _direction(gl, loop_margin)
-    gc_direction = _direction(gc, gc_margin)
+    gc_direction = _direction(gc_raw, gc_margin)
     directions = {
         'main_utility': _direction(main_support, score['RB1-02'] - score['RB1-07'], main_challenge),
         'history': gh_direction,
@@ -296,7 +298,7 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
     }
 
     rb5_gate_condition = g0 and (gr or gc)
-    rb5_released = rb5_gate_condition and not training_within_base
+    rb5_released = rb5_gate_condition
     rb5_matrix = None
     if rb5_released:
         rb5_matrix = ['RB5-01', 'RB5-05', 'RB5-08']
@@ -325,21 +327,23 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
                           'RB1-06_minus_RB1-02': _json_fraction(score['RB1-06'] - score['RB1-02']),
                           'RB1-04_minus_RB1-06': _json_fraction(score['RB1-04'] - score['RB1-06']),
                       }},
-        '6_GC_concat': {'passed': gc, 'best_concat_minus_RB1-02': _json_fraction(gc_margin),
+        '6_GC_concat': {'passed': gc_raw, 'best_concat_minus_RB1-02': _json_fraction(gc_margin),
+                        'raw_gate_met': gc_raw, 'resolved_gate_met': gc,
                         'effective_concat_arms': effective_concat, 'C_star_RB': c_star,
                         'near_best_effective': near_best},
         '7_RB5_release': {'passed': bool(rb5_released),
                           'gate_condition_met': bool(rb5_gate_condition),
-                          'blocked_by_rule10': bool(rb5_gate_condition and training_within_base),
                           'matrix': rb5_matrix,
                           'loop_depth': 1 if not gl else (2 if s_star == 'RB1-03' else 4)},
-        '8_C_S1_S4_pilot': {'gate_condition_met': bool(g0 and not training_within_base and not gl and gc),
-                            'triggered': bool(g0 and not training_within_base and not gl and gc and c_star),
-                            'blocked_without_C_star': bool(g0 and not training_within_base and not gl and gc and c_star is None),
+        '8_C_S1_S4_pilot': {'gate_condition_met': bool(g0 and not gl and gc_raw),
+                            'triggered': bool(g0 and not gl and gc and c_star),
+                            'blocked_without_C_star': bool(g0 and not gl and gc_raw and c_star is None),
                             'pilot_result': None, 'condition': 'C*_RB+KernelMatrix C-S4 minus C-S1 >= 1 pp'},
         '9_no_residual_or_concat_signal': rule9_trigger,
         '10_all_arms_within_Base_plus_minus_1pp': {'passed': training_within_base,
-                                                   'overrides_complexity_release': training_within_base},
+                                                   'interval': 'Base - 1 pp <= arm < Base + 1 pp (D-0032)',
+                                                   'outcome': 'condition_met_no_gate_override'
+                                                   if training_within_base else None},
         '11_screening_directions': directions,
     }
     metrics = {label: {task + '_accuracy': _json_fraction(_task_accuracy(data, task))
@@ -349,11 +353,16 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
     report = {
         'experiment': 'E-0021', 'metrics': metrics, 'rules': rules,
         'progression': progression,
+        'raw_gates': {'G0': g0, 'GR': gr, 'GH': gh, 'GL': gl, 'GC': gc_raw},
+        'resolved_gates': {'G0': g0, 'GR': gr, 'GL': gl, 'GC': gc},
+        'resolved_actions': {'progression': progression, 'RB5_matrix': rb5_matrix,
+                             'C_S1_S4_pilot': bool(g0 and not gl and gc and c_star)},
         'selection': {'S_F_star': s_star, 'C_star_RB': c_star,
                       'effective_concat_arms': effective_concat,
                       'near_best_effective_concat_arms': near_best},
         'screening_directions': directions,
         'notes': ['Single-seed screening; intervals are descriptive, not confirmatory.',
+                  'D-0032: Rule 10 uses Base - 1 pp <= arm < Base + 1 pp and never overrides G0/GR/GC/GL.',
                   'Rule 11 reports screening directions only and does not change hypothesis status.',
                   'No same-depth T0 comparison is made; E-0021 only tests T0 at S1.'],
     }

@@ -25,9 +25,8 @@ def test_macro_accuracy_uses_exact_task_stratified_fractions():
     assert got == {'piqa': (1, 2), 'boolq': (1, 1)}
 
 
-def test_g0_inclusive_boundary_and_rule10_prevent_complexity_release():
-    # LoRA is exactly Base+1pp; RB1-02 and concat can each satisfy other gates,
-    # while every trained arm remains within the inclusive Base +/-1pp band.
+def test_exact_rule10_upper_boundary_is_excluded_and_gates_still_release():
+    # The exact Base+1pp upper boundary is outside Rule 10's strict upper bound.
     counts = _counts(**{
         'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
         'RB1-02': {'piqa': (520, 1000), 'boolq': (500, 1000)},
@@ -35,11 +34,10 @@ def test_g0_inclusive_boundary_and_rule10_prevent_complexity_release():
     })
     report = _report(counts)
     assert report['rules']['1_G0_positive_control']['passed'] is True
-    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is True
-    assert report['progression'] == 'implementation_and_learnability_check_only'
-    assert report['rules']['7_RB5_release']['passed'] is False
+    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is False
+    assert report['progression'] == 'draft_RB5_and_review_conclusion'
+    assert report['rules']['7_RB5_release']['passed'] is True
     assert report['rules']['7_RB5_release']['gate_condition_met'] is True
-    assert report['rules']['7_RB5_release']['blocked_by_rule10'] is True
 
 
 def test_s_f_star_prefers_s2_when_difference_is_strictly_below_half_pp():
@@ -105,6 +103,37 @@ def test_c_star_prefers_lower_parameter_c_up_when_both_are_near_best():
     assert report['selection']['C_star_RB'] == 'RB1-09'
 
 
+def test_raw_gc_without_effective_concat_does_not_release_or_trigger_pilot():
+    counts = _counts(**{
+        'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
+        'RB1-02': {'piqa': (460, 1000), 'boolq': (500, 1000)},
+        'RB1-08': {'piqa': (480, 1000), 'boolq': (500, 1000)},
+        'RB1-09': {'piqa': (480, 1000), 'boolq': (500, 1000)},
+    })
+    report = _report(counts)
+    assert report['rules']['6_GC_concat']['raw_gate_met'] is True
+    assert report['rules']['6_GC_concat']['resolved_gate_met'] is False
+    assert report['selection']['C_star_RB'] is None
+    assert report['rules']['7_RB5_release']['passed'] is False
+    assert report['rules']['8_C_S1_S4_pilot']['triggered'] is False
+    assert report['rules']['9_no_residual_or_concat_signal']['triggered'] is True
+    assert report['raw_gates']['GC'] is True
+    assert report['resolved_gates']['GC'] is False
+    assert report['screening_directions']['concat'] == 'supports'
+
+
+def test_rule10_includes_base_minus_one_but_excludes_base_plus_one():
+    counts = _counts(**{
+        'RB1-01': {'piqa': (480, 1000), 'boolq': (500, 1000)},
+    })
+    report = _report(counts)
+    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is True
+
+    counts['RB1-02'] = {'piqa': (520, 1000), 'boolq': (500, 1000)}
+    report = _report(counts)
+    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is False
+
+
 def test_missing_intervention_data_is_pending_and_does_not_challenge_history():
     counts = _counts(**{
         'RB1-02': {'piqa': (510, 1000), 'boolq': (500, 1000)},
@@ -128,6 +157,22 @@ def test_history_gate_includes_exact_one_point_boundaries():
     assert report['screening_directions']['history'] == 'supports'
 
 
+def test_history_drops_use_same_arm_normal_when_it_differs_from_training_run():
+    counts = _counts(**{
+        'RB1-02': {'piqa': (540, 1000), 'boolq': (500, 1000)},
+        'RB1-01': {'piqa': (500, 1000), 'boolq': (500, 1000)},
+        'RB1-02/normal': {'piqa': (530, 1000), 'boolq': (500, 1000)},
+        'RB1-02/iv_swap': {'piqa': (520, 1000), 'boolq': (500, 1000)},
+        'RB1-02/iv_permute': {'piqa': (520, 1000), 'boolq': (500, 1000)},
+    })
+    report = _report(counts)
+    gh = report['rules']['4_GH_side_history']
+    assert gh['normal_reference'] == 'RB1-02/normal'
+    assert gh['RB1-02_vs_RB1-01']['percentage_points'] == 2
+    assert gh['drop_vs_normal']['iv_swap']['percentage_points'] == 0.5
+    assert gh['passed'] is False
+
+
 def test_main_support_requires_each_task_difference_not_only_macro():
     counts = _counts(**{
         'RB1-02': {'piqa': (650, 1000), 'boolq': (370, 1000)},
@@ -141,15 +186,15 @@ def test_main_support_requires_each_task_difference_not_only_macro():
 
 def test_gr_tolerates_minus_one_but_main_hypothesis_needs_plus_one():
     counts = _counts(**{
-        'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
-        'RB1-02': {'piqa': (500, 1000), 'boolq': (500, 1000)},
+        'RB1-07': {'piqa': (540, 1000), 'boolq': (500, 1000)},
+        'RB1-02': {'piqa': (520, 1000), 'boolq': (500, 1000)},
     })
     report = _report(counts)
     assert report['rules']['3_GR_residual_single_read']['RB1-02_vs_RB1-07']['percentage_points'] == -1
     assert report['rules']['3_GR_residual_single_read']['passed'] is True
     assert report['screening_directions']['main_utility'] == 'challenges'
 
-    counts['RB1-02'] = {'piqa': (540, 1000), 'boolq': (500, 1000)}
+    counts['RB1-02'] = {'piqa': (560, 1000), 'boolq': (500, 1000)}
     report = _report(counts)
     assert report['rules']['3_GR_residual_single_read']['RB1-02_vs_RB1-07']['percentage_points'] == 1
     assert report['screening_directions']['main_utility'] == 'supports'
@@ -186,19 +231,21 @@ def test_count_data_includes_supplied_loop_intervention_for_bootstrap():
     }
     report = _report(counts, bootstrap_rows=rows, bootstrap_repeats=4)
     assert 'RB1-03/iv_window1' in report['metrics']
-    assert 'RB1-03/iv_window1 - RB1-04' in report['bootstrap']['comparisons']
+    paired = rb1_rules.paired_interval(
+        report['bootstrap']['comparisons'], 'RB1-03/iv_window1', 'RB1-04')
+    assert paired['difference'] == 0
 
 
-def test_rule9_raw_trigger_is_suppressed_by_inclusive_rule10():
+def test_rule9_triggers_when_arm_is_at_exact_rule10_upper_boundary():
     counts = _counts(**{
         'RB1-07': {'piqa': (520, 1000), 'boolq': (500, 1000)},
     })
     report = _report(counts)
     rule9 = report['rules']['9_no_residual_or_concat_signal']
     assert rule9['gate_condition_met'] is True
-    assert rule9['triggered'] is False
-    assert rule9['blocked_by_rule10'] is True
-    assert rule9['probe_budget'] is None
+    assert report['rules']['10_all_arms_within_Base_plus_minus_1pp']['passed'] is False
+    assert rule9['triggered'] is True
+    assert report['progression'] == 'check_T0_and_gradient_then_at_most_one_probe'
 
 
 def test_negative_counts_and_bootstrap_count_row_mismatch_raise():

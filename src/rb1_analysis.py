@@ -149,7 +149,8 @@ def analyze(spec, stage='final'):
         manifest, refs, _ = validate_formal_run(root, arm)
         metrics = manifest['metrics']
         plan = {k: metrics.get(k) for k in ('plan.steps', 'plan.examples', 'plan.input_tokens',
-                'plan.order_sha256', 'split_manifest.sha256', 'lr_lock.sha256')}
+                'plan.order_sha256', 'split_manifest.sha256', 'lr_lock.sha256', 'source.commit',
+                'environment.lock_sha256', 'model_revision', 'tokenizer_revision')}
         if not isinstance(plan['plan.order_sha256'], str) or len(plan['plan.order_sha256']) != 64:
             raise ValueError(f'{arm}: missing recorded paired training order digest')
         if common is not None and common != plan:

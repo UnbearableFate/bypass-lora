@@ -2,6 +2,7 @@
 import hashlib
 import json
 import math
+import re
 import statistics
 from pathlib import Path
 
@@ -88,6 +89,14 @@ def validate_formal_run(run_dir, arm):
         raise ValueError(f'{arm}: manifest metrics are missing')
     if metrics.get('failed') is not False or metrics.get('reload.identical') is not True:
         raise ValueError(f'{arm}: failed or non-identical reload training artifact')
+    from calibrate import REVISION
+    if metrics.get('model_revision') != REVISION or metrics.get('tokenizer_revision') != REVISION:
+        raise ValueError(f'{arm}: model/tokenizer revision differs from pinned Base')
+    if metrics.get('environment.lock_sha256') != reference(Path(__file__).resolve().parents[1]/'uv.lock')['sha256']:
+        raise ValueError(f'{arm}: training environment lock differs from analysis environment')
+    for key, length in (('source.commit', 40), ('plan.order_sha256', 64)):
+        if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
+            raise ValueError(f'{arm}: missing or invalid {key}')
     expected_params = PARAMETERS[arm]
     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
         if metrics.get(key) != expected_params:
