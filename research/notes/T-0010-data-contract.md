@@ -84,7 +84,7 @@ legacy disjointness, and passing shortcut gates. Generation took 1.1773 s;
 entrypoint elapsed time excluding imports was 4.3610 s. Scheduler measured
 15 s, or approximately 0.001042 node·h. These smoke data are not the final
 V3 dataset. The Base evaluator was added after this snapshot and has not yet
-run; full generation and all model evaluation await code review.
+run at that point; full generation and all model evaluation awaited code review.
 
 The initial generator `concat-loop-v3-t2-1` followed E-0011@1, coupling support
 order and terminal distractors by index parity. Untyped EM was therefore 0%
@@ -115,6 +115,8 @@ including the initial smoke the measured total is 29 MIG seconds, about
 completion while the ledger export still lagged at running; an explicit
 job-get end observation was recorded rather than treating the manifest as
 proof of execution end. The next ledger refresh must import the measured
-usage once it appears. No Base model, LoRA pilot, full generation or sealed
-model evaluation has run. The Base evaluator source is unchanged from RV-0020
-and still has source review only.
+usage once it appears (subsequently imported exactly once). At this checkpoint
+no Base model, LoRA pilot, full generation or sealed model evaluation had run.
+The Base evaluator source was unchanged from RV-0020 and had source review
+only. Subsequent full-data and Base runtime results are in
+`research/notes/T-0010-results.md`.
