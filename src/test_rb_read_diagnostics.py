@@ -223,3 +223,20 @@ def test_read_summary_never_averages_read_vectors():
     summary = ReadSummary()
     summary.add('piqa', {6: {'read_metrics': [record]}}, valid, torch.full((1, 2), -100))
     assert all('read_vector' not in row['means'] for row in summary.finish())
+
+
+def test_swap_first_three_shares_exclude_recipient_current_for_a_short_donor():
+    query = torch.ones(1, 5, 2)
+    keys = torch.ones(1, 5, 2)
+    valid = torch.ones(1, 5, dtype=torch.bool)
+    short = {'keys': torch.ones(1, 2, 2), 'valid': torch.ones(1, 2, dtype=torch.bool)}
+    padded = {'keys': torch.cat((torch.ones(1, 2, 2), torch.zeros(1, 3, 2)), 1),
+              'valid': torch.tensor([[True, True, False, False, False]])}
+    a = prefix_read_metrics(query, keys, valid, kind='iv_swap', donor=short)
+    b = prefix_read_metrics(query, keys, valid, kind='iv_swap', donor=padded)
+    # t >= 2: two donor slots plus the recipient current slot, equal scores.
+    for name in ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2'):
+        torch.testing.assert_close(a[name][0, 2:], b[name][0, 2:])
+    torch.testing.assert_close(a['share0_2'][0, 2:], torch.full((3,), 2/3))
+    torch.testing.assert_close(a['uniform0_2'][0, 2:], torch.full((3,), 2/3))
+    torch.testing.assert_close(a['share0'][0, 2:], torch.full((3,), 1/3))

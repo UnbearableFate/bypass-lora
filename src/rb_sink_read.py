@@ -3,12 +3,15 @@
 No training. Each RB1 arm's final checkpoint (the one E-0021 intervened on,
 matched by manifest and checkpoint-inventory SHA256) reads the dev gold
 candidate under normal, iv_strict and iv_window8. The forward, intervention and
-read-distribution code are the reviewed rb_history/rb_read_diagnostics paths;
-only gold candidates are run, right-padded in length-sorted batches, and every
-row's gold NLL and the read summaries are compared with the E-0021 run.
+read-distribution code are the reviewed rb_history/rb_read_diagnostics paths.
+Only gold candidates are run, one row per forward exactly as E-0021 encoded
+them: right-padded batches change BF16 results even for the plain Base model
+(ATT-0270-1). Every row's gold NLL and the read summaries must match the E-0021
+run of the same checkpoint within the gates below, or the arm fails.
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -32,6 +35,10 @@ CONDITIONS = ('normal', 'iv_strict', 'iv_window8')
 TASKS = ('piqa', 'boolq')
 SHARES = ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')
 SAMPLE = 200
+# Acceptance gates against the batch-one E-0021 run of the same checkpoint.
+# Batch-one forwards repeat E-0021's computation, so only float noise is allowed.
+NLL_TOLERANCE = 1e-4
+READ_TOLERANCE = 1e-6
 
 
 def gold_index(row):
@@ -148,8 +155,9 @@ def run_condition(model, rows_by_task, encoded_by_task, kind, sampled, batch_siz
     return summary.finish(), accumulator, nll
 
 
-def compare_reference(reference, condition, summaries, nll):
-    """Differences from the batch-one E-0021 run of the same checkpoint."""
+def compare_reference(reference, condition, summaries, nll, nll_tolerance=NLL_TOLERANCE,
+                      read_tolerance=READ_TOLERANCE):
+    """Differences from the batch-one E-0021 run of the same checkpoint, with acceptance gates."""
     predictions = {(row['task'], row['id']): row['gold_nll_sum'] for row in reference['predictions']}
     if set(predictions) != set(nll):
         raise ValueError(f'{condition}: dev rows differ from E-0021')
@@ -167,8 +175,13 @@ def compare_reference(reference, condition, summaries, nll):
             gap = abs(after-before)
             absolute[name] = max(absolute.get(name, 0.), gap)
             relative[name] = max(relative.get(name, 0.), gap/max(abs(before), 1e-12))
+    gaps = [*nll_diff, *relative.values()]
+    passed = (all(math.isfinite(x) for x in gaps) and max(nll_diff) <= nll_tolerance and
+              max(relative.values()) <= read_tolerance)
     return {'gold_nll_max_abs_diff': max(nll_diff), 'gold_nll_mean_abs_diff': sum(nll_diff)/len(nll_diff),
-            'read_summary_max_abs_diff': absolute, 'read_summary_max_rel_diff': relative}
+            'read_summary_max_abs_diff': absolute, 'read_summary_max_rel_diff': relative,
+            'tolerances': {'gold_nll_abs': nll_tolerance, 'read_summary_rel': read_tolerance},
+            'passed': passed}
 
 
 def run(args):
@@ -204,7 +217,7 @@ def run(args):
     for condition in CONDITIONS:
         tick = time.monotonic()
         summaries, accumulator, nll = run_condition(model, rows_by_task, encoded_by_task, condition,
-                                                    sampled, args.batch_size, tokenizer.pad_token_id)
+                                                    sampled, 1, tokenizer.pad_token_id)
         result['conditions'][condition] = {
             'answer_question_level': accumulator.finish(),
             'read_summary': summaries,
@@ -213,12 +226,15 @@ def run(args):
             'reference_check': compare_reference(reference[condition], condition, summaries, nll),
             'elapsed_s': time.monotonic()-tick}
         write_json(out/'sink.json', result)
+        if not result['conditions'][condition]['reference_check']['passed']:
+            raise ValueError(f'{args.arm}/{condition}: differs from the E-0021 reference beyond tolerance')
     result['provenance'] = {
         'formal_run': inventory, 'reference_run': str(reference_dir),
         'training_manifest_sha256': manifest_sha, 'checkpoint_inventory_sha256': inventory_sha,
         'source_commit': os.environ['SR_CODE_COMMIT'], 'model_revision': REVISION,
         'environment_lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
-        'batch_size': args.batch_size, 'hardware': torch.cuda.get_device_name()}
+        'batch_size': 1, 'reference_hardware': reference_provenance.get('hardware'),
+        'hardware': torch.cuda.get_device_name()}
     write_json(out/'sink.json', result)
     return result
 
@@ -274,16 +290,52 @@ def summarize(args):
         reference = json.loads((Path(value['provenance']['reference_run'])/'conditions.json').read_text())
         value['concentrated'] = concentrated_layers(reference['normal'])
         arms[value['arm']] = value
+    report = build_report(arms)
+    write_json(args.output, report)
+    if not report['checks_passed']:
+        raise SystemExit('E-0024 implementation checks failed; no interpretation recorded')
+    return report
+
+
+def build_report(arms):
     if set(arms) != set(ARMS):
         raise ValueError('summary needs exactly the four E-0024 arms')
+    checks = consistency(arms)
+    references = {arm: {c: v['conditions'][c]['reference_check']['passed'] for c in CONDITIONS}
+                  for arm, v in arms.items()}
+    passed = (all(c['strict_ok'] and c['window8_ok'] for c in checks.values()) and
+              all(all(v.values()) for v in references.values()))
     report = {'contract': 'E-0024@1', 'arms': {arm: {'concentrated': v['concentrated'],
               'position0_token': v['position0_token'], 'conditions': {
                   c: {k: v['conditions'][c][k] for k in ('answer_question_level', 'reference_check',
                       'window8_share0_max_late', 'window8_answer_positions_before_8', 'elapsed_s')}
                   for c in CONDITIONS}} for arm, v in arms.items()},
-              'consistency': consistency(arms), 'interpretation': interpret(arms)}
-    write_json(args.output, report)
+              'consistency': checks, 'reference_checks_passed': references, 'checks_passed': passed,
+              # E-0024: a failed implementation check is investigated before any reading.
+              'interpretation': interpret(arms) if passed else
+                  {'reading': 'implementation_check_failed', 'cells': []}}
     return report
+
+
+def write_manifest(args):
+    """Attempt manifest; success needs every arm and a summary whose checks passed."""
+    out = args.output
+    artifacts = [{'path': str(out/arm/'sink.json'), 'role': f'sink:{arm}'} for arm in ARMS
+                 if (out/arm/'sink.json').is_file()]
+    summary = json.loads((out/'summary.json').read_text()) if (out/'summary.json').is_file() else None
+    if summary is not None:
+        artifacts.append({'path': str(out/'summary.json'), 'role': 'summary'})
+    passed = (len(artifacts) == len(ARMS)+1 and summary['checks_passed'] is True and
+              summary['interpretation']['reading'] != 'implementation_check_failed')
+    manifest = {'status': 'complete' if passed else 'partial', 'contract': 'E-0024@1',
+                'spec_digest': os.environ['SR_SPEC_DIGEST'], 'phase': 'R1', 'seed': 0,
+                'stage': 'diagnostic', 'artifacts': artifacts,
+                'metrics': {'elapsed_s': args.elapsed_s,
+                            'arms_written': sum(a['role'].startswith('sink:') for a in artifacts),
+                            'reading': summary['interpretation']['reading'] if summary else None},
+                'validator': {'name': 'rb_sink_read', 'passed': passed}}
+    write_json(out/'manifest.json', manifest)
+    return manifest
 
 
 def main():
@@ -295,12 +347,14 @@ def main():
     one.add_argument('--reference', type=Path, required=True, help='E-0021 intervention run of this arm')
     one.add_argument('--data-dir', required=True)
     one.add_argument('--output', type=Path, required=True)
-    one.add_argument('--batch-size', type=int, default=8)
     both = sub.add_parser('summarize')
     both.add_argument('--inputs', nargs='+', required=True)
     both.add_argument('--output', type=Path, required=True)
+    final = sub.add_parser('manifest')
+    final.add_argument('--output', type=Path, required=True, help='attempt directory')
+    final.add_argument('--elapsed-s', type=float, required=True)
     args = parser.parse_args()
-    run(args) if args.command == 'arm' else summarize(args)
+    {'arm': run, 'summarize': summarize, 'manifest': write_manifest}[args.command](args)
 
 
 if __name__ == '__main__':

@@ -38,6 +38,7 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
     else:
         history, history_valid = keys, valid
     positions = torch.arange(history.shape[1], device=query.device)
+    first, first3 = min(1, history.shape[1]), min(3, history.shape[1])
     pieces = {name: [] for name in ('current_weight', 'n_eff', 'entropy',
                                    'relative_n_eff', 'readable_positions',
                                    'share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')}
@@ -77,11 +78,13 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
                   'readable_positions': readable.float(),
                   # History index 0 is the sequence's first token (the donor's
                   # first token under iv_swap). Uniform shares use the same slots.
-                  'share0': probability[..., 0],
-                  'share0_2': probability[..., :3].sum(-1),
-                  'argmax0': (probability.argmax(-1) == 0).float(),
-                  'uniform0': slots[..., 0].float()/readable.clamp_min(1),
-                  'uniform0_2': slots[..., :3].sum(-1).float()/readable.clamp_min(1)}
+                  # Only history slots count: the recipient current slot appended
+                  # under iv_swap never enters these shares, even for a short donor.
+                  'share0': probability[..., :first].sum(-1),
+                  'share0_2': probability[..., :first3].sum(-1),
+                  'argmax0': ((probability.argmax(-1) == 0) & slots[..., :first].any(-1)).float(),
+                  'uniform0': slots[..., :first].sum(-1).float()/readable.clamp_min(1),
+                  'uniform0_2': slots[..., :first3].sum(-1).float()/readable.clamp_min(1)}
         for name, value in values.items():
             pieces[name].append(torch.where(active, value, torch.zeros_like(value)))
     return {name: torch.cat(value, 1) for name, value in pieces.items()}

@@ -24,30 +24,15 @@ mkdir -p "$TMPDIR"
 nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
 cd "$SRC"
 start=$(date +%s)
-status=failed
-finish() {
-  "$PY" - "$OUT" "$status" "$start" <<'PYEOF'
-import json, os, sys, time
-out, status, start = sys.argv[1], sys.argv[2], int(sys.argv[3])
-arms = ('RB1-02', 'RB1-03', 'RB1-08', 'RB1-09')
-artifacts = [{'path': f'{out}/{a}/sink.json', 'role': f'sink:{a}'} for a in arms
-             if os.path.exists(f'{out}/{a}/sink.json')]
-if os.path.exists(f'{out}/summary.json'):
-    artifacts.append({'path': f'{out}/summary.json', 'role': 'summary'})
-json.dump({'status': 'complete' if status == 'complete' else 'partial', 'contract': 'E-0024@1',
-           'spec_digest': os.environ['SR_SPEC_DIGEST'], 'phase': 'R1', 'seed': 0, 'stage': 'diagnostic',
-           'metrics': {'elapsed_s': time.time()-start, 'arms_complete': len(artifacts) - (status == 'complete')},
-           'artifacts': artifacts,
-           'validator': {'name': 'rb_sink_read', 'passed': status == 'complete'}},
-          open(f'{out}/manifest.json', 'w'), indent=1)
-PYEOF
-}
-trap finish EXIT
+# The manifest is derived from the files: success only with all four arms and a
+# summary whose implementation checks passed (rb_sink_read.write_manifest).
+trap '"$PY" src/rb_sink_read.py manifest --output "$OUT" --elapsed-s $(( $(date +%s) - start ))' EXIT
 declare -A TRAIN=([RB1-02]=ATT-0240-1 [RB1-03]=ATT-0241-1 [RB1-08]=ATT-0246-1 [RB1-09]=ATT-0247-1)
 declare -A REF=([RB1-02]=ATT-0262-1 [RB1-03]=ATT-0263-1 [RB1-08]=ATT-0264-1 [RB1-09]=ATT-0265-1)
-for arm in RB1-02 RB1-03 RB1-08 RB1-09; do
+# RB1-02's E-0021 reference ran on a 1g slice; it goes last so a cross-profile
+# reference mismatch cannot block the other arms.
+for arm in RB1-03 RB1-08 RB1-09 RB1-02; do
   "$PY" src/rb_sink_read.py arm --arm "$arm" --training-run "$P/runs/${TRAIN[$arm]}" \
-    --reference "$P/runs/${REF[$arm]}" --data-dir "$P/data/v1" --output "$OUT/$arm" --batch-size 8
+    --reference "$P/runs/${REF[$arm]}" --data-dir "$P/data/v1" --output "$OUT/$arm"
 done
 "$PY" src/rb_sink_read.py summarize --inputs "$OUT"/RB1-0{2,3,8,9}/sink.json --output "$OUT/summary.json"
-status=complete
