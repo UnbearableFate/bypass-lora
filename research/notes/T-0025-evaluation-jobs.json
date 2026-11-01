@@ -1,0 +1,98 @@
+{
+  "experiment": "E-0021@1",
+  "task": "T-0025",
+  "source_commit": "ffa4c7124939bbd82b1319f56be8e27913e0ff59",
+  "review": "RV-0069",
+  "selection": {
+    "attempt": "ATT-0258-1",
+    "result": "RES-0237",
+    "S_F_star": "RB1-03",
+    "C_star_RB": "RB1-09"
+  },
+  "training_results": [
+    {
+      "attempt": "ATT-0239-1",
+      "arm": "RB1-01",
+      "result": "RES-0228"
+    },
+    {
+      "attempt": "ATT-0240-1",
+      "arm": "RB1-02",
+      "result": "RES-0229"
+    },
+    {
+      "attempt": "ATT-0241-1",
+      "arm": "RB1-03",
+      "result": "RES-0230"
+    },
+    {
+      "attempt": "ATT-0242-1",
+      "arm": "RB1-04",
+      "result": "RES-0231"
+    },
+    {
+      "attempt": "ATT-0243-1",
+      "arm": "RB1-05",
+      "result": "RES-0232"
+    },
+    {
+      "attempt": "ATT-0244-1",
+      "arm": "RB1-06",
+      "result": "RES-0233"
+    },
+    {
+      "attempt": "ATT-0245-1",
+      "arm": "RB1-07",
+      "result": "RES-0234"
+    },
+    {
+      "attempt": "ATT-0246-1",
+      "arm": "RB1-08",
+      "result": "RES-0235"
+    },
+    {
+      "attempt": "ATT-0247-1",
+      "arm": "RB1-09",
+      "result": "RES-0236"
+    }
+  ],
+  "measured_before_timing": {
+    "MIG_seconds": 35287,
+    "node_h": 2.450486111111111,
+    "remaining_to_four_node_h": 1.5495138888888889
+  },
+  "runs": [
+    {
+      "arm": "RB1-intervention-cost-smoke",
+      "attempt": "ATT-0260-1",
+      "job_id": "3769569.opbs",
+      "spec_digest": "blake2b:9aa5a0a96e38d1b14cd14deaf59ab631f747a6db1fd3f6b1b806d2d58b16ca5c",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0260-1",
+      "stage": "cost-smoke",
+      "sample_rows_per_task": 32,
+      "targets": [
+        "RB1-02",
+        "RB1-03",
+        "RB1-08",
+        "RB1-09",
+        "RB1-01"
+      ],
+      "comparative_timing_profile": "2g.24gb required",
+      "notification": "N-20261102-063653-b9ce",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-063653-b9ce --notifier miyabi-g2",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-063652-adcc3a/script.sh"
+    },
+    {
+      "arm": "RB1-prefill-decode-latency",
+      "attempt": "ATT-0261-1",
+      "job_id": "3769570.opbs",
+      "spec_digest": "blake2b:e0c6a34f5170547d18ca9289e876f2507858e214143244fea62ea934c809043d",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0261-1",
+      "stage": "latency",
+      "comparative_timing_profile": "2g.24gb required",
+      "notification": "N-20261102-063659-3300",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-063659-3300 --notifier miyabi-g2",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-063658-ed7334/script.sh"
+    }
+  ]
+}
