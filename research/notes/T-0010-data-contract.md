@@ -95,3 +95,26 @@ the mismatch with the revised contract as its only high finding. The old
 smoke remains evidence for @1 only (ATT-0073-1 / RES-0071 / EV-0059), and its
 immutable files and recorded facts are unchanged. The version bump makes the
 new deterministic content and identities distinct from that smoke.
+
+## Revised PBS smoke (E-0011@2)
+
+Source `24036ad2ed03b443746967abfb2283f79440cac2`, ATT-0075-1,
+PBS 3761891.opbs, compute host mg1098: all ten tests passed in 2.71 s.
+Actual graph edges satisfy every twelve-cell rotation for train, calibration,
+dev and confirmation; the separate 1,000-row dev regression has four 84-row
+cells and eight 83-row cells. Every hop × order stratum in both 60-row
+calibration/dev smoke slices has ignore-relation EM exactly 50%. Both smoke
+shortcut gate sets pass. All 480 episode identities and semantic contents are
+unique; all slice hashes reproduce, with zero raw/normalized V2 overlap and
+rechecked legacy disjointness. Result: RES-0077.
+
+Generation took 1.1988 s; entrypoint time excluding imports was 4.4568 s.
+The scheduler measured 14 MIG seconds, approximately 0.00097222 node·h;
+including the initial smoke the measured total is 29 MIG seconds, about
+0.00201389 node·h. At import the job-get interface had confirmed scheduler
+completion while the ledger export still lagged at running; an explicit
+job-get end observation was recorded rather than treating the manifest as
+proof of execution end. The next ledger refresh must import the measured
+usage once it appears. No Base model, LoRA pilot, full generation or sealed
+model evaluation has run. The Base evaluator source is unchanged from RV-0020
+and still has source review only.
