@@ -18,6 +18,22 @@ from v1_run import batch_tensors, prepare
 from v5_train import ARMS, make_model, write_json
 
 
+def validate_checkpoint_map(checkpoints):
+    """Reject missing adapters before any model is constructed."""
+    if not isinstance(checkpoints, dict) or set(checkpoints) != set(ARMS):
+        raise ValueError('checkpoint map must name exactly the three V5 arms')
+    result = {}
+    for arm, value in checkpoints.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f'{arm}: checkpoint path must be a nonempty string')
+        path = Path(value).resolve()
+        for name in ('config.json', 'adapter.pt'):
+            if not (path/name).is_file():
+                raise ValueError(f'{arm}: missing checkpoint file {path/name}')
+        result[arm] = str(path)
+    return result
+
+
 @torch.no_grad()
 def merge_lora(model):
     """Fold FP32 BA into frozen weights with one final base-dtype rounding."""
@@ -68,8 +84,7 @@ def main():
     out.mkdir(parents=True,exist_ok=True)
     metrics, passed, start = {}, False, time.monotonic()
     try:
-        checkpoints = json.loads(args.checkpoints.read_text())
-        assert set(checkpoints) == set(ARMS)
+        checkpoints = validate_checkpoint_map(json.loads(args.checkpoints.read_text()))
         tok = AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True)
         tok.pad_token_id = tok.eos_token_id
         splits = prepare(args.data_dir)
