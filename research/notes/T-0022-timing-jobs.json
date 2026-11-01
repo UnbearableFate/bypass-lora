@@ -68,7 +68,9 @@
   "code_review_requested": true,
   "review_ticket": "RV-0060",
   "review_snapshot": "a5d04f8",
-  "review_status": "RV-0060 pass;four lows fixed and validated;RV-0062 focused recheck pending",
+  "review_status": "RV-0060 pass;all four lows closed;RV-0062 pass with zero findings",
+  "evidence": "EV-0112",
+  "delivery_packet": "research/notes/T-0022-delivery.md",
   "focused_recheck": "RV-0062",
   "focused_recheck_snapshot": "de4443b130653bfbd6c1418ce69d582ee75b57af",
   "review_fix_run": {
