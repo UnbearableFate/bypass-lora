@@ -32,3 +32,24 @@ ATT-0055-1 passed146 checks in60.43s, RES-0055/EV-0050; PBS3761353.opbs exit0, m
 Continuation: source paths src/v2_schedule.py,v2_train.py,v2_memory.py,test_v2_train.py,test_v2_memory.py. No dependency/core/data changes. Researcher3 copied unchanged schedule source to F branch ece2cbd and is independently verifying in ATT-0054-1/3761331.opbs. Schedule math must match before calibration. Six initial runs backend x LR3e-4,1e-3,3e-3 at200000tokens. Endpoint expansion at most once to1e-4 or1e-2 per E0009. Cal selection only by calibration normal NLL, relative difference<0.5% choose smaller LR. Code review after smoke: exact source f7c4d2b (or fixes if needed); author gpt-6.1 with lower-effort gpt-6.1-sol helper implementation. No H0003 evidence from this task.
 
 MSG-0164 researcher-3 independent PBS ATT-0054-2 confirmed exact match of full3epoch order SHA and both budgets:300/200170/15 and6000/4000470/300. Shared M/F ordering cross-check complete before calibration. ATT-0056-1 still running on MSG-0164 arrival; awaiting its notification.
+
+## Twelve-arm smoke and first calibration grid
+
+ATT-0056-1 / RES-0057 / EV-0052 passed all12 configurations:21357tokens/arm,32optimizer steps, dev16/calibration16, all controls + curves and reload. Every zero-exit max difference0; every reload prediction identical. PBS135s =0.0375MIGh. Checks PBS63s=0.0175MIGh; both usage imported from ledger. Combined measured preflight+tests+smoke200s MIG=0.0138889nodeh.
+
+Stable training step0.1956–0.2047s, throughput3271–3421input tokens/s; peak allocated1.477–1.488GB. Full12 per-arm table still to be extracted in PBS analysis. Small-split six-control final eval1.83–2.01s for32episodes; three curve evals1.57–1.67s for16episodes; reload normal eval+load0.148–0.164s. These measured quantities imply about360s per300step calibration including full dev/calibration evaluation;9min PBS request adds1.5x margin. Formal6000step forecast to report per arm, with evaluation overhead and caveat that smoke data sample is short.
+
+Review RV-0017 requested exact source f7c4d2bdde6b2167355e131c757e230d23c80a00, files v2_train/v2_schedule/v2_memory/tests. Do not mutate reviewed files while review active. Author root exact identifier unknown (recorded honestly); helpers gpt-6.1-sol medium. E0009 explicitly allows calibration alongside review, with reruns if path changes.
+
+Six calibration attempts all same source, qknorm_pre_rope/F_out, batch8,200170tokens/300steps/warmup15; full dev/calibration all six controls and dev curves. No data restrictions changed. No scientific selection from dev.
+
+|Attempt|Backend|LR|PBS|
+|---|---|---|---|
+|ATT-0061-1|kernel_matrix|0.0003|3761516.opbs|
+|ATT-0062-1|kernel_matrix|0.001|3761517.opbs|
+|ATT-0063-1|kernel_matrix|0.003|3761519.opbs|
+|ATT-0064-1|soft_slot|0.0003|3761520.opbs|
+|ATT-0065-1|soft_slot|0.001|3761523.opbs|
+|ATT-0066-1|soft_slot|0.003|3761526.opbs|
+
+All submitted, current observations imported. Notification N-20261101-171757-7d81 sealed6jobs. `research/artifacts/T-0008/calibration-grid.json` contains immutable specs/job mapping. Upon completion inspect manifests/app metrics and import results/usage; run PBS analysis to extract table and apply LR selection rule (minnormal calibration NLL, within0.5% choose smaller). Endpoint extension once to1e-4 or1e-2. Do not deliver before review resolution and calibration choice. No E0010 run belongs in T0008.
