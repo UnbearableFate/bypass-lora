@@ -1,0 +1,97 @@
+---
+experiment: E-0018
+title: RB0：残差旁路线实现与计时（因果前缀 KernelMatrix、T0、四层 R_res/concat、侧支历史干预）
+stage: E0
+hypotheses:
+- H-0017@1
+question: plan2 主线需要的新 F 线路径是否正确、训练成本是否可承受：向量化因果前缀 KernelMatrix 与已审核的逐 token 参考扫描在输出与梯度上是否一致？T0、固定
+  query、四层 R_res 与 concat 的零出口、残差拓扑、两步梯度启动、因果、cache、padding 与侧支历史干预是否按定义工作？各 RB1 arm
+  的实测步时与 node·h 是多少？
+intervention: 新增并测试（默认行为不变）：KernelMatrix 向量化因果前缀实现（impl=prefix）；T0 分支（branch=kernel_tokenwise，与
+  KernelMatrix 分支同参数）；AdapterConfig 的 fixed_query 与 impl；F 线推理期侧支历史干预（iv_off、iv_window1/8、iv_strict、iv_swap、iv_permute、当前
+  token 读权重）；RB 训练入口（arm 表与参数断言、residual_la_v21 种子、2M tokens/3 epochs 日程、LR 校准模式）；latency
+  脚本；协调者选定方案 A1/A2 时生成 RB 确认集切分清单（不做任何模型评估）。不训练正式模型
+comparator: 已审核的逐 token 参考扫描 process_sequence 与 KernelSlotReference；未修改的 Base（零出口）；E-0001/E-0004
+  已有的不变量测试作回归；V1 tokenwise arm 的实测 0.183–0.194 s/step（research/notes/T-0003-tables.md）作计时参照
+metric: 前向输出与对 q̄/k̄/v̄/Rq/Ro 的梯度的最大绝对、相对误差；四层零出口 logits 与 Base 的差；拓扑、因果、cache、padding、重排、写读计数、导出重载与干预恒等各项通过/失败；故意破坏的实现被拒绝；stored/trainable/有梯度参数；≥100
+  个稳定步的 s/step、tokens/s、峰值显存；按 plan2 §14.4 推算的每个 RB1 arm 与 RB5 run 的 node·h
+scope: F 线（context-retained）、冻结 Qwen3-0.6B-Base、四层 [6,13,20,27]、r32（另核对 r44、r64 参数计数）、qknorm_pre_rope；实现与计时检查，不产生任务性能结论；FP32
+  容差在运行前写进测试，GPU BF16 容差沿用 E-0001/E-0004 的锁定值，不看结果后放宽；计时作业在 2g.24gb 上 fail-fast，其它作业的
+  MIG guard 只记录（D-0019）
+outcome_actions: 全部通过 -> 提交 RB0 代码审核包，审核通过后释放 RBc；prefix 与参考不一致，或四层零出口、拓扑、梯度启动、因果检查失败
+  -> 修复后重测，不进入任何训练，不放宽已锁定的容差；prefix 稳定步时 > 0.4 s/step（约为 V1 tokenwise 的 2 倍）-> 先 profile
+  再定 RB1；按实测推算 RB1 > 4 node·h -> 报告协调者，统一缩短所有 arm 的样本预算或先优化，不让 arm 停在不同的样本预算；参数计数与
+  plan2 §15 不符 -> 查明原因后再继续
+budget: ≤ 1.0 node·h（MIG 按 1/4 计；估计约 0.5：PBS 中的测试与冒烟约 0.3，计时约 0.2）
+stop: 全部检查通过且计时表完成；或出现本契约内无法修复的实现问题时停下报告
+---
+
+## Design
+
+依据：plan2 §3.4–3.6、§4.1、§4.5、§6.3、§6A R1.2、§11.3、§15.1–15.2、§15.5、§16.1–16.4。代码基线：master（2026-11-02 为 490bc71，src/ 与 9a43b3d 相同）的 src/bypass_core.py、src/bypass_model.py、src/v1_run.py、src/v1_lora.py。
+
+### 现状与缺口（2026-11-02 读代码）
+
+- 已有：KernelMatrix、KernelSlotReference、MemoryState、LatentReader（Rq/Ro 单位初始化；accumulate/anchored；increment/full；fixed_query）、process_sequence（逐 token 参考扫描：inclusive/strict、padding、reset、reorder、计数）；AdapterConfig、SideBranch、Fusion（F_out 即 R_res：H+F(U)+Z·P；C_gate/C_up/C_dual 用 gate/up hook）；FeatureTap qknorm_pre_rope；F 阶段记忆对所有有效 token 写一次、读 S 次；BranchModel 有 export/load。
+- 已测（H-0001：EV-0003、EV-0005、EV-0023）：零出口（四层只测 tokenwise，记忆只测第 14 层）；两步梯度启动（第 6 层，S2，默认 fusion C_dual）；F 阶段记忆的 cache、因果与 padding（第 14 层，r32/r128，S1/2/4）；分块状态。
+- 缺：
+  1. 向量化因果前缀路径。参考扫描每 token 一次 Python 循环并有主机同步，四层全上下文训练的成本从未测过。
+  2. T0。
+  3. AdapterConfig 没有 fixed_query，SideBranch 也不传。
+  4. 四层记忆的零出口、拓扑与梯度启动。
+  5. F 线侧支历史干预（M 线基于快照的干预不适用）。
+  6. 记忆分支的 F 线训练入口、arm 表与参数断言。
+  7. RB 确认集切分（协调者选方案 A1/A2 时）。
+  8. 混合 rank LoRA（只在 RB5 的 C*_RB=C_up 时需要，推迟到 RB5）。
+
+### 实现要求
+
+1. KernelMatrix impl='prefix'（默认仍为 'reference'，M 线与已审核路径的行为不变）：
+   - k=φ(N_r(k̄))·valid，v=v̄·valid；M_t=cumsum_t(kᵀv)，形状 [B,T,r,r]，FP32；c_t=cumsum_t(k)；n_t=cumsum_t(valid)；strict 用 t−1 的前缀（t=0 为空）。
+   - 每步 q̂=φ(N_r(z)Rq)（fixed_query 时整段只用第 1 步的 q̂）；a=g·(q̂M_t)/(q̂c_t+ε)，n_t=0 处显式为零；z←z+η·a·Ro（anchored：z←z0+η·a·Ro）；Z=z_S−z_0（readout=full 时为 z_S），无效位置置零。
+   - 接受并返回状态 (M,c,n)，用于分块 prefill 与 decode 续接；不支持序列中途 reset 时显式报错，不静默忽略。
+   - 计数与参考路径相同：写次数=有效 token 数（与 S 无关），读次数=有效 token 数×S。
+   - 不用全序列 KᵀV；autograd 路径上不把张量转成 Python 数值。
+2. branch=kernel_tokenwise（T0）：a=SiLU(N_r(z)Rq+N_r(k̄_t))⊙v̄_t，z←z+η·a·Ro，Z=z_S−z_0；参数名、形状与创建顺序与 KernelMatrix 分支相同（A_q、A_k、A_v、Rq、Ro、出口），无状态。
+3. AdapterConfig 新增 fixed_query（默认 False）与 impl（默认 'reference'），传到 process_sequence 与 prefix；fixed_query 只用于 branch=memory。
+4. F 线推理期侧支历史干预（冻结模型；四个适配层同时作用；原 attention 与原 KV 不变）：
+   - iv_off：所有层 Z=0，应与 Base 完全相同（健全性检查）。
+   - iv_window{w}：M_t、c_t 只含 (t−w, t] 的有效写入；w=1 即 inclusive 下的“置零历史”，另测 w=8；w≥T 应还原正常路径。
+   - iv_strict：先读后写（只读 i<t），第 1 个有效 token 的 Z=0。
+   - iv_swap：同一任务内按 derive_seed(20261101, "residual_la_v21", phase, "iv_swap") 的错排选 donor；接收方位置 t 的历史（i<t）换成 donor 正常前向中前 min(t, T_donor) 个位置的前缀状态，inclusive 下再加接收方当前 token 的写入；每层用 donor 同层的状态。
+   - iv_permute：对每个读位置 t，历史写入 i<t 保留 key，value 按 derive_seed(20261101, "residual_la_v21", phase, "iv_permute", example_id, t) 的均匀随机置换重新配对；c 不变；当前 token 的写入不变；只用于评估，计算量 O(T²r²)。
+   - cur_weight：正常 inclusive 路径中当前 token 的归一化读权重 q̂k_tᵀ/(q̂c_t+ε)，按层与步报告均值与分位数。
+5. RB 训练入口（以 v1_run.py 为基础）：arm 表（RB1-01..09 与 Base），每个 arm 断言参数数；V1 切分、模板、候选打分、max_length 512，按 E-0003 排除不可编码行；方案 A1/A2 的切分清单；种子 derive_seed(20261101, "residual_la_v21", phase, "init"|"train", run_seed)；日程为 2M tokens 的完整步或 3 epochs；LR 校准模式（RBc 规则）；dev 曲线；最终 checkpoint 与重载复评；计数、状态字节与 node·h 记录（plan2 §16.5）。
+6. latency 脚本：prefill 吞吐（batch 1、长度 512）、decode p50/p95（128 token）、峰值显存、持久状态字节；LoRA 另报合并后的参考；在 2g.24gb 上 fail-fast（D-0019）。
+7. 确认集切分（只在协调者选 A1/A2 时）：生成 id 清单与 SHA256 并登记；不对其做任何模型评估。
+
+### 检查（全部在 PBS 中运行）
+
+| 检查 | 通过条件 |
+| --- | --- |
+| prefix 对参考 | 随机 FP32 输入（B=3；T=17 与 64；r∈{8,32}；含左/右 padding、全 padding 行、续接初始状态），inclusive/strict × S∈{1,2,4} × fixed_query × accumulate/anchored × increment/full：输出与对 q̄/k̄/v̄/Rq/Ro 的梯度 max abs ≤ 1e-5、max rel ≤ 1e-4（关闭 TF32；阈值运行前写进测试） |
+| 同核恒等 | prefix 输出与 KernelSlotReference 一致（同上容差） |
+| 四层零出口 | R_res（P_R=0）与 C_dual/C_up（出口为 0）配 KernelMatrix（prefix 与 reference）以及 T0：logits 与 Base 的差 ≤ 2e-5（沿用现有零出口阈值）；每层 attention、FFN 各执行 1 次 |
+| 残差拓扑 | P_R 非零时，第 6 层 FFN 的输入 U 与 Base 完全相同；每层输出减去 H+F(U) 等于 Z·P_R（容差内）；原块每层只执行一次 |
+| 两步梯度启动 | 四层 R_res+KernelMatrix（S1、S4）与 C_dual+KernelMatrix，序列含 ≥2 个不同的有效写入：第 1 步只有出口有梯度；一步更新后四层的 A_q/A_k/A_v/Rq/Ro 都有非零有限梯度 |
+| 冻结输入 Jacobian | 第 6 层适配器经冻结的上层获得梯度；主干参数不更新 |
+| 因果 | 改动位置 p 之后的 token 不改变 ≤p 的 logits（prefix、reference、每种干预） |
+| cache | 一次 prefill、分块 prefill（prefix 续接）与逐 token decode 一致，用 E-0004 锁定的 BF16 容差 |
+| padding 与所有权 | 左/右 padding、不同长度、batch 重排：输出随行移动；padding 不写、不读 |
+| 写读计数 | 写=有效 token 数（与 S 无关），读=有效 token 数×S |
+| T0 定义 | 与公式直接计算一致；固定当前 token 特征时与之前的输入无关 |
+| 初始化配对 | RB1-01..06 的初始参数逐元素相同 |
+| fixed_query | 模型接线后，S4 固定 query 的 Z=4·η·a⁰·Ro（a⁰ 为第 1 步的读出，含 g） |
+| 干预恒等 | iv_window(w≥T)、以自身为 donor 的 iv_swap、恒等置换的 iv_permute 都还原正常路径；iv_off 等于 Base；T0 在所有历史干预下不变 |
+| 导出重载 | 每类 arm（含 T0、fixed_query、η=0.0625、C_up）重载后预测逐条一致 |
+| 参数计数 | R_res r32 663,552；T0 663,552；C_dual 1,318,912；C_up 925,696；LoRA4 r7 630,784；LoRA28 r1 630,784；LoRA28 r2 1,261,568；R_res r64 1,343,488；R_res r44 916,608（stored=trainable=有梯度） |
+| 负对照 | 同 E-0001：故意破坏的实现（全序列 KᵀV 的未来泄漏、重复写入、padding 写入）必须被相应测试拒绝 |
+
+### 计时
+
+- 在 2g.24gb 上 fail-fast（D-0019）。类型：R_res+KernelMatrix S1（prefix）、S4（prefix）、S1（reference，只作对比）、R_res+T0 S1、C_dual+KernelMatrix S1（prefix）、LoRA4 r7。各 20 步预热后测 ≥100 个稳定步，用 RB 训练流（microbatch 1，有效 batch 2）；另测一次完整 dev 评估与保存的时间。
+- 产出：s/step、tokens/s、峰值显存；按 plan2 §14.4 推算每个 RB1 arm（2M tokens）与每个 RB5 run（3 epochs）的 node·h，写进 RB1 训练前的成本表。
+
+### 代码审核
+
+RB0 完成后提交一个审核包：前缀路径、T0、fixed_query 接线、干预、训练入口（arm 表、种子、日程、LR 校准、数据与切分）、latency 脚本、全部测试及其 PBS 日志、计时表。bypass_core 与 bypass_model 是 M 线共用的代码，审核时确认默认行为不变（impl 默认 reference，新字段默认关闭），并跑 M 线回归测试。审核通过后才开始 RBc。
