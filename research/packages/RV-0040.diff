@@ -1,0 +1,2089 @@
+diff --git a/src/bypass_core.py b/src/bypass_core.py
+index 9354124..a7b6ed0 100644
+--- a/src/bypass_core.py
++++ b/src/bypass_core.py
+@@ -7,6 +7,7 @@ reordered beam rows (including duplicate indices) can be advanced independently.
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass
++import math
+ from typing import Optional
+ 
+ import torch
+@@ -77,6 +78,45 @@ class SoftmaxSlot(nn.Module):
+         return torch.where(empty[:, None], torch.zeros_like(out), out)
+ 
+ 
++CENTERED_COS_EPS = 1e-6
++
++
++def centered_cosine_scores(q: torch.Tensor, keys: torch.Tensor, valid: torch.Tensor,
++                           temperature: torch.Tensor) -> torch.Tensor:
++    """``tau * cos(q, k_i - mean_j k_j)``; the mean uses only valid slots of each row.
++
++    ``q`` is [B, R] or [B, T, R]; ``keys`` [B, N, R]; ``valid`` [B, N].
++    Invalid slots receive arbitrary finite scores and must be masked by the caller.
++    """
++    keys = keys.float()
++    count = valid.sum(-1, keepdim=True).clamp_min(1).to(keys.dtype)
++    mean = (keys * valid[..., None].to(keys.dtype)).sum(1) / count
++    centered = F.normalize(keys - mean[:, None], dim=-1, eps=CENTERED_COS_EPS)
++    query = F.normalize(q.float(), dim=-1, eps=CENTERED_COS_EPS)
++    if query.ndim == 2:
++        return temperature * torch.einsum("br,bnr->bn", query, centered)
++    return temperature * torch.einsum("btr,bnr->btn", query, centered)
++
++
++class CenteredCosineSlot(nn.Module):
++    """Explicit-slot softmax over within-episode centered key cosines (E-0014 R6)."""
++
++    def forward(self, q: torch.Tensor, state: "MemoryState", temperature: torch.Tensor) -> torch.Tensor:
++        if state.slot_keys is None or state.slot_values is None or state.slot_valid is None:
++            raise ValueError("CenteredCosineSlot requires stored slots")
++        scores = centered_cosine_scores(q, state.slot_keys, state.slot_valid, temperature)
++        scores = scores.masked_fill(~state.slot_valid, -torch.inf)
++        empty = state.counts == 0
++        scores = torch.where(empty[:, None], torch.zeros_like(scores), scores)
++        weights = torch.softmax(scores, dim=-1)
++        weights = torch.where(state.slot_valid, weights, torch.zeros_like(weights))
++        out = torch.einsum("bn,bnv->bv", weights, state.slot_values.float())
++        return torch.where(empty[:, None], torch.zeros_like(out), out)
++
++
++SLOT_BACKENDS = ("kernel_slot_reference", "soft_slot", "centered_cos_slot")
++
++
+ @dataclass(frozen=True)
+ class MemoryState:
+     """Batched, differentiable memory state. M and c are always FP32."""
+@@ -93,7 +133,7 @@ class MemoryState:
+     @classmethod
+     def empty(cls, batch_size: int, rank: int, backend: str = "kernel_matrix",
+               device: Optional[torch.device] = None) -> "MemoryState":
+-        if backend not in {"kernel_matrix", "kernel_slot_reference", "soft_slot"}:
++        if backend != "kernel_matrix" and backend not in SLOT_BACKENDS:
+             raise ValueError(f"unknown backend: {backend}")
+         M = torch.zeros(batch_size, rank, rank, dtype=torch.float32, device=device)
+         c = torch.zeros(batch_size, rank, dtype=torch.float32, device=device)
+@@ -171,7 +211,14 @@ class MemoryState:
+                            self.slot_values.index_select(0, indices).clone(),
+                            self.slot_valid.index_select(0, indices).clone())
+ 
+-    def read(self, q: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
++    def read(self, q: torch.Tensor, eps: float = 1e-6,
++             temperature: Optional[torch.Tensor] = None) -> torch.Tensor:
++        if self.backend == "centered_cos_slot":
++            if temperature is None:
++                raise ValueError("centered_cos_slot requires a temperature")
++            return CenteredCosineSlot()(q, self, temperature)
++        if temperature is not None:
++            raise ValueError("only centered_cos_slot takes a temperature")
+         if self.backend == "kernel_matrix":
+             return KernelMatrix(eps)(q, self)
+         if self.backend == "kernel_slot_reference":
+@@ -183,7 +230,8 @@ class LatentReader(nn.Module):
+     """Shared Rq/Ro latent-memory loop with fixed eta and read gain defaults."""
+ 
+     def __init__(self, rank: int, eta: float = 0.25, read_gain: float = 1.0,
+-                 eps_norm: float = 1e-6, eps_read: float = 1e-6):
++                 eps_norm: float = 1e-6, eps_read: float = 1e-6,
++                 temperature_init: Optional[float] = None):
+         super().__init__()
+         self.rank = rank
+         self.eta = float(eta)
+@@ -193,6 +241,17 @@ class LatentReader(nn.Module):
+         self.last_read_calls = 0
+         self.Rq = nn.Parameter(torch.eye(rank))
+         self.Ro = nn.Parameter(torch.eye(rank))
++        # Learnable log-temperature exists only for centered_cos_slot; None keeps
++        # every other reader's parameters and state_dict unchanged.
++        if temperature_init is None:
++            self.register_parameter("log_temperature", None)
++        else:
++            if not temperature_init > 0:
++                raise ValueError("temperature_init must be positive")
++            self.log_temperature = nn.Parameter(torch.tensor(math.log(temperature_init)))
++
++    def temperature(self) -> Optional[torch.Tensor]:
++        return None if self.log_temperature is None else self.log_temperature.exp()
+ 
+     def forward(self, qbar: torch.Tensor, state: MemoryState, steps: int = 1,
+                 update: str = "accumulate", readout: str = "increment",
+@@ -212,7 +271,7 @@ class LatentReader(nn.Module):
+         for _ in range(steps):
+             query = fixed_q if fixed_query else elu_plus_one(
+                 rmsnorm_no_affine(z, self.eps_norm) @ self.Rq)
+-            a = state.read(query, self.eps_read) * self.read_gain
++            a = state.read(query, self.eps_read, self.temperature()) * self.read_gain
+             self.last_read_calls += 1
+             candidate = z0 if update == "anchored" else z
+             z = candidate + self.eta * (a @ self.Ro)
+@@ -298,7 +357,8 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
+ 
+ __all__ = [
+     "elu_plus_one", "rmsnorm_no_affine", "MemoryState", "KernelMatrix",
+-    "KernelSlotReference", "SoftmaxSlot", "LatentReader", "SequenceResult",
++    "KernelSlotReference", "SoftmaxSlot", "CenteredCosineSlot", "centered_cosine_scores",
++    "LatentReader", "SequenceResult",
+     "process_sequence",
+ ]
+ 
+diff --git a/src/bypass_model.py b/src/bypass_model.py
+index cd22744..5505b4a 100644
+--- a/src/bypass_model.py
++++ b/src/bypass_model.py
+@@ -16,6 +16,8 @@ from bypass_core import LatentReader, process_sequence
+ 
+ 
+ FUSIONS = ('F_out', 'F_pre', 'F_attnres', 'C_gate', 'C_up', 'C_dual')
++# E-0014 R6: initial tau of the learnable centered-cosine address temperature.
++CENTERED_COS_TEMPERATURE_INIT = 10.
+ 
+ 
+ @dataclass(frozen=True)
+@@ -36,6 +38,8 @@ class AdapterConfig:
+     eps_read: float = 1e-6
+     write_scope: str = 'visible_fact_delimiter'
+     slot_capacity: int = 16
++    # E-0014 R4: rank of a separate query-only tokenwise F_out prior path; 0 = absent.
++    prior_rank: int = 0
+     model_revision: str = 'da87bfb608c14b7cf20ba1ce41287e8de496c0cd'
+ 
+     def __post_init__(self):
+@@ -51,6 +55,10 @@ class AdapterConfig:
+             raise ValueError('unknown readout')
+         if self.write_scope not in ('visible_fact_delimiter', 'all_support_tokens') or self.slot_capacity < 1:
+             raise ValueError('invalid support write scope or slot capacity')
++        if type(self.prior_rank) is not int or self.prior_rank < 0:
++            raise ValueError('prior_rank must be a nonnegative integer')
++        if self.prior_rank and self.branch != 'memory':
++            raise ValueError('the prior path is defined only beside an M-line memory branch')
+ 
+ 
+ class LowDimProjection(nn.Module):
+@@ -123,6 +131,21 @@ class Fusion(nn.Module):
+                 handle.remove()
+ 
+ 
++class PriorPath(nn.Module):
++    """Tokenwise SiLU F_out increment ``SiLU(u A) P`` added to the layer output.
++
++    P starts at zero, so the path is an exact identity at initialization.
++    """
++
++    def __init__(self, width, rank):
++        super().__init__()
++        self.A = nn.Parameter(torch.randn(width, rank) / width ** .5)
++        self.P = nn.Parameter(torch.zeros(rank, width))
++
++    def forward(self, u, valid):
++        return (F.silu(u.float() @ self.A) * valid.unsqueeze(-1)) @ self.P
++
++
+ class SideBranch(nn.Module):
+     def __init__(self, layer, config):
+         super().__init__()
+@@ -134,10 +157,14 @@ class SideBranch(nn.Module):
+                 layer.self_attn.v_proj.out_features)
+             self.projection = LowDimProjection(dims, config.rank)
+             self.reader = LatentReader(config.rank, eta=config.eta, read_gain=config.read_gain,
+-                                       eps_norm=config.eps_norm, eps_read=config.eps_read)
++                                       eps_norm=config.eps_norm, eps_read=config.eps_read,
++                                       temperature_init=CENTERED_COS_TEMPERATURE_INIT
++                                       if config.backend == 'centered_cos_slot' else None)
+         else:
+             self.A = nn.Parameter(torch.randn(d, config.rank) / d ** .5)
+         self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features)
++        # Created last so that memory-path initialization is unchanged by its presence.
++        self.prior = PriorPath(d, config.prior_rank) if config.prior_rank else None
+ 
+     def forward(self, u, features, state, valid, phase, write_mask=None):
+         cfg = self.config
+@@ -195,7 +222,12 @@ class AdaptedLayer(nn.Module):
+         self.result = (state, counts)
+         if phase == 'support':
+             return h + layer.mlp(u)
+-        return self.side.fusion(h, u, z, layer.mlp, layer.post_attention_layernorm)
++        out = self.side.fusion(h, u, z, layer.mlp, layer.post_attention_layernorm)
++        if self.side.prior is not None:
++            if phase != 'query':
++                raise ValueError('the prior path is defined only for M-line question forwards')
++            out = out + self.side.prior(u, valid).to(out.dtype)
++        return out
+ 
+ 
+ @dataclass(frozen=True)
+diff --git a/src/test_v2r.py b/src/test_v2r.py
+new file mode 100644
+index 0000000..0e9450b
+--- /dev/null
++++ b/src/test_v2r.py
+@@ -0,0 +1,353 @@
++"""E-0014 option regressions (centered cosine read, prior path, address loss, step and
++curriculum schedules, parameter freezing). Execute in the registered GPU allocation."""
++from dataclasses import asdict
++import json
++import math
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++import torch
++import torch.nn.functional as F
++from transformers import AutoTokenizer
++
++from bypass_core import LatentReader, MemoryState, centered_cosine_scores, elu_plus_one, rmsnorm_no_affine
++from bypass_model import AdapterConfig, CENTERED_COS_TEMPERATURE_INIT
++from calibrate import MODEL, REVISION, load_base
++from v2_memory import (CONTROLS, address_log_weight, build_support, capture_projection, collate, config,
++                       evaluate_batch, read_vectors, slot_columns, train_forward)
++from v2_run import fixture
++from v2_schedule import make_curriculum_schedule, make_schedule, make_step_schedule
++from v2_train import adapted
++
++V2_SIDE_KEYS = {'projection.A_q', 'projection.A_k', 'projection.A_v', 'reader.Rq', 'reader.Ro', 'fusion.P'}
++
++
++# ---- core: centered cosine slot read ------------------------------------------------
++
++def test_centered_cosine_matches_hand_formula_and_uses_only_valid_same_row_slots():
++    torch.manual_seed(0)
++    keys = torch.rand(2, 4, 3) + .1
++    valid = torch.tensor([[True, True, True, False], [True, False, True, True]])
++    q = torch.randn(2, 3)
++    tau = torch.tensor(7.)
++    scores = centered_cosine_scores(q, keys, valid, tau)
++    for b in range(2):
++        mean = keys[b, valid[b]].mean(0)
++        for n in range(4):
++            expected = tau * F.cosine_similarity(q[b], keys[b, n] - mean, dim=0)
++            torch.testing.assert_close(scores[b, n], expected, atol=1e-6, rtol=1e-5)
++    changed = keys.clone()
++    changed[0, 3] = 100.  # invalid slot of row 0
++    changed[1] += 5.      # another row
++    torch.testing.assert_close(centered_cosine_scores(q, changed, valid, tau)[0, :3], scores[0, :3])
++
++
++def test_centered_cos_state_read_softmax_masking_and_temperature_contract():
++    torch.manual_seed(1)
++    state = MemoryState.empty(2, 3, 'centered_cos_slot')
++    k, v = torch.rand(2, 3, 3) + .1, torch.randn(2, 3, 3)
++    write = torch.tensor([[True, True, True], [True, False, True]])
++    for i in range(3):
++        state = state.write(k[:, i], v[:, i], write[:, i])
++    q, tau = torch.randn(2, 3), torch.tensor(10.)
++    out = state.read(q, temperature=tau)
++    weights = centered_cosine_scores(q, state.slot_keys, state.slot_valid, tau).masked_fill(~state.slot_valid, -torch.inf).softmax(-1)
++    torch.testing.assert_close(out, torch.einsum('bn,bnv->bv', weights, state.slot_values))
++    assert float(weights[1, 1]) == 0
++    with pytest.raises(ValueError, match='temperature'):
++        state.read(q)
++    soft = MemoryState.empty(2, 3, 'soft_slot').write(k[:, 0], v[:, 0])
++    with pytest.raises(ValueError, match='only centered'):
++        soft.read(q, temperature=tau)
++    assert torch.equal(MemoryState.empty(2, 3, 'centered_cos_slot').read(q, temperature=tau), torch.zeros(2, 3))
++
++
++def test_temperature_parameter_exists_only_for_centered_and_gets_gradient():
++    assert set(LatentReader(4).state_dict()) == {'Rq', 'Ro'}
++    reader = LatentReader(4, temperature_init=CENTERED_COS_TEMPERATURE_INIT)
++    assert float(reader.temperature()) == pytest.approx(10.)
++    state = MemoryState.empty(1, 4, 'centered_cos_slot')
++    for i in range(3):
++        state = state.write(torch.rand(1, 4) + i, torch.randn(1, 4))
++    reader(torch.randn(1, 4), state).sum().backward()
++    assert reader.log_temperature.grad is not None and float(reader.log_temperature.grad.abs()) > 0
++
++
++# ---- schedules -----------------------------------------------------------------------
++
++def rows_of(n, prefix='r', size=1):
++    return [{'episode_id': f'{prefix}-{i}', 'support_input_ids': [1]*(size+i % 5),
++             'question_input_ids': [2]*(1+i % 3), 'query': {'answer_token_id': 7}} for i in range(n)]
++
++
++def test_step_schedule_is_token_schedule_prefix_and_bounded():
++    rows = rows_of(64)
++    token_plan = make_schedule(rows, 300)
++    step_plan = make_step_schedule(rows, token_plan['steps'])
++    for key in ('order', 'batches', 'steps', 'tokens', 'warmup_steps', 'order_sha256'):
++        assert step_plan[key] == token_plan[key]
++    assert make_step_schedule(rows, 24)['batches'] == [token_plan['order'][i:i+8] for i in range(0, 192, 8)]
++    for bad in (0, -1, 25, 1.5):
++        with pytest.raises(ValueError):
++            make_step_schedule(rows, bad)
++
++
++def test_curriculum_switches_by_step_and_uses_each_segment_order():
++    sets = [(f'e{f}', rows_of(16, f'e{f}', f), n) for f, n in ((1, 2), (4, 3), (8, 1), (16, 4))]
++    rows, plan = make_curriculum_schedule(sets)
++    assert plan['steps'] == 10 and len(plan['batches']) == 10 and plan['warmup_steps'] == 1
++    expected_labels = ['e1']*2 + ['e4']*3 + ['e8'] + ['e16']*4
++    for batch, label in zip(plan['batches'], expected_labels):
++        assert {rows[i]['episode_id'].split('-')[0] for i in batch} == {label}
++    start = 0
++    for (label, segment_rows, steps), part in zip(sets, plan['curriculum']):
++        own = make_step_schedule(segment_rows, steps)['batches']
++        got = [[rows[i]['episode_id'] for i in b] for b in plan['batches'][start:start+steps]]
++        assert got == [[segment_rows[i]['episode_id'] for i in b] for b in own]
++        assert (part['first_step'], part['last_step']) == (start+1, start+steps)
++        start += steps
++    assert plan['tokens'] == sum(len(rows[i]['support_input_ids'])+len(rows[i]['question_input_ids'])
++                                 for b in plan['batches'] for i in b)
++    with pytest.raises(ValueError, match='share'):
++        make_curriculum_schedule([('a', rows_of(8), 1), ('b', rows_of(8), 1)])
++
++
++# ---- training loop: only requires_grad parameters move ----------------------------------
++
++def test_train_optimizes_only_parameters_that_require_grad(monkeypatch, tmp_path):
++    import v2_train
++
++    class Tiny(torch.nn.Module):
++        def __init__(self):
++            super().__init__()
++            self.model = torch.nn.Identity()
++            self.side = torch.nn.ModuleDict({'memory': torch.nn.Linear(2, 3, bias=False),
++                                             'prior': torch.nn.Linear(2, 3, bias=False)})
++
++        def adapter_parameters(self):
++            return self.side.parameters()
++
++        def adapters(self):
++            return {14: SimpleNamespace(side=self.side)}
++
++    rows = [{'features': [i/7, (i % 3)/2], 'label': i % 3, 'tokens': 3} for i in range(8)]
++    schedule = {'steps': 2, 'warmup_steps': 1, 'batches': [list(range(8))]*2, 'tokens': 48}
++
++    def fake_collate(selected, pad_id, device):
++        return SimpleNamespace(x=torch.tensor([r['features'] for r in selected]),
++                               labels=torch.tensor([r['label'] for r in selected]),
++                               write_mask=torch.ones(len(selected), 1, dtype=torch.bool), input_tokens=3*len(selected))
++
++    seen_options = []
++
++    def fake_forward(model, batch, **options):
++        seen_options.append(options)
++        logits = model.side['memory'](batch.x) + model.side['prior'](batch.x)
++        return (F.cross_entropy(logits, batch.labels), logits,
++                {14: {'side': {'reads': 0, 'writes': len(batch.labels)}}}, {14: {'side': {'reads': 1, 'writes': 0}}})
++
++    monkeypatch.setattr(v2_train, 'collate', fake_collate)
++    monkeypatch.setattr(v2_train, 'train_forward', fake_forward)
++    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
++    monkeypatch.setattr(torch.cuda, 'reset_peak_memory_stats', lambda: None)
++    monkeypatch.setattr(torch.cuda, 'max_memory_allocated', lambda: 0)
++    model = Tiny()
++    model.side['prior'].weight.requires_grad_(False)
++    frozen = model.side['prior'].weight.detach().clone()
++    moving = model.side['memory'].weight.detach().clone()
++    result = v2_train.train(model, rows, schedule, 0, .1, 8, tmp_path, [], None,
++                            forward_options={'zero_memory': True}, learning_curves=False, log_name='x.jsonl')
++    assert torch.equal(model.side['prior'].weight, frozen)
++    assert not torch.equal(model.side['memory'].weight, moving)
++    assert result['trainable_parameters'] == 6 and result['stored_parameters'] == 12
++    assert seen_options == [{'zero_memory': True}]*2
++    assert len((tmp_path/'x.jsonl').read_text().splitlines()) == 2
++
++
++# ---- real-model checks ------------------------------------------------------------------
++
++@pytest.fixture(scope='module')
++def base():
++    return load_base()
++
++
++@pytest.fixture(scope='module')
++def varied_rows():
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    episodes = fixture(tok, n_facts=3) + fixture(tok, n_facts=4)[:1]
++    for i, row in enumerate(episodes):
++        row['episode_id'] = f'v2r-{i}'
++        row['question_input_ids'] = tok.encode('Please '*i, add_special_tokens=False) + row['question_input_ids']
++        row['query']['target_fact_index'] = (i+1) % len(row['facts'])
++    return episodes, tok.pad_token_id
++
++
++def randomize_exits(model, std=.03):
++    side = model.adapters()[14].side
++    with torch.no_grad():
++        for parameter in side.fusion.parameters():
++            parameter.normal_(std=std)
++        if side.prior is not None:
++            side.prior.P.normal_(std=std)
++
++
++def test_default_config_keeps_v2_parameters_and_config():
++    cfg = config('direct_hidden', 'soft_slot', 'F_out')
++    assert cfg.prior_rank == 0
++    data = asdict(cfg)
++    data.pop('prior_rank')
++    data['layers'] = tuple(data['layers'])
++    assert AdapterConfig(**data) == cfg  # a V2 config.json without the field loads unchanged
++    with pytest.raises(ValueError):
++        AdapterConfig(branch='tokenwise_silu', prior_rank=4)
++
++
++@torch.no_grad()
++def test_default_side_state_and_initial_values_unchanged_by_new_options(base):
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        plain = {k: v.clone() for k, v in model.adapters()[14].side.state_dict().items()}
++    assert set(plain) == V2_SIDE_KEYS
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out', 32)) as model:
++        prior = model.adapters()[14].side.state_dict()
++        assert set(prior) == V2_SIDE_KEYS | {'prior.A', 'prior.P'}
++        assert all(torch.equal(plain[k], prior[k]) for k in plain)
++        assert not prior['prior.P'].any()
++    with adapted(base, cfg=config('direct_hidden', 'centered_cos_slot', 'F_out')) as model:
++        cos = model.adapters()[14].side.state_dict()
++        assert set(cos) == V2_SIDE_KEYS | {'reader.log_temperature'}
++        assert all(torch.equal(plain[k], cos[k]) for k in plain)
++        assert float(cos['reader.log_temperature'].exp()) == pytest.approx(10.)
++
++
++@torch.no_grad()
++def test_prior_path_query_only_zero_init_identity_and_reload(base, varied_rows, tmp_path):
++    rows, pad_id = varied_rows
++    batch = collate(rows, pad_id)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        randomize_exits(model)
++        reference_support, _ = build_support(model, batch)
++        _, reference, _, _ = train_forward(model, batch)
++        fusion = model.adapters()[14].side.fusion.P.clone()
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out', 32)) as model:
++        model.eval()
++        side = model.adapters()[14].side
++        with torch.no_grad():
++            side.fusion.P.copy_(fusion)
++        _, zero_init, _, _ = train_forward(model, batch)
++        assert torch.equal(zero_init, reference)
++        side.prior.P.normal_(std=.05)
++        support, _ = build_support(model, batch)
++        assert torch.equal(support.memory[14].slot_keys, reference_support.memory[14].slot_keys)
++        assert torch.equal(support.memory[14].slot_values, reference_support.memory[14].slot_values)
++        _, changed, _, _ = train_forward(model, batch)
++        assert not torch.equal(changed, reference)
++        with pytest.raises(ValueError, match='question forwards'):
++            model(batch.question_ids, batch.question_mask, phase='F')
++        details, _ = evaluate_batch(model, batch, 'zero')
++        assert all(x > 0 for x in details['_prior_to_residual_last'])
++        model.export_adapter(tmp_path/'adapter')
++        expected = {k: v.clone() for k, v in side.state_dict().items()}
++    with adapted(base, checkpoint=tmp_path/'adapter') as reloaded:
++        reloaded.eval()
++        assert reloaded.config.prior_rank == 32
++        state = reloaded.adapters()[14].side.state_dict()
++        assert all(torch.equal(expected[k], state[k]) for k in expected) and set(state) == set(expected)
++        _, after, _, _ = train_forward(reloaded, batch)
++        assert torch.equal(after, changed)
++
++
++@torch.no_grad()
++def test_centered_cos_diagnostic_read_reproduces_model_under_all_controls(base, varied_rows, tmp_path):
++    rows, pad_id = varied_rows
++    batch = collate(rows, pad_id)
++    donors = collate(rows[1:]+rows[:1], pad_id)
++    tolerance = json.loads((Path(__file__).parent/'tolerances.json').read_text())
++    with adapted(base, cfg=config('direct_hidden', 'centered_cos_slot', 'F_out')) as model:
++        model.eval()
++        randomize_exits(model)
++        model.adapters()[14].side.reader.log_temperature.fill_(math.log(3.))
++        for mode in CONTROLS:
++            details, logits = evaluate_batch(model, batch, mode, **({'donor_batch': donors} if mode == 'shuffled' else {}))
++            assert math.isfinite(details['nll']) and torch.isfinite(logits).all()
++            assert details['read.reconstruction_max_abs'] < 1e-4
++            if mode == 'normal':
++                normal = logits
++                assert 0 < details['address.target_weight'] < 1
++            if mode == 'zero':
++                assert not torch.equal(normal, logits)
++        _, separate = evaluate_batch(model, collate(rows[:1], pad_id))
++        torch.testing.assert_close(separate, normal[:1], atol=tolerance['bf16_atol'], rtol=tolerance['bf16_rtol'])
++        model.export_adapter(tmp_path/'cos')
++    with adapted(base, checkpoint=tmp_path/'cos') as reloaded:
++        reloaded.eval()
++        assert float(reloaded.adapters()[14].side.reader.temperature()) == pytest.approx(3.)
++        assert torch.equal(evaluate_batch(reloaded, batch)[1], normal)
++
++
++def test_address_loss_matches_diagnostic_weight_and_default_forward(base, varied_rows):
++    rows, pad_id = varied_rows
++    batch = collate(rows, pad_id)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
++        model.eval()
++        randomize_exits(model)
++        with torch.no_grad():
++            model.adapters()[14].side.projection.A_q.mul_(4.)  # make the address non-uniform
++            details, eval_logits = evaluate_batch(model, batch)
++            plain, logits, _, _ = train_forward(model, batch)
++            explicit, logits0, _, _ = train_forward(model, batch, address_weight=0.)
++            assert torch.equal(plain, explicit) and torch.equal(logits, logits0)
++        target = torch.tensor([r['query']['target_fact_index'] for r in rows], device='cuda')
++        last_weights = torch.tensor(details['_last_target_weight'], device='cuda')
++        side = model.adapters()[14].side
++        log = {}
++        loss, logits_a, _, _ = train_forward(model, batch, address_weight=1., log=log)
++        assert torch.equal(logits_a.detach(), logits)
++        torch.testing.assert_close(torch.tensor(log['address_loss']), -last_weights.log().mean().cpu(), atol=1e-5, rtol=1e-5)
++        assert log['answer_ce'] == pytest.approx(float(plain), abs=1e-6)
++        assert float(loss) == pytest.approx(log['answer_ce'] + log['address_loss'], abs=1e-5)
++        # The extra term reaches only addressing parameters (A_q, Rq, A_k), never values or fusion.
++        model.zero_grad(set_to_none=True)
++        support, _ = build_support(model, batch)
++        memory = support.select(batch.owners).memory
++        with capture_projection(side) as seen:
++            model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
++        (-address_log_weight(seen['q'], memory[14], side.reader, batch.question_mask, target).mean()).backward()
++        grads = {n: p.grad for n, p in side.named_parameters()}
++        assert all(grads[n] is not None and grads[n].abs().sum() > 0 for n in ('projection.A_q', 'projection.A_k', 'reader.Rq'))
++        assert all(grads[n] is None or not grads[n].any() for n in ('projection.A_v', 'reader.Ro', 'fusion.P'))
++        model.zero_grad(set_to_none=True)
++
++
++@torch.no_grad()
++def test_slot_columns_follow_valid_slot_order_and_zero_memory_matches_zero_control(base, varied_rows):
++    valid = torch.tensor([[True, False, True, True], [False, True, True, False]])
++    assert slot_columns(valid, torch.tensor([2, 1])).tolist() == [3, 2]
++    with pytest.raises(ValueError):
++        slot_columns(valid, torch.tensor([3, 0]))
++    rows, pad_id = varied_rows
++    batch = collate(rows, pad_id)
++    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out', 32)) as model:
++        model.eval()
++        randomize_exits(model)
++        _, zero_eval = evaluate_batch(model, batch, 'zero')
++        _, zero_train, _, _ = train_forward(model, batch, zero_memory=True)
++        assert torch.equal(zero_eval, zero_train)
++
++
++# ---- released data: pinned variants and the E=16 step schedule ---------------------------
++
++def test_pinned_variants_load_and_step_schedule_reproduces_v2_token_schedule():
++    from v2r_data import RELEASE_DIR, VARIANTS, load_variant
++    from v2_schedule import load_data
++    for n in VARIANTS:
++        for split, count in (('train', 16384), ('calibration', 2048), ('dev', 1000)):
++            metadata, rows = load_variant(Path(RELEASE_DIR)/f'e{n}', n, split)
++            assert len(rows) == count and all(len(r['facts']) == n for r in rows)
++        with pytest.raises(ValueError):
++            load_variant(Path(RELEASE_DIR)/f'e{n}', {1: 4, 4: 8, 8: 1}[n], 'dev')
++    v2 = load_data('/work/xg24i002/x10041/bypass-lora/runs/ATT-0039-1/data/train.jsonl', 'train')
++    token_plan, step_plan = make_schedule(v2, 4_000_000), make_step_schedule(v2, 6000)
++    assert step_plan['batches'] == token_plan['batches'] and step_plan['tokens'] == token_plan['tokens'] == 4000470
++    assert step_plan['warmup_steps'] == 300 and step_plan['order_sha256'] == token_plan['order_sha256']
+diff --git a/src/test_v2r_data.py b/src/test_v2r_data.py
+new file mode 100644
+index 0000000..2e877aa
+--- /dev/null
++++ b/src/test_v2r_data.py
+@@ -0,0 +1,123 @@
++"""E-0014 variant data invariants (E in 1, 4, 8); execute in PBS only."""
++from collections import Counter
++import json
++from pathlib import Path
++
++import pytest
++from transformers import AutoTokenizer
++
++from v1_data import derive_seed
++from v2_data import RELATIONS, identity as v2_identity
++from v2r_data import (MODEL, REVISION, RELEASED, VARIANTS, episode_content, generate_dataset,
++                      identity, load_name_pools, make_episode, sealed_record, version)
++
++V2_DATA = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0039-1/data')
++SMALL = {'train': 48, 'calibration': 12, 'dev': 12, 'confirmation': 8}
++
++
++@pytest.fixture(scope='module')
++def tok():
++    return AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++
++
++@pytest.fixture(scope='module')
++def pools():
++    return load_name_pools(V2_DATA / 'name_pools.json')
++
++
++def test_identity_namespace_and_version():
++    for n in VARIANTS:
++        ident = identity('dev', 3, n)
++        assert ident['generator_version'] == f'concat-loop-v2-t1-e{n}-1'
++        assert ident['phase'] == 'V2R' and ident['layout']['n_facts'] == n
++        assert ident['base_seed'] == derive_seed(20261029, 'concat_loop_v2', 'V2R', 'dev', n)
++        assert ident['base_seed'] != v2_identity('dev', 3)['base_seed']
++        assert ident['layout']['support_order'] == 'shuffled'
++    assert len({identity('train', 0, n)['base_seed'] for n in VARIANTS}) == 3
++    for bad in (0, 2, 16):
++        with pytest.raises(ValueError):
++            version(bad)
++
++
++@pytest.mark.parametrize('n', VARIANTS)
++def test_generation_rules(tok, pools, n):
++    weights = {x['name']: x['sampling_weight'] for x in pools['pools']['seen']}
++    targets, relation_draws = Counter(), Counter()
++    for index in range(200):
++        row = make_episode(tok, pools, identity('train', index, n))
++        facts = row['facts']
++        assert len(facts) == n and row['axes']['n_facts'] == n
++        assert len({f['head'] for f in facts}) == n
++        assert all(f['tail'] in weights for f in facts)
++        relations = Counter(f['relation'] for f in facts)
++        if n == 1:
++            relation_draws.update(relations)
++        else:
++            assert relations == Counter({r: n // 4 for r in RELATIONS})
++        target = row['query']['target_fact_index']
++        assert facts[target]['head'] == row['query']['head']
++        assert facts[target]['relation'] == row['query']['relation']
++        assert row['query']['answer_text'] == ' ' + facts[target]['tail']
++        assert tok.encode(row['query']['answer_text'], add_special_tokens=False) == [row['query']['answer_token_id']]
++        assert row['question_text'] == f"Who does {row['query']['head']} {RELATIONS[row['query']['relation']]}?\nAnswer:"
++        delimiters = [f['delimiter_token_index'] for f in facts]
++        assert delimiters == sorted(set(delimiters)) and len(delimiters) == n
++        assert all(row['support_input_ids'][d] == row['support_input_ids'][delimiters[0]] for d in delimiters)
++        targets[target] += 1
++    assert set(targets) == set(range(n))
++    if n == 1:
++        assert set(relation_draws) == set(RELATIONS)
++
++
++def test_order_axis_preserves_content_and_tracks_target(tok, pools):
++    for index in range(20):
++        a = make_episode(tok, pools, identity('dev', index, 8, support_order='natural'))
++        b = make_episode(tok, pools, identity('dev', index, 8, support_order='shuffled'))
++        assert a['content_sha256'] == b['content_sha256']
++        assert a['facts'][a['query']['target_fact_index']]['head'] == b['facts'][b['query']['target_fact_index']]['head']
++
++
++def test_attempts_change_content_and_identity_is_checked(pools):
++    ident = identity('train', 5, 4)
++    assert episode_content(ident, pools, 0)[3] != episode_content(ident, pools, 1)[3]
++    assert episode_content(ident, pools, 1) == episode_content(ident, pools, 1)
++    forged = json.loads(json.dumps(ident))
++    forged['base_seed'] += 1
++    with pytest.raises(ValueError, match='contract'):
++        episode_content(forged, pools)
++    with pytest.raises(ValueError, match='sealed'):
++        make_episode(None, pools, identity('confirmation', 0, 4))
++    assert set(sealed_record(identity('confirmation', 0, 4))) == {'identity', 'episode_id'}
++
++
++@pytest.mark.parametrize('n', VARIANTS)
++def test_small_dataset_deterministic_and_deduplicated(tok, tmp_path, n):
++    first = generate_dataset(tok, tmp_path / 'a', n, v2_data_dir=V2_DATA, sizes=SMALL)
++    second = generate_dataset(tok, tmp_path / 'b', n, v2_data_dir=V2_DATA, sizes=SMALL)
++    for split in ('train', 'calibration', 'dev', 'confirmation'):
++        assert first['splits'][split]['sha256'] == second['splits'][split]['sha256']
++        assert (tmp_path / 'a' / Path(first['splits'][split]['path']).name).read_bytes() == \
++            (tmp_path / 'b' / Path(first['splits'][split]['path']).name).read_bytes()
++    registry = [json.loads(x) for x in (tmp_path / 'a' / 'confirmation.registry.jsonl').read_text().splitlines()]
++    assert len(registry) == SMALL['confirmation'] and all(set(r) == {'identity', 'episode_id'} for r in registry)
++    contents = {s: [json.loads(x)['content_sha256'] for x in (tmp_path / 'a' / f'{s}.jsonl').read_text().splitlines()]
++                for s in RELEASED}
++    assert not set(contents['train']) & (set(contents['dev']) | set(contents['calibration']))
++    assert len(set(contents['dev'] + contents['calibration'])) == SMALL['dev'] + SMALL['calibration']
++
++
++def test_collision_redraw_with_tiny_pool(tok, pools, tmp_path):
++    # Two names give 2*4*2 = 16 E=1 contents: evaluation rows must redraw, train may repeat.
++    tiny = dict(pools, pools={'seen': pools['pools']['seen'][:2], 'unseen': []})
++    sizes = {'train': 40, 'calibration': 6, 'dev': 6, 'confirmation': 2}
++    meta = generate_dataset(tok, tmp_path, 1, v2_data_dir=V2_DATA, sizes=sizes, pools=tiny)
++    assert meta['splits']['dev']['rows_redrawn'] + meta['splits']['calibration']['rows_redrawn'] > 0
++    assert meta['splits']['train']['repeated_content_rows'] > 0
++    assert meta['splits']['dev']['unique_contents'] == 6 and meta['splits']['calibration']['unique_contents'] == 6
++    rows = {s: [json.loads(x) for x in (tmp_path / f'{s}.jsonl').read_text().splitlines()] for s in RELEASED}
++    evaluation = {r['content_sha256'] for s in ('dev', 'calibration') for r in rows[s]}
++    assert not evaluation & {r['content_sha256'] for r in rows['train']}
++    for split, split_rows in rows.items():
++        for row in split_rows:
++            again = make_episode(tok, tiny, row['identity'], row['generation_attempt'])
++            assert again == row
+diff --git a/src/v2_memory.py b/src/v2_memory.py
+index 2bb3c3a..bc4b06a 100644
+--- a/src/v2_memory.py
++++ b/src/v2_memory.py
+@@ -9,18 +9,20 @@ from dataclasses import dataclass
+ import torch
+ import torch.nn.functional as F
+ 
+-from bypass_core import MemoryState, elu_plus_one, rmsnorm_no_affine
++from bypass_core import MemoryState, centered_cosine_scores, elu_plus_one, rmsnorm_no_affine
+ from bypass_model import AdapterConfig
+ 
+ 
+ CONTROLS = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
++BACKENDS = ('kernel_matrix', 'soft_slot', 'centered_cos_slot')
+ 
+ 
+-def config(tap='direct_hidden', backend='kernel_matrix', fusion='F_out'):
+-    if tap not in ('direct_hidden', 'qknorm_pre_rope') or backend not in ('kernel_matrix', 'soft_slot') or fusion not in ('F_out', 'C_up', 'C_dual'):
++def config(tap='direct_hidden', backend='kernel_matrix', fusion='F_out', prior_rank=0):
++    if tap not in ('direct_hidden', 'qknorm_pre_rope') or backend not in BACKENDS or fusion not in ('F_out', 'C_up', 'C_dual'):
+         raise ValueError('not a V2 arm')
+     return AdapterConfig(layers=(14,), rank=128, branch='memory', tap=tap,
+-                         backend=backend, fusion=fusion, steps=1, slot_capacity=16)
++                         backend=backend, fusion=fusion, steps=1, slot_capacity=16,
++                         prior_rank=prior_rank)
+ 
+ 
+ def pad(rows, pad_id, device):
+@@ -54,7 +56,8 @@ def collate(episodes, pad_id, device='cuda', owners=None):
+     """Deduplicate supports by explicit owner; questions may repeat/reorder owners.
+ 
+     Only delimiter positions (public boundaries) and answer labels are used by the
+-    training path. target_fact_index is accessed exclusively by evaluate_batch.
++    default training path. target_fact_index is read by evaluate_batch and, only
++    with the E-0014 R5 extra-supervision option, by train_forward.
+     """
+     if not episodes:
+         raise ValueError('empty batch')
+@@ -130,13 +133,59 @@ def answer_logits(output, mask):
+     return output.logits[torch.arange(len(last), device=last.device), last].float()
+ 
+ 
+-def train_forward(model, batch):
+-    """Only answer CE; no address, value, path or oracle input."""
++def slot_columns(slot_valid, target):
++    """Core slot column of each row's target fact: its (target+1)-th valid slot."""
++    order = slot_valid.long().cumsum(-1) - 1
++    match = slot_valid & (order == target[:, None])
++    if not bool((match.sum(-1) == 1).all()):
++        raise ValueError('target fact index has no stored slot')
++    return match.long().argmax(-1)
++
++
++def address_log_weight(seen_q, memory, reader, question_mask, target):
++    """log w_target of SoftmaxSlot at each row's last valid question position.
++
++    Recomputes the S=1 query and scores from the same differentiable tensors the
++    deployed read uses (no other position or slot enters).
++    """
++    if memory.backend != 'soft_slot':
++        raise ValueError('the address loss is defined for soft_slot only')
++    row = torch.arange(len(target), device=target.device)
++    last = question_mask.long().sum(-1) - 1
++    query = elu_plus_one(rmsnorm_no_affine(seen_q[row, last], reader.eps_norm) @ reader.Rq)
++    scores = torch.einsum('br,bnr->bn', query, memory.slot_keys) / memory.rank ** .5
++    scores = scores.masked_fill(~memory.slot_valid, -torch.inf)
++    return scores.log_softmax(-1)[row, slot_columns(memory.slot_valid, target)]
++
++
++def train_forward(model, batch, *, zero_memory=False, address_weight=0., log=None):
++    """Answer CE by default; no address, value, path or oracle input.
++
++    E-0014 options (default off): zero_memory reads an empty memory after the
++    normal support pass (R4 stage 1); address_weight > 0 adds the extra-supervision
++    term address_weight * mean(-log w_target) at the last question position (R5).
++    """
+     support, accounting = build_support(model, batch)
+     memory = support.select(batch.owners).memory
+-    output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
++    if zero_memory:
++        memory = {i: s.reset() for i, s in memory.items()}
++    if address_weight:
++        if zero_memory or address_weight < 0:
++            raise ValueError('address loss needs real memory and a positive weight')
++        side = model.adapters()[14].side
++        target = torch.tensor([r['query']['target_fact_index'] for r in batch.rows], device=batch.labels.device)
++        with capture_projection(side) as seen:
++            output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
++        address = -address_log_weight(seen['q'], memory[14], side.reader, batch.question_mask, target).mean()
++    else:
++        output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
+     logits = answer_logits(output, batch.question_mask)
+-    return F.cross_entropy(logits, batch.labels), logits, accounting, output.accounting
++    loss = F.cross_entropy(logits, batch.labels)
++    if address_weight:
++        if log is not None:
++            log.update(answer_ce=float(loss.detach()), address_loss=float(address.detach()))
++        loss = loss + address_weight * address
++    return loss, logits, accounting, output.accounting
+ 
+ 
+ def memory_from_slots(keys, values, valid, backend):
+@@ -179,10 +228,14 @@ def read_vectors(qbar, snapshot, reader, backend, target, mode='normal'):
+     if mode == 'oracle_key':
+         # Substitute the actual stored positive key, not a twice-transformed key.
+         q = snapshot.keys[row, target][:, None].expand_as(q)
+-    scores = torch.einsum('btr,bnr->btn', q, snapshot.keys)
++    if backend == 'centered_cos_slot':
++        scores = centered_cosine_scores(q, snapshot.keys, snapshot.valid, reader.temperature())
++    else:
++        scores = torch.einsum('btr,bnr->btn', q, snapshot.keys)
+     valid = snapshot.valid[:, None].expand_as(scores)
+-    if backend == 'soft_slot':
+-        scores = scores / q.shape[-1] ** .5
++    if backend in ('soft_slot', 'centered_cos_slot'):
++        if backend == 'soft_slot':
++            scores = scores / q.shape[-1] ** .5
+         logits = scores.masked_fill(~valid, -torch.inf)
+         empty = ~valid.any(-1, keepdim=True)
+         logits = torch.where(empty, torch.zeros_like(logits), logits)
+@@ -256,8 +309,18 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
+     if ((target < 0) | (target >= selected_original.valid.sum(-1))).any():
+         raise ValueError('invalid target fact index')
+     target_value = selected_original.values[row, target]
+-    side = model.adapters()[14].side
++    adapted_layer = model.adapters()[14]
++    side = adapted_layer.side
+     details = {}
++    last = batch.question_mask.long().sum(-1) - 1
++    norms = {}
++
++    def residual_in(module, args, kwargs):
++        norms['residual'] = (args[0] if args else kwargs['hidden_states']).float().norm(dim=-1)
++
++    def post_attention(module, args):
++        norms['post_attention'] = args[0].float().norm(dim=-1)
++
+     with capture_projection(side) as seen:
+         def observe(module, args, output):
+             z, state, accounting = output
+@@ -281,12 +344,35 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None):
+             details['read.reconstruction_max_abs'] = float((z - ((seen['q'] + side.reader.eta*(raw * side.reader.read_gain @ side.reader.Ro)) - seen['q']) * batch.question_mask[..., None]).abs().max())
+             details['_clean_vectors'] = target_value.detach().cpu()
+             details['_read_vectors'] = raw[row, batch.question_mask.sum(-1)-1].detach().cpu()
++            # E-0014 last-question-position read and E-0012 L4 increment geometry.
++            last_weights = weights[row, last]
++            has_slots = snapshot.valid.any(-1)
++            details['_last_argmax'] = torch.where(has_slots, last_weights.argmax(-1), -1).tolist()
++            prob = last_weights / last_weights.sum(-1, keepdim=True).clamp_min(1e-30)
++            details['_last_n_eff'] = torch.where(has_slots, 1 / prob.square().sum(-1).clamp_min(1e-30), 0).tolist()
++            details['_last_target_weight'] = (None if mode == 'shuffled'
++                                              else last_weights[row, target].tolist())
++            if side.fusion.kind == 'F_out':
++                norms['fusion'] = (z @ side.fusion.P).float().norm(dim=-1)
++            if side.prior is not None:
++                norms['prior'] = side.prior(args[0], args[3]).float().norm(dim=-1)
+             return z, state, accounting
+-        handle = side.register_forward_hook(observe)
++        handles = [side.register_forward_hook(observe),
++                   adapted_layer.register_forward_pre_hook(residual_in, with_kwargs=True),
++                   adapted_layer.original.post_attention_layernorm.register_forward_pre_hook(post_attention)]
+         try:
+             out = model(batch.question_ids, batch.question_mask, memory=snapshot.memory, phase='query')
+         finally:
+-            handle.remove()
++            for handle in handles:
++                handle.remove()
++    # Fusion-increment / residual norm ratios (E-0012 L4: F_out FP32 z@P over the
++    # layer-14 input residual; post-attention denominator also reported).
++    for name in ('fusion', 'prior'):
++        if name in norms:
++            for denominator in ('residual', 'post_attention'):
++                ratio = norms[name] / norms[denominator].clamp_min(1e-12)
++                details[f'_{name}_to_{denominator}_last'] = ratio[row, last].tolist()
++                details[f'_{name}_to_{denominator}_all'] = ratio[batch.question_mask].cpu()
+     logits = answer_logits(out, batch.question_mask)
+     if not torch.isfinite(logits).all():
+         raise RuntimeError('nonfinite full-vocabulary evaluation logits')
+diff --git a/src/v2_schedule.py b/src/v2_schedule.py
+index 610faea..ddcdef1 100644
+--- a/src/v2_schedule.py
++++ b/src/v2_schedule.py
+@@ -29,27 +29,89 @@ def load_data(path, split):
+     return rows
+ 
+ 
+-def make_schedule(rows, budget, *, phase='V2'):
++ORDER_HASH_ENCODING = 'UTF-8 episode_id followed by LF, including final LF, three epochs'
++
++
++def _cost(row):
++    return len(row['support_input_ids']) + len(row['question_input_ids'])
++
++
++def train_order(rows, phase='V2'):
+     if phase not in ('V2', 'V3'):
+         raise ValueError('unsupported data phase')
+-    if budget <= 0 or not rows or len(rows) % 8:
+-        raise ValueError('positive budget and complete batches of eight required')
++    if not rows or len(rows) % 8:
++        raise ValueError('complete batches of eight required')
+     order = []
+     for epoch in range(3):
+         indices = list(range(len(rows)))
+         random.Random(derive_seed(20261029, 'concat_loop_v2', phase, f'train-order-{epoch}')).shuffle(indices)
+         order.extend(indices)
+     digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order).encode('utf-8')).hexdigest()
++    return order, digest
++
++
++def make_schedule(rows, budget, *, phase='V2'):
++    if phase not in ('V2', 'V3'):
++        raise ValueError('unsupported data phase')
++    if budget <= 0 or not rows or len(rows) % 8:
++        raise ValueError('positive budget and complete batches of eight required')
++    order, digest = train_order(rows, phase)
+     batches, tokens = [], 0
+     for offset in range(0, len(order), 8):
+         batch = order[offset:offset+8]
+         batches.append(batch)
+-        tokens += sum(len(rows[i]['support_input_ids']) + len(rows[i]['question_input_ids']) for i in batch)
++        tokens += sum(_cost(rows[i]) for i in batch)
+         if tokens >= budget:
+             break
+     return {'order': order, 'batches': batches, 'steps': len(batches), 'tokens': tokens,
+             'warmup_steps': math.ceil(.05*len(batches)), 'order_sha256': digest,
+-            'budget': budget, 'order_hash_encoding': 'UTF-8 episode_id followed by LF, including final LF, three epochs'}
++            'budget': budget, 'order_hash_encoding': ORDER_HASH_ENCODING}
++
++
++def make_step_schedule(rows, steps, *, phase='V2'):
++    """The first ``steps`` batches of the same three-epoch order (E-0014 step budget).
++
++    On rows where the token budget stops at step N, steps=N gives the same batches.
++    """
++    if type(steps) is not int or steps <= 0:
++        raise ValueError('positive integer step budget required')
++    order, digest = train_order(rows, phase)
++    if steps * 8 > len(order):
++        raise ValueError('step budget exceeds three epochs')
++    batches = [order[offset:offset+8] for offset in range(0, steps*8, 8)]
++    return {'order': order, 'batches': batches, 'steps': steps,
++            'tokens': sum(_cost(rows[i]) for batch in batches for i in batch),
++            'warmup_steps': math.ceil(.05*steps), 'order_sha256': digest,
++            'step_budget': steps, 'order_hash_encoding': ORDER_HASH_ENCODING}
++
++
++def make_curriculum_schedule(segments):
++    """One schedule over concatenated row sets: ``segments`` is [(label, rows, steps)].
++
++    Segment k uses the first ``steps`` batches of its own rows' step schedule, so
++    steps are contiguous in segment order. Batch indices refer to the returned
++    concatenated ``rows``; warmup/cosine spans the total step count.
++    """
++    if not segments:
++        raise ValueError('empty curriculum')
++    rows, batches, parts, offset, start = [], [], [], 0, 0
++    for label, segment_rows, steps in segments:
++        plan = make_step_schedule(segment_rows, steps)
++        batches.extend([[offset + i for i in batch] for batch in plan['batches']])
++        parts.append({'label': label, 'first_step': start + 1, 'last_step': start + steps,
++                      'steps': steps, 'tokens': plan['tokens'], 'order_sha256': plan['order_sha256'],
++                      'row_offset': offset, 'rows': len(segment_rows)})
++        rows.extend(segment_rows)
++        offset += len(segment_rows)
++        start += steps
++    if len({r['episode_id'] for r in rows}) != len(rows):
++        raise ValueError('curriculum row sets share episode identities')
++    digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for batch in batches for i in batch)
++                            .encode('utf-8')).hexdigest()
++    return rows, {'batches': batches, 'steps': start, 'tokens': sum(p['tokens'] for p in parts),
++                  'warmup_steps': math.ceil(.05*start), 'step_budget': start,
++                  'curriculum': parts, 'order_sha256': digest,
++                  'order_hash_encoding': 'UTF-8 episode_id followed by LF for every scheduled example'}
+ 
+ 
+ def lr_multiplier(step, total, warmup):
+diff --git a/src/v2_train.py b/src/v2_train.py
+index 1c12742..ba9849d 100644
+--- a/src/v2_train.py
++++ b/src/v2_train.py
+@@ -23,7 +23,9 @@ from transformers import AutoTokenizer
+ from bypass_model import BranchModel
+ from calibrate import MODEL, REVISION, load_base
+ from v2_memory import CONTROLS, collate, config, evaluate_batch, train_forward
+-from v2_schedule import DATA_HASHES, load_data, lr_multiplier, make_schedule
++from v2r_data import METADATA_SHA256, load_variant
++from v2_schedule import (DATA_HASHES, load_data, lr_multiplier, make_curriculum_schedule, make_schedule,
++                         make_step_schedule)
+ 
+ 
+ EVAL_BATCH_SIZE = 16
+@@ -58,6 +60,49 @@ def adapted(base, cfg=None, checkpoint=None):
+         base.zero_grad(set_to_none=True)
+ 
+ 
++QUANTILES = (0., .05, .25, .5, .75, .95, 1.)
++LAST_FIELDS = {'_last_argmax': 'last_argmax_slot', '_last_target_weight': 'last_target_weight',
++               '_last_n_eff': 'last_n_eff'}
++RATIO_NAMES = tuple(f'{a}_to_{b}' for a in ('fusion', 'prior') for b in ('residual', 'post_attention'))
++
++
++def distribution(values):
++    values = torch.as_tensor(values, dtype=torch.float32).flatten()
++    if not len(values):
++        return None
++    if not torch.isfinite(values).all():
++        raise ValueError('nonfinite diagnostic distribution')
++    return {'n': len(values), 'mean': float(values.mean()),
++            'quantiles': {str(q): float(v) for q, v in zip(QUANTILES, torch.quantile(values, torch.tensor(QUANTILES)))}}
++
++
++def last_position_summary(records, ratios_all):
++    """E-0014 last-question-position read and E-0012 L4 increment/residual ratios."""
++    present = [r for r in records if r.get('last_argmax_slot') is not None and r['last_argmax_slot'] >= 0]
++    result = {'n': len(present)}
++    if present:
++        width = max(r['n_facts'] for r in present)
++        counts = [0]*width
++        for record in present:
++            counts[record['last_argmax_slot']] += 1
++        result.update(argmax_slot_counts=counts,
++                      argmax_slot_frequencies=[c/len(present) for c in counts],
++                      argmax_most_common_slot_rate=max(counts)/len(present),
++                      n_eff_mean=sum(r['last_n_eff'] for r in present)/len(present))
++        if all(r.get('last_target_weight') is not None for r in present):
++            result.update(argmax_target_count=sum(r['last_argmax_slot'] == r['target_fact_position'] for r in present),
++                          argmax_same_relation_count=sum(r['last_argmax_relation'] == r['relation'] for r in present),
++                          target_weight_mean=sum(r['last_target_weight'] for r in present)/len(present))
++            result['argmax_target_rate'] = result['argmax_target_count']/len(present)
++            result['argmax_same_relation_rate'] = result['argmax_same_relation_count']/len(present)
++    for name in RATIO_NAMES:
++        values = [r[name+'_last'] for r in records if r.get(name+'_last') is not None]
++        if values:
++            result[name] = distribution(values)
++    all_positions = {name: distribution(torch.cat(chunks)) for name, chunks in ratios_all.items() if chunks}
++    return result, all_positions
++
++
+ def _summary(records, prior_token):
+     count = len(records)
+     if not count:
+@@ -93,7 +138,7 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
+         if mode not in CONTROLS:
+             raise ValueError('invalid control')
+         records, diag_sum, diag_weight, batch_percentiles = [], defaultdict(float), defaultdict(int), []
+-        diag_max = {}
++        diag_max, ratios_all = {}, defaultdict(list)
+         for start in range(0, len(rows), EVAL_BATCH_SIZE):
+             selected = rows[start:start+EVAL_BATCH_SIZE]
+             batch = collate(selected, pad_id, device)
+@@ -117,6 +162,24 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
+                                 'relation': row['query']['relation'],
+                                 'target_fact_position': row['query']['target_fact_index'],
+                                 'support_order': row['axes']['support_order']})
++            for i, row in enumerate(selected):
++                record = records[len(records)-len(selected)+i]
++                for key, field in LAST_FIELDS.items():
++                    if details.get(key) is not None:
++                        record[field] = details[key][i]
++                if record.get('last_argmax_slot') is not None:
++                    record['n_facts'] = len(row['facts'])
++                    slot = record['last_argmax_slot']
++                    # Relation of the argmax slot in the recipient's own support;
++                    # undefined for shuffled donor memory.
++                    record['last_argmax_relation'] = (row['facts'][slot]['relation']
++                                                      if slot >= 0 and mode != 'shuffled' else None)
++                for name in RATIO_NAMES:
++                    if details.get(f'_{name}_last') is not None:
++                        record[name+'_last'] = details[f'_{name}_last'][i]
++            for name in RATIO_NAMES:
++                if details.get(f'_{name}_all') is not None:
++                    ratios_all[name].append(details[f'_{name}_all'])
+             weight = int(batch.question_mask.sum())
+             for key, value in details.items():
+                 if key.startswith('_') or key in ('nll', 'em') or not isinstance(value, (float, int)) or isinstance(value, bool):
+@@ -141,6 +204,7 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
+         metrics['diagnostics'].update(diag_max)
+         metrics['diagnostic_weighting'] = 'valid_question_tokens; read.reconstruction_max_abs is split maximum'
+         metrics['denominator_percentiles_by_batch'] = batch_percentiles
++        metrics['last_position'], metrics['all_question_positions'] = last_position_summary(records, ratios_all)
+         if mode == 'shuffled':
+             metrics['donor_rule'] = 'global ordered split: recipient i receives support (i-1) modulo split size'
+             metrics['diagnostics']['address.target_available'] = False
+@@ -153,11 +217,19 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
+     return all_metrics, all_predictions
+ 
+ 
+-def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior_token):
+-    params = list(model.adapter_parameters())
++def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior_token, *,
++          forward_options=None, log_name='train.jsonl', learning_curves=True, monitors=None):
++    """Defaults reproduce V2. E-0014 options: forward_options go to train_forward;
++    only adapter parameters with requires_grad are optimized (R4 freezing);
++    monitors maps a completed step to (name, rows) for a calibration normal check."""
++    params = [p for p in model.adapter_parameters() if p.requires_grad]
++    forward_options = forward_options or {}
++    monitors = monitors or {}
+     optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.)
+     curves, grad_norms, history, seen_gradients = {}, [], [], set()
+-    milestones = {math.ceil(schedule['steps']*fraction): str(int(fraction*100)) for fraction in (.25, .5, .75)}
++    milestones = ({math.ceil(schedule['steps']*fraction): str(int(fraction*100)) for fraction in (.25, .5, .75)}
++                  if learning_curves else {})
++    monitor_results, components = {}, {}
+     torch.cuda.reset_peak_memory_stats()
+     training_seconds, input_tokens, training_peak, curve_seconds = 0., 0, 0, 0.
+     for step, indices in enumerate(schedule['batches']):
+@@ -176,11 +248,15 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+         for offset in range(0, TRAIN_BATCH_SIZE, microbatch_size):
+             selected = [rows[i] for i in indices[offset:offset+microbatch_size]]
+             batch = collate(selected, pad_id, next(model.parameters()).device)
+-            loss, _, support_counts, query_counts = train_forward(model, batch)
++            log = {} if forward_options.get('address_weight') else None
++            options = dict(forward_options, log=log) if log is not None else forward_options
++            loss, _, support_counts, query_counts = train_forward(model, batch, **options)
+             if not torch.isfinite(loss):
+                 raise RuntimeError('nonfinite training loss')
+             (loss*(len(selected)/TRAIN_BATCH_SIZE)).backward()
+             step_loss += float(loss.detach())*len(selected)/TRAIN_BATCH_SIZE
++            for key, value in (log or {}).items():
++                components[key] = components.get(key, 0.) + value*len(selected)/TRAIN_BATCH_SIZE
+             input_tokens += batch.input_tokens
+             if support_counts[14]['side']['reads'] or query_counts[14]['side']['writes']:
+                 raise AssertionError('support/query protocol isolation failed')
+@@ -206,7 +282,10 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+         grad_norms.append(norm)
+         history.append({'step': step+1, 'tokens': input_tokens, 'loss': step_loss,
+                         'lr': step_lr, 'gradient_norm': norm, 'seconds': elapsed})
+-        with (output/'train.jsonl').open('a') as handle:
++        if components:
++            history[-1].update(components)
++            components = {}
++        with (output/log_name).open('a') as handle:
+             handle.write(json.dumps(history[-1], allow_nan=False)+'\n')
+         write_json(output/'progress.json', history[-1])
+         if step+1 in milestones:
+@@ -216,6 +295,15 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+                                            ('normal', 'zero', 'shuffled'), prior_token)
+             torch.cuda.synchronize()
+             curve_seconds += time.monotonic()-curve_start
++        if step+1 in monitors:
++            name, monitor_rows = monitors[step+1]
++            curve_start = time.monotonic()
++            metrics, _ = evaluate(model, monitor_rows, pad_id, output/f'monitor-{name}', 'calibration',
++                                  ('normal',), None)
++            monitor_results[name] = {'step': step+1, 'em': metrics['normal']['em'],
++                                     'nll': metrics['normal']['nll'], 'count': metrics['normal']['count']}
++            torch.cuda.synchronize()
++            curve_seconds += time.monotonic()-curve_start
+     if input_tokens != schedule['tokens']:
+         raise AssertionError('actual token count differs from planned budget stop')
+     names = dict(model.adapters()[14].side.named_parameters())
+@@ -231,13 +319,26 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+             'stored_parameters': sum(p.numel() for p in names.values()),
+             'trainable_parameters': sum(p.numel() for p in names.values() if p.requires_grad),
+             'parameters_with_nonzero_gradient': sum(names[n].numel() for n in seen_gradients),
+-            'parameter_names_with_nonzero_gradient': sorted(seen_gradients), 'learning_curves': curves}
++            'parameter_names_with_nonzero_gradient': sorted(seen_gradients), 'learning_curves': curves,
++            **({'monitors': monitor_results} if monitors else {})}
+ 
+ 
+-def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output, tap, backend, fusion, prior):
++def _side_tensors(model, prior_path):
++    """Copies of the prior-path (True) or memory-path (False) side parameters."""
++    return {name: p.detach().clone() for name, p in model.adapters()[14].side.named_parameters()
++            if name.startswith('prior.') == prior_path}
++
++
++def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output, tap, backend, fusion, prior, *,
++            prior_stage=None, monitors=None, extra_dev=None):
++    """prior_stage: (rows, schedule) for the R4 path trained alone at zero memory, then
++    frozen; extra_dev: {label: (rows, prior_token)} evaluated with normal/zero/shuffled."""
+     output.mkdir(parents=True, exist_ok=False)
+     tick = time.monotonic()
+-    cfg = config(tap, backend, fusion)
++    cfg = config(tap, backend, fusion, args.prior_rank)
++    if bool(prior_stage) != bool(args.prior_rank):
++        raise ValueError('a prior path needs its own training stage and vice versa')
++    forward_options = {'address_weight': args.address_loss_weight} if args.address_loss_weight else {}
+     initial_batch = collate([train_rows[i] for i in schedule['batches'][0]], pad_id,
+                             next(base.parameters()).device)
+     with torch.no_grad():
+@@ -256,8 +357,38 @@ def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output,
+         del initial_logits, reference, initial_batch
+         result = {'config': asdict(cfg), 'lr': args.lr,
+                   'initialization_max_abs': initial_delta,
+-                  'schedule': {k: v for k, v in schedule.items() if k not in ('order', 'batches')}}
+-        result['train'] = train(model, train_rows, schedule, pad_id, args.lr, args.microbatch_size, output, dev, prior)
++                  'schedule': {k: v for k, v in schedule.items() if k not in ('order', 'batches')},
++                  'forward_options': forward_options}
++        if prior_stage:
++            prior_rows, prior_schedule = prior_stage
++            side = model.adapters()[14].side
++            memory_before = _side_tensors(model, False)
++            for name, parameter in side.named_parameters():
++                parameter.requires_grad_(name.startswith('prior.'))
++            stage_start = time.monotonic()
++            result['prior_stage'] = {
++                'lr': args.prior_lr,
++                'schedule': {k: v for k, v in prior_schedule.items() if k not in ('order', 'batches')},
++                'train': train(model, prior_rows, prior_schedule, pad_id, args.prior_lr, args.microbatch_size,
++                               output, dev, prior, forward_options={'zero_memory': True},
++                               log_name='prior_train.jsonl', learning_curves=False)}
++            changed = [n for n, t in _side_tensors(model, False).items() if not torch.equal(t, memory_before[n])]
++            if changed:
++                raise AssertionError(f'memory path changed during the prior stage: {changed}')
++            result['prior_stage']['dev'], _ = evaluate(model, dev, pad_id, output/'prior-stage', 'dev',
++                                                       ('normal', 'zero'), prior)
++            torch.cuda.synchronize()
++            result['prior_stage']['seconds'] = time.monotonic()-stage_start
++            for name, parameter in side.named_parameters():
++                parameter.requires_grad_(not name.startswith('prior.'))
++            prior_frozen = _side_tensors(model, True)
++        result['train'] = train(model, train_rows, schedule, pad_id, args.lr, args.microbatch_size, output, dev, prior,
++                                forward_options=forward_options, monitors=monitors)
++        if prior_stage:
++            changed = [n for n, t in _side_tensors(model, True).items() if not torch.equal(t, prior_frozen[n])]
++            if changed:
++                raise AssertionError(f'frozen prior path changed during memory training: {changed}')
++            result['prior_stage']['frozen_during_memory_training'] = True
+         result['evaluation'] = {}
+         predictions = {}
+         torch.cuda.synchronize()
+@@ -265,6 +396,9 @@ def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output,
+         for split, rows in (('dev', dev), ('calibration', calibration)):
+             if rows is not None:
+                 result['evaluation'][split], predictions[split] = evaluate(model, rows, pad_id, output, split, prior_token=prior)
++        for label, (rows, token) in (extra_dev or {}).items():
++            result['evaluation'][label], _ = evaluate(model, rows, pad_id, output/label, 'dev',
++                                                      ('normal', 'zero', 'shuffled'), token)
+         torch.cuda.synchronize()
+         result['evaluation_seconds'] = time.monotonic()-eval_start
+         save_start = time.monotonic()
+@@ -303,10 +437,51 @@ def main():
+     parser.add_argument('--smoke-steps', type=int, default=0)
+     parser.add_argument('--smoke-eval-limit', type=int, default=0)
+     parser.add_argument('--tap', choices=('direct_hidden', 'qknorm_pre_rope', 'all'), default='qknorm_pre_rope')
+-    parser.add_argument('--backend', choices=('kernel_matrix', 'soft_slot', 'all'), default='kernel_matrix')
++    parser.add_argument('--backend', choices=('kernel_matrix', 'soft_slot', 'centered_cos_slot', 'all'),
++                        default='kernel_matrix')
+     parser.add_argument('--fusion', choices=('F_out', 'C_up', 'C_dual', 'all'), default='F_out')
+     parser.add_argument('--eval-splits', choices=('dev', 'both'), default='both')
++    # E-0014 options; every default reproduces V2 (token budget, E=16 train, no extras).
++    parser.add_argument('--step-budget', type=int, default=0, help='train this many batch-8 steps instead of a token budget')
++    parser.add_argument('--variant-data', action='append', default=[], metavar='E=DIR',
++                        help='E-0014 fact-count variant data directory (E in 1,4,8)')
++    parser.add_argument('--train-facts', type=int, choices=(1, 4, 8, 16), default=16)
++    parser.add_argument('--curriculum', default='', metavar='E:STEPS,...',
++                        help='contiguous step segments by facts per episode; sums to --step-budget')
++    parser.add_argument('--extra-dev', type=int, action='append', default=[], choices=(1, 4, 8),
++                        help='also evaluate this variant dev with normal/zero/shuffled')
++    parser.add_argument('--prior-rank', type=int, default=0)
++    parser.add_argument('--prior-steps', type=int, default=0)
++    parser.add_argument('--prior-lr', type=float, default=0.)
++    parser.add_argument('--address-loss-weight', type=float, default=0.)
+     args = parser.parse_args()
++    variant_dirs = {}
++    for item in args.variant_data:
++        facts, _, directory = item.partition('=')
++        if facts not in ('1', '4', '8') or not directory or int(facts) in variant_dirs:
++            parser.error('--variant-data takes unique E=DIR with E in 1,4,8')
++        variant_dirs[int(facts)] = Path(directory)
++    segments = []
++    if args.curriculum:
++        for item in args.curriculum.split(','):
++            facts, _, steps = item.partition(':')
++            if facts not in ('1', '4', '8', '16') or not steps.isdigit() or int(steps) < 1:
++                parser.error('--curriculum takes E:STEPS items with E in 1,4,8,16')
++            segments.append((int(facts), int(steps)))
++        if sum(n for _, n in segments) != args.step_budget or args.train_facts != 16:
++            parser.error('curriculum steps must sum to --step-budget and replace --train-facts')
++    needed = {f for f, _ in segments} | set(args.extra_dev) | ({args.train_facts} if not segments else set())
++    if any(f != 16 and f not in variant_dirs for f in needed):
++        parser.error('every used variant needs --variant-data')
++    if args.step_budget < 0 or (args.train_facts != 16 and not args.step_budget):
++        parser.error('variant training requires a positive --step-budget')
++    if bool(args.prior_rank) != bool(args.prior_steps) or bool(args.prior_rank) != (args.prior_lr > 0):
++        parser.error('--prior-rank, --prior-steps and --prior-lr are given together')
++    if args.prior_rank < 0 or args.prior_steps < 0 or not math.isfinite(args.prior_lr):
++        parser.error('invalid prior path options')
++    if args.address_loss_weight and (args.address_loss_weight < 0 or not math.isfinite(args.address_loss_weight)
++                                     or args.backend != 'soft_slot'):
++        parser.error('the address loss needs a finite positive weight and --backend soft_slot')
+     if not math.isfinite(args.lr) or args.lr <= 0 or args.token_budget <= 0:
+         parser.error('finite positive lr and token budget required')
+     if args.microbatch_size < 1 or args.microbatch_size > TRAIN_BATCH_SIZE:
+@@ -325,7 +500,27 @@ def main():
+         train_rows = load_data(args.data_dir/'train.jsonl', 'train')
+         dev = load_data(args.data_dir/'dev.jsonl', 'dev')
+         calibration = load_data(args.data_dir/'calibration.jsonl', 'calibration') if args.eval_splits == 'both' else None
+-        schedule = make_schedule(train_rows, args.token_budget)
++        variants = {f: {s: load_variant(variant_dirs[f], f, s) for s in ('train', 'calibration', 'dev')}
++                    for f in sorted(needed - {16})}
++        v2_train_rows, prior_stage, monitors = train_rows, None, None
++        if segments:
++            calibration_by_facts = {f: (variants[f]['calibration'][1] if f != 16 else
++                                        load_data(args.data_dir/'calibration.jsonl', 'calibration'))
++                                    for f, _ in segments}
++            train_rows, schedule = make_curriculum_schedule(
++                [(f'e{f}', variants[f]['train'][1] if f != 16 else v2_train_rows, n) for f, n in segments])
++            monitors = {part['last_step']: (part['label'], calibration_by_facts[f])
++                        for part, (f, _) in zip(schedule['curriculum'], segments)}
++        elif args.step_budget:
++            if args.train_facts != 16:
++                train_rows = variants[args.train_facts]['train'][1]
++            schedule = make_step_schedule(train_rows, args.step_budget)
++        else:
++            schedule = make_schedule(train_rows, args.token_budget)
++        if args.prior_rank:
++            prior_stage = (v2_train_rows, make_step_schedule(v2_train_rows, args.prior_steps))
++        extra_dev = {f'e{f}': (variants[f]['dev'][1], variants[f]['dev'][0]['prior']['answer_token_id'])
++                     for f in args.extra_dev}
+         if args.smoke_steps:
+             schedule['batches'] = schedule['batches'][:args.smoke_steps]
+             schedule['steps'] = len(schedule['batches'])
+@@ -337,13 +532,17 @@ def main():
+             dev = dev[:args.smoke_eval_limit]
+             if calibration is not None:
+                 calibration = calibration[:args.smoke_eval_limit]
++            extra_dev = {k: (rows[:args.smoke_eval_limit], token) for k, (rows, token) in extra_dev.items()}
++            if monitors:
++                monitors = {k: (name, rows[:args.smoke_eval_limit]) for k, (name, rows) in monitors.items()}
+         write_json(args.output/'schedule.json', {k: v for k, v in schedule.items() if k not in ('order', 'batches')})
+         print(json.dumps({'planned_steps': schedule['steps'], 'planned_tokens': schedule['tokens'],
+                           'order_sha256': schedule['order_sha256']}), flush=True)
+-        prior = Counter(r['query']['answer_token_id'] for r in train_rows).most_common(1)[0][0]
++        # The E=16 dev prior token always comes from the V2 train split (as in V2).
++        prior = Counter(r['query']['answer_token_id'] for r in v2_train_rows).most_common(1)[0][0]
+         tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+         pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+-        for rows in (dev, calibration):
++        for rows in (dev, calibration, *(r for r, _ in extra_dev.values())):
+             for row in rows or []:
+                 ids = tokenizer.encode(' '+row['query']['head'], add_special_tokens=False)
+                 if len(ids) != 1:
+@@ -356,7 +555,8 @@ def main():
+         for tap, backend, fusion in itertools.product(taps, backends, fusions):
+             arm = '.'.join((tap, backend, fusion))
+             results[arm] = run_arm(base, train_rows, dev, calibration, schedule, pad_id, args,
+-                                   args.output/arm, tap, backend, fusion, prior)
++                                   args.output/arm, tap, backend, fusion, prior, prior_stage=prior_stage,
++                                   monitors=monitors, extra_dev=extra_dev)
+             write_json(args.output/'metrics.json', results)
+         passed = True
+     except Exception as exc:
+@@ -372,7 +572,14 @@ def main():
+             'data_sha256': {split: DATA_HASHES[split] for split in ('train', 'dev', 'calibration')
+                             if split != 'calibration' or args.eval_splits == 'both'},
+             'evaluation_batch_size': EVAL_BATCH_SIZE, 'microbatch_size': args.microbatch_size,
+-            'token_budget': args.token_budget, 'torch': torch.__version__, 'cuda': torch.version.cuda,
++            'token_budget': None if args.step_budget else args.token_budget,
++            'options': {'step_budget': args.step_budget, 'train_facts': args.train_facts,
++                        'curriculum': segments, 'extra_dev': args.extra_dev, 'prior_rank': args.prior_rank,
++                        'prior_steps': args.prior_steps, 'prior_lr': args.prior_lr,
++                        'address_loss_weight': args.address_loss_weight},
++            'variant_data': {str(f): {'dir': str(d.resolve()), 'metadata_sha256': METADATA_SHA256[f]}
++                             for f, d in variant_dirs.items()},
++            'torch': torch.__version__, 'cuda': torch.version.cuda,
+             'smoke_steps': args.smoke_steps, 'smoke_eval_limit': args.smoke_eval_limit,
+             'metrics': {'arms_completed': len(results), 'wall_seconds': wall,
+                         'mig_instance_hours': wall/3600, 'node_hours': wall/3600*.25},
+diff --git a/src/v2r_analysis.py b/src/v2r_analysis.py
+new file mode 100644
+index 0000000..768036c
+--- /dev/null
++++ b/src/v2r_analysis.py
+@@ -0,0 +1,227 @@
++"""Read-only E-0014 screening analysis; run in PBS, never open confirmation data.
++
++Gates use seed-0 final dev point estimates with exact count fractions. Bootstrap
++intervals (V2's paired episode bootstrap) are descriptive and never gate.
++"""
++from __future__ import annotations
++
++import argparse
++from fractions import Fraction
++import json
++import os
++from pathlib import Path
++
++import numpy as np
++
++from v2_factorial_analysis import (BOOTSTRAP_REPEATS, BOOTSTRAP_SEED, AnalysisError, finite, paired_bootstrap,
++                                   point, read, require)
++
++CONTROLS = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
++VARIANT_CONTROLS = ('normal', 'zero', 'shuffled')
++ARMS = ('R1', 'R2', 'R3', 'R4', 'R5', 'R6')
++RULES = {
++    'H3': 'E=16 dev：EM_normal − max(EM_zero, EM_shuffled) ≥ 10 pp；NLL_normal < min(NLL_zero, NLL_shuffled)；目标事实平均地址权重 ≥ 0.125（E-0010@2）。',
++    'R1': 'value 通路可用（R1，E=1 dev）：EM_normal − max(EM_zero, EM_shuffled) ≥ 50 pp。',
++    'R2': 'E=4 寻址可用（R2，E=4 dev）：EM 差 ≥ 10 pp，NLL 条件同上，目标平均地址权重 ≥ 2/4。',
++    'R5': '额外监督（目标事实索引）只在 R5；其结论只在有地址监督时成立。',
++}
++EXPECTED = {'R1': {'train_facts': 1, 'extra_dev': [1]}, 'R2': {'train_facts': 4, 'extra_dev': [4]},
++            'R3': {'curriculum': [[1, 1000], [4, 1000], [8, 1000], [16, 3000]], 'extra_dev': [1, 4]},
++            'R4': {'prior_rank': 32, 'prior_steps': 1000, 'prior_lr': 3e-4}, 'R5': {'address_loss_weight': 1.},
++            'R6': {}}
++
++
++def gate(controls, target_weight, *, margin, weight):
++    normal, zero, shuffled = (controls[m] for m in ('normal', 'zero', 'shuffled'))
++    n = normal['count']
++    require(zero['count'] == n == shuffled['count'], 'gate needs equal counts')
++    diff = Fraction(normal['correct_count'] - max(zero['correct_count'], shuffled['correct_count']), n)
++    em_pass = diff >= margin
++    nll_pass = normal['nll'] < min(zero['nll'], shuffled['nll'])
++    weight_pass = None if weight is None else target_weight >= weight
++    return {'n': n, 'correct': {m: controls[m]['correct_count'] for m in controls},
++            'em': {m: controls[m]['em'] for m in controls}, 'nll': {m: controls[m]['nll'] for m in controls},
++            'em_margin': float(diff), 'em_margin_fraction': str(diff), 'em_pass': em_pass, 'nll_pass': nll_pass,
++            'target_weight': target_weight, 'weight_pass': weight_pass,
++            'passed': em_pass and nll_pass and weight_pass is not False}
++
++
++def bootstrap(records, controls):
++    columns, names = [], []
++    for mode in controls:
++        names += [(mode, 'em'), (mode, 'nll')]
++        columns += [[float(r['correct']) for r in records[mode]], [r['nll'] for r in records[mode]]]
++    values = np.asarray(columns, dtype=np.float64).T
++    boots, points = paired_bootstrap(values), values.mean(0)
++    index = {name: i for i, name in enumerate(names)}
++    return {f'normal-{mode}': {metric: {'estimate': float(points[index['normal', metric]] - points[index[mode, metric]]),
++                                        'ci95': np.quantile(boots[:, index['normal', metric]] - boots[:, index[mode, metric]],
++                                                            [.025, .975]).tolist()}
++                               for metric in ('em', 'nll')} for mode in controls if mode != 'normal'}
++
++
++def load_split(directory, controls, provenance, label):
++    summary = read(directory/'dev.metrics.json', provenance)
++    records, points = {}, {}
++    for mode in controls:
++        rows = read(directory/f'dev.{mode}.predictions.jsonl', provenance, lines=True)
++        require(len({r['episode_id'] for r in rows}) == len(rows), f'{label}: duplicate episode')
++        require(all(type(r['correct']) is bool and finite(r['nll']) for r in rows), f'{label}: invalid record')
++        p = point(rows)
++        require(p['count'] == summary[mode]['count'] and abs(p['nll'] - summary[mode]['nll']) < 1e-10
++                and p['em'] == summary[mode]['em'], f'{label}: summary mismatch for {mode}')
++        records[mode], points[mode] = rows, p
++    ids = [r['episode_id'] for r in records['normal']]
++    require(all([r['episode_id'] for r in records[m]] == ids for m in controls), f'{label}: unaligned controls')
++    return summary, records, points
++
++
++def curve(path, provenance, every=500):
++    rows = read(path, provenance, lines=True)
++    keys = [k for k in ('loss', 'answer_ce', 'address_loss') if k in rows[0]]
++    return [{'steps': f'{start+1}-{min(start+every, len(rows))}',
++             **{k: sum(r[k] for r in rows[start:start+every]) / len(rows[start:start+every]) for k in keys}}
++            for start in range(0, len(rows), every)]
++
++
++def load_arm(label, run_dir, arm_dir_name, *, reference=False):
++    provenance = {}
++    run_dir = Path(run_dir).resolve()
++    manifest = read(run_dir/'manifest.json', provenance)
++    require(manifest['status'] == 'complete' and manifest['validator']['passed'] is True, f'{label}: incomplete run')
++    require(not manifest['smoke_steps'] and not manifest['smoke_eval_limit'], f'{label}: smoke run')
++    arm = run_dir/arm_dir_name
++    metrics = read(arm/'metrics.json', provenance)
++    require(metrics['checkpoint_reload']['predictions_identical'] is True, f'{label}: reload mismatch')
++    require(metrics['schedule']['steps'] == 6000, f'{label}: not 6000 steps')
++    options = manifest.get('options', {})
++    if not reference:
++        for key, value in EXPECTED[label].items():
++            require(options.get(key) == value, f'{label}: option {key}={options.get(key)} != {value}')
++        require(options.get('step_budget') == 6000, f'{label}: step budget')
++        others = {k: v for k, v in options.items() if k not in EXPECTED[label] and k not in ('step_budget', 'curriculum', 'extra_dev', 'train_facts')}
++        require(all(not v for v in others.values()), f'{label}: unexpected extra options {others}')
++    summary, records, points = load_split(arm, CONTROLS, provenance, label)
++    normal = summary['normal']
++    result = {'run': str(run_dir), 'config': metrics['config'], 'lr': metrics['lr'], 'options': options,
++              'schedule': metrics['schedule'],
++              'h3': gate(points, normal['diagnostics']['address.target_weight'], margin=Fraction(1, 10), weight=.125),
++              'controls': {m: {'em': points[m]['em'], 'nll': points[m]['nll'], 'correct': points[m]['correct_count'],
++                               'prior_em': summary[m].get('prior_em')} for m in CONTROLS},
++              'diagnostics': {k: normal['diagnostics'].get(k) for k in
++                              ('address.target_weight', 'address.n_eff', 'address.entropy', 'address.top1',
++                               'read.normalized_error', 'read.direction_error', 'read.reconstruction_max_abs')},
++              'last_position': {m: summary[m].get('last_position') for m in CONTROLS},
++              'all_question_positions': summary['normal'].get('all_question_positions'),
++              'bootstrap': bootstrap(records, CONTROLS),
++              'train': {k: metrics['train'].get(k) for k in ('steps', 'tokens', 'training_seconds', 'stable_step_seconds',
++                                                               'clip_fraction', 'trainable_parameters', 'monitors')},
++              'curve': curve(arm/'train.jsonl', provenance),
++              'learning_curves': {k: {m: {'em': v[m]['em'], 'nll': v[m]['nll']} for m in v}
++                                  for k, v in metrics['train']['learning_curves'].items()},
++              'wall_seconds': manifest['metrics']['wall_seconds'],
++              'in_job_mig_instance_hours': manifest['metrics']['mig_instance_hours']}
++    if 'prior_stage' in metrics:
++        stage = metrics['prior_stage']
++        result['prior_stage'] = {'lr': stage['lr'], 'steps': stage['train']['steps'], 'seconds': stage['seconds'],
++                                 'frozen_during_memory_training': stage.get('frozen_during_memory_training'),
++                                 'dev': {m: {'em': stage['dev'][m]['em'], 'nll': stage['dev'][m]['nll']} for m in stage['dev']},
++                                 'curve': curve(arm/'prior_train.jsonl', provenance)}
++    result['variants'] = {}
++    for facts in options.get('extra_dev', []):
++        label_e = f'e{facts}'
++        v_summary, v_records, v_points = load_split(arm/label_e, VARIANT_CONTROLS, provenance, f'{label} {label_e}')
++        weight = v_summary['normal']['diagnostics']['address.target_weight']
++        result['variants'][label_e] = {
++            'gate_R1': gate(v_points, weight, margin=Fraction(1, 2), weight=None) if facts == 1 else None,
++            'gate_R2': gate(v_points, weight, margin=Fraction(1, 10), weight=.5) if facts == 4 else None,
++            'controls': {m: {'em': v_points[m]['em'], 'nll': v_points[m]['nll'], 'correct': v_points[m]['correct_count']}
++                         for m in VARIANT_CONTROLS},
++            'target_weight': weight, 'n_eff': v_summary['normal']['diagnostics'].get('address.n_eff'),
++            'last_position': v_summary['normal'].get('last_position'),
++            'bootstrap': bootstrap(v_records, VARIANT_CONTROLS)}
++    result['provenance'] = provenance
++    return result
++
++
++def markdown(report):
++    lines = ['# E-0014 screening (seed 0, final checkpoints)', '', '## E=16 dev H3 gate', '',
++             '| arm | normal / zero / shuffled correct (n=1000) | EM margin | NLL normal / zero / shuffled | target weight | n_eff | H3 |',
++             '|---|---|---:|---|---:|---:|---|']
++    for name, arm in report['arms'].items():
++        h = arm['h3']
++        lines.append(f"| {name} | {h['correct']['normal']} / {h['correct']['zero']} / {h['correct']['shuffled']} | "
++                     f"{h['em_margin']*100:+.1f} pp | {h['nll']['normal']:.4f} / {h['nll']['zero']:.4f} / {h['nll']['shuffled']:.4f} | "
++                     f"{h['target_weight']:.4f} | {arm['diagnostics']['address.n_eff']:.3f} | {'pass' if h['passed'] else 'fail'} |")
++    lines += ['', '## E=16 dev other controls (EM, NLL)', '', '| arm | permuted | oracle_key | oracle_value |', '|---|---|---|---|']
++    for name, arm in report['arms'].items():
++        c = arm['controls']
++        lines.append(f"| {name} | " + ' | '.join(f"{c[m]['em']:.3f}, {c[m]['nll']:.4f}" for m in ('permuted', 'oracle_key', 'oracle_value')) + ' |')
++    lines += ['', '## Last question position, E=16 dev normal', '',
++              '| arm | argmax target rate | most common slot (rate) | same-relation rate | target weight | fusion/residual mean (median) | prior/residual mean |',
++              '|---|---:|---|---:|---:|---|---:|']
++    for name, arm in report['arms'].items():
++        last = arm['last_position']['normal'] or {}  # V2-03 predates these diagnostics
++        counts = last.get('argmax_slot_counts', [])
++        top = max(range(len(counts)), key=counts.__getitem__) if counts else None
++        ratio = last.get('fusion_to_residual') or {}
++        prior = last.get('prior_to_residual')
++        lines.append(f"| {name} | {last.get('argmax_target_rate', float('nan')):.3f} | {top} ({last.get('argmax_most_common_slot_rate', float('nan')):.3f}) | "
++                     f"{last.get('argmax_same_relation_rate', float('nan')):.3f} | {last.get('target_weight_mean', float('nan')):.4f} | "
++                     f"{ratio.get('mean', float('nan')):.4g} ({ratio.get('quantiles', {}).get('0.5', float('nan')):.4g}) | "
++                     f"{'' if not prior else format(prior['mean'], '.4g')} |")
++    lines += ['', '## Variant dev (normal / zero / shuffled)', '',
++              '| arm | split | correct | EM margin | NLL normal / zero / shuffled | target weight | gate |', '|---|---|---|---:|---|---:|---|']
++    for name, arm in report['arms'].items():
++        for split, v in arm['variants'].items():
++            g = v['gate_R1'] or v['gate_R2']
++            c = v['controls']
++            margin = (c['normal']['correct'] - max(c['zero']['correct'], c['shuffled']['correct'])) / 1000
++            verdict = '' if g is None else ('R1 gate ' if v['gate_R1'] else 'R2 gate ') + ('pass' if g['passed'] else 'fail')
++            lines.append(f"| {name} | {split} | {c['normal']['correct']} / {c['zero']['correct']} / {c['shuffled']['correct']} | "
++                         f"{margin*100:+.1f} pp | {c['normal']['nll']:.4f} / {c['zero']['nll']:.4f} / {c['shuffled']['nll']:.4f} | "
++                         f"{v['target_weight']:.4f} | {verdict} |")
++    lines += ['', 'Intervals (descriptive, paired bootstrap 10,000) are in report.json under bootstrap.', '']
++    return '\n'.join(lines)
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('--arm', action='append', required=True, metavar='R=RUN_DIR:ARM_SUBDIR')
++    parser.add_argument('--reference', required=True, metavar='RUN_DIR:ARM_SUBDIR')
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    args.output.mkdir(parents=True, exist_ok=True)
++    arms = {}
++    for item in args.arm:
++        name, _, rest = item.partition('=')
++        run, _, sub = rest.partition(':')
++        require(name in ARMS and name not in arms, 'arms are unique R1..R6')
++        arms[name] = load_arm(name, run, sub)
++    run, _, sub = args.reference.partition(':')
++    reference = load_arm('V2-03', run, sub, reference=True)
++    require(set(arms) == set(ARMS), 'all six arms are required')
++    report = {'rules': RULES, 'arms': dict(sorted(arms.items())), 'reference_V2_03': reference,
++              'h3_passing_arms': [a for a in ARMS if arms[a]['h3']['passed']],
++              'h3_passing_without_extra_supervision': [a for a in ARMS if arms[a]['h3']['passed'] and a != 'R5'],
++              'r1_value_path_gate': arms['R1']['variants']['e1']['gate_R1']['passed'],
++              'r2_e4_address_gate': arms['R2']['variants']['e4']['gate_R2']['passed'],
++              'bootstrap': {'unit': 'episode', 'repeats': BOOTSTRAP_REPEATS, 'seed': BOOTSTRAP_SEED,
++                            'pairing': 'same episode draws for every control within an arm and split'},
++              'spec_digest': os.environ.get('SR_SPEC_DIGEST')}
++    report['arms']['V2-03'] = reference
++    (args.output/'report.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
++    (args.output/'report.md').write_text(markdown(report))
++    artifacts = [{'path': str((args.output/f).resolve()), 'role': f} for f in ('report.json', 'report.md')]
++    (args.output/'manifest.json').write_text(json.dumps({
++        'status': 'complete', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
++        'metrics': {'h3_passing_arms': report['h3_passing_arms'], 'r1_value_path_gate': report['r1_value_path_gate'],
++                    'r2_e4_address_gate': report['r2_e4_address_gate'],
++                    **{f'{a}.em_margin': arms[a]['h3']['em_margin'] for a in ARMS},
++                    **{f'{a}.target_weight': arms[a]['h3']['target_weight'] for a in ARMS}},
++        'artifacts': artifacts, 'validator': {'name': 'v2r_analysis', 'passed': True}}, indent=2) + '\n')
++    print(report['h3_passing_arms'])
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/src/v2r_data.py b/src/v2r_data.py
+new file mode 100644
+index 0000000..5b36299
+--- /dev/null
++++ b/src/v2r_data.py
+@@ -0,0 +1,288 @@
++"""E-0014 T1 fact-count variants E in {1, 4, 8}: new data versions, V2R seed namespace.
++
++Rendering, templates, the V2 seen name pool (checksum-pinned bytes), single-token
++answer checks and the semantic content hash are those of V2 T1; only the number of
++facts per episode changes. The V2 generator and its released data are untouched.
++Confirmation is recorded as identities only: no content is generated for it.
++
++Deduplication (cross-split, as in V2): dev, then calibration, then train are
++generated. A dev or calibration candidate whose semantic content already exists in
++dev or calibration is redrawn with the next attempt number; a train candidate whose
++content exists in dev or calibration is redrawn. Repeated contents inside train are
++kept and counted: at E=1 there are only 92*4*92 possible contents, so forcing
++unique train contents would distort the frequency-weighted tail distribution.
++Run generation inside PBS.
++"""
++from __future__ import annotations
++
++from collections import Counter, defaultdict
++import hashlib
++import json
++from pathlib import Path
++import random
++
++from v1_data import derive_seed
++from v2_data import (MODEL, REVISION, RELATIONS, canonical, digest, encode,
++                     file_digest, visible_delimiters)
++
++VARIANTS = (1, 4, 8)
++SPLITS = ('train', 'calibration', 'dev', 'confirmation')
++RELEASED = ('dev', 'calibration', 'train')  # generation order; see module docstring
++SIZES = {'train': 16384, 'calibration': 2048, 'dev': 1000, 'confirmation': 2000}
++NAME_POOLS_SHA256 = 'a6bde954098e6bee7452abba1eabc56e7d0bf811b4ab220a5106c95c216ef57b'
++MAX_ATTEMPTS = 1000
++# metadata.json SHA-256 of each released full dataset; pinned after the
++# generation run so that training refuses any other bytes.
++METADATA_SHA256 = {  # ATT-0112-1 (RES-0103)
++    1: '46fa324c1d6273a6c060df8fc4c0e2a188ec6de3f3c98d034009ea23f31d09c1',
++    4: 'ccc271d4466716ef1f73dc8154eb812d5d0d2d02dcc6a2f91985d505f2cca51e',
++    8: '58143a37ef90ba23acb3a4fd2ae63fce68f80883d77c377274fd6b156262628e',
++}
++RELEASE_DIR = '/work/xg24i002/x10041/bypass-lora/runs/ATT-0112-1'  # e1/, e4/, e8/
++
++
++def version(n_facts):
++    if n_facts not in VARIANTS:
++        raise ValueError('E-0014 variants are E in {1, 4, 8}; E=16 is the V2 data')
++    return f'concat-loop-v2-t1-e{n_facts}-1'
++
++
++def identity(split, index, n_facts, *, support_order=None):
++    if split not in SPLITS or type(index) is not int or index < 0:
++        raise ValueError('invalid split/index')
++    support_order = ('natural' if index % 2 == 0 else 'shuffled') if support_order is None else support_order
++    if support_order not in ('natural', 'shuffled'):
++        raise ValueError('invalid support order')
++    return {'study_id': 'concat_loop_v2', 'phase': 'V2R', 'generator_version': version(n_facts),
++            'task': 'T1', 'layout': {'hop': 1, 'n_facts': n_facts, 'relations': list(RELATIONS),
++                                     'name_pool': 'seen', 'support_order': support_order},
++            'base_seed': derive_seed(20261029, 'concat_loop_v2', 'V2R', split, n_facts),
++            'split': split, 'index': index}
++
++
++def load_name_pools(path):
++    if file_digest(path) != NAME_POOLS_SHA256:
++        raise ValueError('V2 name-pool checksum mismatch')
++    return json.loads(Path(path).read_text())
++
++
++def relations_for(rng, n_facts):
++    """E=1: one relation uniformly; E=4: each once; E=8: each twice (shuffled)."""
++    if n_facts == 1:
++        return [rng.choice(list(RELATIONS))]
++    relations = list(RELATIONS) * (n_facts // 4)
++    rng.shuffle(relations)
++    return relations
++
++
++def episode_content(ident, pools, attempt=0):
++    if ident != identity(ident['split'], ident['index'], ident['layout']['n_facts'],
++                         support_order=ident['layout']['support_order']):
++        raise ValueError('identity does not match the generator contract')
++    if type(attempt) is not int or not 0 <= attempt < MAX_ATTEMPTS:
++        raise ValueError('invalid generation attempt')
++    layout = ident['layout']
++    n = layout['n_facts']
++    core_layout = {k: v for k, v in layout.items() if k != 'support_order'}
++    rng = random.Random(derive_seed(ident['base_seed'], ident['generator_version'], core_layout,
++                                    ident['index'], attempt))
++    names = pools['pools']['seen']
++    heads = rng.sample([x['name'] for x in names], n)  # distinct within the episode
++    # Tails are frequency-weighted and independent of heads (self edges allowed).
++    tails = rng.choices([x['name'] for x in names], weights=[x['sampling_weight'] for x in names], k=n)
++    relations = relations_for(rng, n)
++    facts = [{'head': h, 'relation': r, 'tail': t} for h, r, t in zip(heads, relations, tails)]
++    target = rng.randrange(n)
++    query = dict(facts[target])
++    order = list(range(n))
++    if layout['support_order'] == 'shuffled':
++        random.Random(derive_seed(ident['base_seed'], 'support-order', ident['index'])).shuffle(order)
++    ordered = [facts[i] for i in order]
++    content_hash = digest({'facts': sorted((x['head'], x['relation'], x['tail']) for x in facts),
++                           'question': {'head': query['head'], 'relation': query['relation'], 'hop': 1}})
++    return ordered, order.index(target), query, content_hash
++
++
++def make_episode(tok, pools, ident, attempt=0):
++    if ident['split'] == 'confirmation':
++        raise ValueError('confirmation content is sealed; record identities only')
++    n = ident['layout']['n_facts']
++    facts, target, query, content_hash = episode_content(ident, pools, attempt)
++    support = ''.join(f"{f['head']} {f['relation']} {f['tail']} ;\n" for f in facts)
++    question = f"Who does {query['head']} {RELATIONS[query['relation']]}?\nAnswer:"
++    support_ids, positions = visible_delimiters(tok, support)
++    if len(positions) != n:
++        raise ValueError('each fact must have one visible delimiter')
++    answer_text = ' ' + query['tail']
++    answer_ids = encode(tok, answer_text)
++    if len(answer_ids) != 1:
++        raise ValueError('answer is not a single token')
++    question_ids = encode(tok, question)
++    full_ids = encode(tok, support + question)
++    for prompt, ids in ((question, question_ids), (support + question, full_ids)):
++        if encode(tok, prompt + answer_text) != ids + answer_ids:
++            raise ValueError('answer boundary changes prompt tokens')
++    for fact, position in zip(facts, positions):
++        fact.update(position)
++    info = {x['name']: x for x in pools['pools']['seen']}
++    return {'identity': ident, 'episode_id': digest(ident), 'content_sha256': content_hash,
++            'generation_attempt': attempt,
++            'support_text': support, 'support_input_ids': support_ids,
++            'question_text': question, 'question_input_ids': question_ids, 'facts': facts,
++            'query': {'head': query['head'], 'relation': query['relation'], 'target_fact_index': target,
++                      'answer_text': answer_text, 'answer_token_id': answer_ids[0]},
++            'axes': {'hop': 1, 'n_facts': n, 'n_distractors': n - 1, 'name_pool': 'seen',
++                     'support_order': ident['layout']['support_order'], 'relation': query['relation'],
++                     'answer_frequency_stratum': info[query['tail']]['frequency_stratum'],
++                     'answer_bare_tokens': info[query['tail']]['bare_tokens'],
++                     'answer_leading_space_tokens': 1, 'support_tokens': len(support_ids),
++                     'question_tokens': len(question_ids), 'full_prompt_tokens': len(full_ids),
++                     'support_characters': len(support), 'question_characters': len(question)}}
++
++
++def sealed_record(ident):
++    if ident['split'] != 'confirmation':
++        raise ValueError('sealed_record requires confirmation')
++    return {'identity': ident, 'episode_id': digest(ident)}
++
++
++def released_rows(tok, pools, n_facts, sizes):
++    """Yield (split, row, rejected_attempts) in generation order with deduplication."""
++    evaluation = set()
++    for split in RELEASED:
++        for index in range(sizes[split]):
++            ident = identity(split, index, n_facts)
++            for attempt in range(MAX_ATTEMPTS):
++                # Content hash first: rendering is only needed for accepted draws.
++                content_hash = episode_content(ident, pools, attempt)[3]
++                if content_hash not in evaluation:
++                    break
++            else:
++                raise ValueError('deduplication exhausted the attempt budget')
++            if split != 'train':
++                evaluation.add(content_hash)
++            yield split, make_episode(tok, pools, ident, attempt), attempt
++
++
++def generate_dataset(tok, output, n_facts, *, v2_data_dir, sizes=None, pools=None):
++    """Write released splits and the confirmation identity registry; generate twice."""
++    output, v2_data_dir = Path(output), Path(v2_data_dir)
++    output.mkdir(parents=True, exist_ok=True)
++    sizes = dict(SIZES if sizes is None else sizes)
++    if set(sizes) != set(SPLITS) or any(type(n) is not int or n <= 0 for n in sizes.values()):
++        raise ValueError('all four splits must have positive integer sizes')
++    if pools is None:
++        pools = load_name_pools(v2_data_dir / 'name_pools.json')
++        (output / 'name_pools.json').write_bytes((v2_data_dir / 'name_pools.json').read_bytes())
++    else:  # tests only: an explicit pool is written as given
++        (output / 'name_pools.json').write_text(canonical(pools) + '\n')
++    metadata = {'version': version(n_facts), 'phase': 'V2R', 'n_facts': n_facts, 'model': MODEL,
++                'tokenizer_revision': REVISION, 'sizes': sizes, 'splits': {},
++                'seed_rule': 'base_seed = derive_seed(20261029, "concat_loop_v2", "V2R", split, E)',
++                'write_scope': 'visible_fact_delimiter', 'read_scope': 'all_valid_question',
++                'name_pools_sha256': file_digest(output / 'name_pools.json'),
++                'frequency_definition': pools['frequency_definition'],
++                'generation_order': list(RELEASED),
++                'deduplication': ('dev/calibration contents unique within and across both; train '
++                                  'contents disjoint from dev/calibration; repeated train contents kept'),
++                'confirmation': 'identity registry only; no content generated or hashed'}
++    handles = {s: (output / f'{s}.jsonl').open('wb') for s in RELEASED}
++    hashes = {s: hashlib.sha256() for s in RELEASED}
++    stats = {s: {'axes': defaultdict(Counter), 'entities': Counter(), 'tokens': 0, 'contents': Counter(),
++                 'rejected_attempts': 0, 'rows_redrawn': 0, 'relations': Counter(), 'n_facts': Counter()}
++             for s in RELEASED}
++    ids, answer_counts, dev_answers = set(), Counter(), []
++    try:
++        for split, row, attempt in released_rows(tok, pools, n_facts, sizes):
++            if row['episode_id'] in ids:
++                raise ValueError('duplicate episode identity')
++            ids.add(row['episode_id'])
++            line = (canonical(row) + '\n').encode()
++            handles[split].write(line)
++            hashes[split].update(line)
++            st = stats[split]
++            st['rejected_attempts'] += attempt
++            st['rows_redrawn'] += attempt > 0
++            st['contents'][row['content_sha256']] += 1
++            st['n_facts'][len(row['facts'])] += 1
++            for axis, value in row['axes'].items():
++                st['axes'][axis][str(value)] += 1
++            for fact in row['facts']:
++                st['entities'][fact['head']] += 1
++                st['entities'][fact['tail']] += 1
++                st['relations'][fact['relation']] += 1
++            st['tokens'] += len(row['support_input_ids']) + len(row['question_input_ids']) + 1
++            if split == 'train':
++                answer_counts[str(row['query']['answer_token_id'])] += 1
++            elif split == 'dev':
++                dev_answers.append(str(row['query']['answer_token_id']))
++    finally:
++        for handle in handles.values():
++            handle.close()
++    second = {s: hashlib.sha256() for s in RELEASED}
++    for split, row, _ in released_rows(tok, pools, n_facts, sizes):
++        second[split].update((canonical(row) + '\n').encode())
++    released_contents = {s: set(stats[s]['contents']) for s in RELEASED}
++    if released_contents['train'] & (released_contents['dev'] | released_contents['calibration']):
++        raise ValueError('train shares semantic content with an evaluation split')
++    if released_contents['dev'] & released_contents['calibration']:
++        raise ValueError('dev and calibration share semantic content')
++    for split in RELEASED:
++        st = stats[split]
++        path = output / f'{split}.jsonl'
++        if hashes[split].hexdigest() != second[split].hexdigest() or file_digest(path) != hashes[split].hexdigest():
++            raise ValueError('repeated generation hash mismatch')
++        if split != 'train' and max(st['contents'].values()) > 1:
++            raise ValueError('evaluation split repeats a semantic content')
++        metadata['splits'][split] = {
++            'path': str(path.resolve()), 'count': sizes[split], 'sha256': hashes[split].hexdigest(),
++            'second_generation_sha256': second[split].hexdigest(), 'input_tokens': st['tokens'],
++            'unique_contents': len(st['contents']),
++            'repeated_content_rows': sizes[split] - len(st['contents']),
++            'rows_redrawn': st['rows_redrawn'], 'rejected_attempts': st['rejected_attempts'],
++            'fact_relation_counts': dict(st['relations']), 'facts_per_episode': dict(st['n_facts']),
++            'axes': {k: dict(v) for k, v in st['axes'].items()},
++            'support_entity_counts': dict(st['entities']), 'delimiter_checks': n_facts * sizes[split]}
++    path = output / 'confirmation.registry.jsonl'
++    with path.open('wb') as handle:
++        for index in range(sizes['confirmation']):
++            ident = identity('confirmation', index, n_facts)
++            record = sealed_record(ident)
++            if record['episode_id'] in ids:
++                raise ValueError('duplicate episode identity')
++            ids.add(record['episode_id'])
++            handle.write((canonical(record) + '\n').encode())
++    metadata['splits']['confirmation'] = {'path': str(path.resolve()), 'count': sizes['confirmation'],
++                                          'sha256': file_digest(path), 'sealed': True}
++    constant = min(answer_counts, key=lambda t: (-answer_counts[t], int(t)))
++    metadata['prior'] = {'answer_token_id': int(constant), 'train_answer_counts': dict(answer_counts),
++                         'dev_em': sum(x == constant for x in dev_answers) / len(dev_answers)}
++    metadata['unique_identities'] = len(ids)
++    (output / 'metadata.json').write_text(canonical(metadata) + '\n')
++    return metadata
++
++
++def load_variant(directory, n_facts, split):
++    """Verify pinned metadata, split bytes, identities and counts before use."""
++    if split not in ('train', 'calibration', 'dev'):
++        raise ValueError('only train/calibration/dev are released')
++    pinned = METADATA_SHA256.get(n_facts)
++    directory = Path(directory)
++    if pinned is None or file_digest(directory / 'metadata.json') != pinned:
++        raise ValueError(f'E={n_facts} metadata is not the pinned release')
++    metadata = json.loads((directory / 'metadata.json').read_text())
++    entry = metadata['splits'][split]
++    if metadata['version'] != version(n_facts) or metadata['n_facts'] != n_facts:
++        raise ValueError('variant version mismatch')
++    payload = (directory / f'{split}.jsonl').read_bytes()
++    if hashlib.sha256(payload).hexdigest() != entry['sha256']:
++        raise ValueError(f'{split} data hash mismatch')
++    rows = [json.loads(line) for line in payload.splitlines() if line.strip()]
++    if len(rows) != entry['count'] or len({r['episode_id'] for r in rows}) != len(rows):
++        raise ValueError('data split/count mismatch')
++    for row in rows:
++        ident = row['identity']
++        if (ident['split'] != split or ident['generator_version'] != version(n_facts)
++                or len(row['facts']) != n_facts or ident['phase'] != 'V2R'):
++            raise ValueError('row is not a released E-0014 variant row')
++    return metadata, rows
+diff --git a/src/v2r_default_regression.py b/src/v2r_default_regression.py
+new file mode 100644
+index 0000000..e594bc9
+--- /dev/null
++++ b/src/v2r_default_regression.py
+@@ -0,0 +1,132 @@
++"""E-0014 default-off regression: V2 computations under two code trees must agree.
++
++`dump --src DIR` imports the V2 modules from DIR (only APIs that existed before
++E-0014) and saves losses, logits, gradients, four optimizer steps of the formal
++train() and evaluation logits for every control. `compare` checks two dumps for
++exact equality. Run both in one PBS allocation; never on a login node.
++"""
++import argparse
++import json
++from pathlib import Path
++import sys
++import tempfile
++
++ARMS = (('direct_hidden', 'soft_slot', 'F_out'), ('direct_hidden', 'kernel_matrix', 'F_out'),
++        ('qknorm_pre_rope', 'soft_slot', 'C_up'))
++
++
++def dump(src, data_dir, output):
++    sys.path.insert(0, str(Path(src).resolve()))
++    import torch
++    from transformers import AutoTokenizer
++    from calibrate import MODEL, REVISION, load_base
++    from v2_memory import CONTROLS, collate, config, evaluate_batch, train_forward
++    from v2_schedule import load_data, make_schedule
++    import v2_train
++    assert Path(v2_train.__file__).resolve().parent == Path(src).resolve()
++    rows = load_data(Path(data_dir) / 'train.jsonl', 'train')
++    dev = load_data(Path(data_dir) / 'dev.jsonl', 'dev')[:16]
++    schedule = make_schedule(rows, 4_000_000)
++    schedule['batches'] = schedule['batches'][:4]
++    schedule['steps'], schedule['warmup_steps'] = 4, 1
++    schedule['tokens'] = sum(len(rows[i]['support_input_ids']) + len(rows[i]['question_input_ids'])
++                             for b in schedule['batches'] for i in b)
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    pad = tok.pad_token_id
++    base = load_base()
++    result = {}
++    for arm in ARMS:
++        key = '.'.join(arm)
++        with v2_train.adapted(base, cfg=config(*arm)) as model:
++            side = model.adapters()[14].side
++            out = {'init': {n: p.detach().cpu().clone() for n, p in side.named_parameters()}}
++            model.train()
++            model.model.eval()
++            batch = collate([rows[i] for i in schedule['batches'][0]], pad, 'cuda')
++            loss, logits, _, _ = train_forward(model, batch)
++            loss.backward()
++            out['loss'] = loss.detach().cpu()
++            out['logits'] = logits.detach().cpu()
++            out['grads'] = {n: p.grad.detach().cpu().clone() for n, p in side.named_parameters()}
++            model.zero_grad(set_to_none=True)
++            with tempfile.TemporaryDirectory() as tmp:
++                train = v2_train.train(model, rows, schedule, pad, 3e-3, 8, Path(tmp), dev[:4], 0)
++                history = [json.loads(x) for x in (Path(tmp) / 'train.jsonl').read_text().splitlines()]
++            out['history'] = [{k: h[k] for k in ('step', 'tokens', 'loss', 'lr', 'gradient_norm')} for h in history]
++            out['train'] = {k: train[k] for k in ('steps', 'tokens', 'trainable_parameters',
++                                                    'parameter_names_with_nonzero_gradient')}
++            out['trained'] = {n: p.detach().cpu().clone() for n, p in side.named_parameters()}
++            model.eval()
++            dev_batch = collate(dev, pad, 'cuda')
++            donors = collate(dev[-1:] + dev[:-1], pad, 'cuda')
++            out['eval'] = {}
++            with torch.no_grad():
++                for mode in CONTROLS:
++                    details, eval_logits = evaluate_batch(model, dev_batch, mode,
++                                                          **({'donor_batch': donors} if mode == 'shuffled' else {}))
++                    out['eval'][mode] = {'logits': eval_logits.cpu(),
++                                         'details': {k: v for k, v in details.items()
++                                                     if not k.startswith('_') and isinstance(v, (int, float))}}
++        result[key] = out
++    torch.save(result, output)
++
++
++def compare(paths, output):
++    import torch
++    a, b = (torch.load(p, weights_only=False) for p in paths)
++    report, ok = {}, True
++
++    def walk(x, y, path):
++        nonlocal ok
++        if isinstance(x, dict):
++            if set(x) != set(y):
++                # New code may add diagnostics; old keys must all exist and agree.
++                missing = set(x) - set(y)
++                if missing:
++                    report[path + '.missing'] = sorted(missing)
++                    ok = False
++            for k in x:
++                if k in y:
++                    walk(x[k], y[k], f'{path}.{k}')
++        elif isinstance(x, list):
++            if len(x) != len(y):
++                report[path] = 'length'
++                ok = False
++            for i, (u, v) in enumerate(zip(x, y)):
++                walk(u, v, f'{path}[{i}]')
++        elif isinstance(x, torch.Tensor):
++            same = x.shape == y.shape and torch.equal(x, y)
++            if not same:
++                ok = False
++                report[path] = float((x.float() - y.float()).abs().max()) if x.shape == y.shape else 'shape'
++        elif x != y and not (isinstance(x, float) and x != x and y != y):
++            ok = False
++            report[path] = [x, y]
++
++    walk(a, b, 'dump')
++    summary = {'identical': ok, 'differences': report, 'reference': str(paths[0]), 'candidate': str(paths[1])}
++    Path(output).write_text(json.dumps(summary, indent=2) + '\n')
++    print(json.dumps(summary, indent=2))
++    return ok
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    sub = parser.add_subparsers(dest='command', required=True)
++    d = sub.add_parser('dump')
++    d.add_argument('--src', required=True)
++    d.add_argument('--data-dir', required=True)
++    d.add_argument('--output', required=True)
++    c = sub.add_parser('compare')
++    c.add_argument('reference')
++    c.add_argument('candidate')
++    c.add_argument('--output', required=True)
++    args = parser.parse_args()
++    if args.command == 'dump':
++        dump(args.src, args.data_dir, args.output)
++        return 0
++    return 0 if compare((args.reference, args.candidate), args.output) else 1
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/src/v2r_prepare.py b/src/v2r_prepare.py
+new file mode 100644
+index 0000000..56926e8
+--- /dev/null
++++ b/src/v2r_prepare.py
+@@ -0,0 +1,53 @@
++"""PBS entry point: E-0014 variant data invariant tests and deterministic generation."""
++import argparse
++import json
++import os
++from pathlib import Path
++import time
++
++import pytest
++from transformers import AutoTokenizer
++
++from v2r_data import MODEL, REVISION, VARIANTS, file_digest, generate_dataset
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--v2-data-dir', type=Path, required=True)
++    parser.add_argument('--full', action='store_true')
++    args = parser.parse_args()
++    args.output.mkdir(parents=True, exist_ok=True)
++    start = time.monotonic()
++    code = pytest.main(['-v', '-p', 'no:cacheprovider', '--basetemp=' + str(args.output / 'tmp'),
++                        '--junitxml=' + str(args.output / 'checks.xml'),
++                        str(Path(__file__).with_name('test_v2r_data.py'))])
++    if code:
++        raise RuntimeError('E-0014 data invariant tests failed')
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    sizes = None if args.full else {'train': 64, 'calibration': 16, 'dev': 16, 'confirmation': 16}
++    metrics, artifacts = {'pytest.exit_code': int(code), 'full': args.full}, ['checks.xml']
++    for n_facts in VARIANTS:
++        tick = time.monotonic()
++        directory = args.output / f'e{n_facts}'
++        metadata = generate_dataset(tok, directory, n_facts, v2_data_dir=args.v2_data_dir, sizes=sizes)
++        metrics[f'e{n_facts}'] = {
++            'generation_s': time.monotonic() - tick,
++            'metadata_sha256': file_digest(directory / 'metadata.json'),
++            'unique_identities': metadata['unique_identities'],
++            'prior_dev_em': metadata['prior']['dev_em'],
++            **{f'{split}.{key}': metadata['splits'][split][key] for split in ('train', 'calibration', 'dev')
++               for key in ('sha256', 'unique_contents', 'repeated_content_rows', 'rows_redrawn', 'input_tokens')}}
++        artifacts += [f'e{n_facts}/{name}' for name in ('metadata.json', 'name_pools.json', 'train.jsonl',
++                                                       'calibration.jsonl', 'dev.jsonl', 'confirmation.registry.jsonl')]
++    metrics['elapsed_s'] = time.monotonic() - start
++    (args.output / 'metrics.json').write_text(json.dumps(metrics, indent=2) + '\n')
++    manifest = {'status': 'complete', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'), 'metrics': metrics,
++                'artifacts': [{'path': str((args.output / f).resolve()), 'role': f} for f in artifacts + ['metrics.json']],
++                'validator': {'name': 'v2r_prepare', 'passed': True}}
++    (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
++    print(json.dumps(metrics, indent=2), flush=True)
++
++
++if __name__ == '__main__':
++    main()
