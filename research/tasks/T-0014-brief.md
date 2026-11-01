@@ -12,7 +12,7 @@
 
 ## 规格
 
-以封存的契约 `research/experiments/E-0013.md`（E-0013@1）为准，本节只是摘要。契约若因结论审核 RV-0031 修订，协调者会通知你。
+以封存的契约 `research/experiments/E-0013.md`（E-0013@2，按 RV-0031 修订）为准，本节只是摘要。报告须写明：区间只反映给定三个训练 seed 时的数据不确定性；+1 pp 与每任务 −1 pp 是点估计门槛；次要比较的原始 95% 区间不是 Holm 调整后的同时区间。
 
 - 封存：
   - 在登录节点下载到 `data/v5-sealed/`（只允许下载与计算哈希，其他工作负载走 PBS）。
@@ -48,7 +48,7 @@
   - WikiText 分块（用玩具 tokenizer）。
   测试与演练都走 PBS。
 - 演练：分析脚本在 dev 预测上完整跑一遍。
-  - T-0013 的 dev 预测届时还没有的话，用 V1 E-0003 的 dev 预测：F_out 为 ATT-0024-1，C_up 为 ATT-0027-1，LoRA28 r2 见 `rl run show E-0003`。
+  - T-0013 的 dev 预测届时还没有的话，用 V1 E-0003 的 dev 预测，attempt 与 arm 的对应以 `rl run show E-0003` 的记录为准。
   - 把 seed 0 的预测复制成三份充当三个 seed，只用于检验流程，不是证据。
   - 同时在 Base 上测一次 WikiText NLL 与耗时，用来估计开封作业的 walltime。
 

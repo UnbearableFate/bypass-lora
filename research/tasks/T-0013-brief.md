@@ -6,7 +6,7 @@
 
 ## 规格
 
-以封存的契约 `research/experiments/E-0013.md`（E-0013@1）为准，本节只是摘要。契约若因结论审核 RV-0031 修订，协调者会通知你；在 LR 校准之前先确认契约版本。
+以封存的契约 `research/experiments/E-0013.md`（E-0013@2，按 RV-0031 修订）为准，本节只是摘要。
 
 - Arms（4 层为 [6,13,20,27]）：
   - V5-C：C_up，tokenwise SiLU，r32，4 层，524,288 参数。
@@ -20,15 +20,15 @@
   - 初始化：新参数初始化前调用 torch.manual_seed(derive_seed(20261029, "concat_loop_v2", "V5", "init", s))。
   - 同一 seed 下三个 arm 的顺序与初始化种子相同。记录每个 run 的 order SHA256。
 - Schedule：
-  - 正好 3 epochs，约 29,165 步、约 4.46M 非 padding 输入 tokens；记录实际步数与 tokens。
-  - 有效 batch 2、microbatch 1，每步 CE 之和除以监督 token 数。
+  - 正好 3 epochs，沿用 V1 的 plan_batches（未满的 batch 跨 epoch 边界延续，只在上限处补出最后一个），29,165 步、约 4.46M 非 padding 输入 tokens；记录实际步数与 tokens。
+  - 有效 batch 2、microbatch 1；训练目标同 V1（MSG-0025 的更正）：每个样本先对监督 token 的 CE 取平均，再在一步的样本间平均，复用 `example_mean_objective`；不用 token 加权。
   - AdamW（0.9/0.999、eps 1e-8、weight decay 0.01），梯度裁剪 1.0，前 5% 步 warmup，之后 cosine 降到 0。
-  - 只用最终 checkpoint。每个 epoch 末评估 dev，只作监控。
+  - 只用最终 checkpoint。dev 监控在消耗每个 epoch 最后一个样本的那一步之后进行（预计第 9,722、19,443、29,165 步），只作监控。
   - 保存后重新加载到新的 Base 上，重复 dev 评估，逐例分数与预测须完全一致。Base 重复评估一次，测同设备噪声。
 - LR 校准：
   - 每个 arm 用 seed 0 跑 0.2M tokens（schedule 形状同上，按本 run 的步数计算），网格为 {1e-4, 3e-4, 1e-3}。
-  - 最优值为 1e-3 时追加 3e-3；为 1e-4 时追加 3e-5；每端只扩一次。
-  - 指标为 calibration NLL（V1 定义，两任务 NLL 的平均）。若有更小的 LR 与最优值的相对差在 1% 以内，取其中最小的。非有限值的候选淘汰。
+  - 按初始网格中有限值的原始最小 NLL 决定扩展：最小值在 1e-3 时追加 3e-3，在 1e-4 时追加 3e-5；每端只扩一次。
+  - 指标为 calibration NLL（V1 定义，两任务 NLL 的平均）。非有限值的候选淘汰。在最终的有限候选集中，取满足 (NLL − 最小 NLL)/最小 NLL ≤ 0.01 的最小 LR。
   - 把选择表与锁定配置提交为文件（如 `research/artifacts/T-0013/lr-lock.json`），然后再开始 seed 1–3 的训练。
 - dev 预测：每个 run 保存最终 dev 的逐例预测 JSONL，字段同 V1 的 `evaluate`（task、split、id、gold、prediction、scores、gold_nll_sum、gold_loss_tokens），T-0014 会用它做分析演练。
 - 成本：
