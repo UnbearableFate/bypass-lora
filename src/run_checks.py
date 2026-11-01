@@ -22,7 +22,8 @@ results = Results()
 start = time.monotonic()
 code = pytest.main(['-v','-p','no:cacheprovider', '--junitxml='+str(out/'checks.xml'),
                     '--basetemp='+str(out/'tmp'), str(Path(__file__).parent/'test_core.py'),
-                    str(Path(__file__).parent/'test_model.py')], plugins=[results])
+                    str(Path(__file__).parent/'test_model.py'),
+                    *sys.argv[2:]], plugins=[results])
 results.metrics['elapsed_s'] = time.monotonic()-start
 results.metrics['pytest.exit_code'] = int(code)
 (out/'manifest.json').write_text(json.dumps({

@@ -152,7 +152,7 @@ class SideBranch(nn.Module):
                                   read=valid if phase != 'support' else torch.zeros_like(valid),
                                   steps=cfg.steps, mode=cfg.mode, update=cfg.update,
                                   readout=cfg.readout, backend=cfg.backend)
-        if phase == 'support' and cfg.backend != 'kernel_matrix' and (result.state.counts > cfg.slot_capacity).any():
+        if phase == 'support' and (result.state.counts > cfg.slot_capacity).any():
             raise ValueError('support slot capacity exceeded')
         return result.outputs, result.state, result.accounting
 
