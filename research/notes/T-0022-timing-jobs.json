@@ -1,7 +1,7 @@
 {
   "task": "T-0022",
   "experiment": "E-0019@1",
-  "source_head": "b4229ed05a753f44056a3d3ec0bb79b752d7cca0",
+  "source_head": "1b607ae5b21f46b34fc46be6f1ab24317ce2ace3",
   "probe": {
     "attempt": "ATT-0188-1",
     "result": "RES-0183",
@@ -9,12 +9,15 @@
     "all_required_gates_passed": true,
     "used_MIG_seconds": 221
   },
-  "completed_usage_MIG_seconds": 457,
-  "completed_usage_node_h": 0.03173611111111111,
-  "usage_note": "Two timing jobs still pending;usage unknown,not zero.",
+  "completed_usage_MIG_seconds": 1756,
+  "completed_usage_node_h": 0.12194444444444444,
+  "usage_note": "All seven attempts ended and exact PBS walltime usage was imported once per accounting reference;includes one-second PBS tabulation job.",
   "runs": [
     {
       "attempt": "ATT-0189-1",
+      "result": "RES-0185",
+      "status": "complete",
+      "used_MIG_seconds": 868,
       "job_id": "3768185.opbs",
       "code_commit": "f493cec9bd36798a6706592f7d5f248dc45b1558",
       "spec_digest": "blake2b:264fd1030f9e8b31c88788afed95d2af20915d1907149480053f1589c89f8d4f",
@@ -30,6 +33,9 @@
     },
     {
       "attempt": "ATT-0191-1",
+      "result": "RES-0186",
+      "status": "complete",
+      "used_MIG_seconds": 430,
       "job_id": "3768226.opbs",
       "code_commit": "b4229ed05a753f44056a3d3ec0bb79b752d7cca0",
       "spec_digest": "blake2b:c859834b5f8d11720b73c1f1ae6323b346e6b69f89ddf01fa7fe116da5f5a744",
@@ -44,6 +50,16 @@
       "scope": "11additional RB5width/depth/full-LoRA diagnostic cost layouts"
     }
   ],
+  "aggregation": {
+    "attempt": "ATT-0193-1",
+    "result": "RES-0188",
+    "job_id": "3768635.opbs",
+    "code_commit": "1b607ae5b21f46b34fc46be6f1ab24317ce2ace3",
+    "status": "complete",
+    "used_MIG_seconds": 1,
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0193-1",
+    "validator_passed": true
+  },
   "decisions": [
     "D-0025",
     "D-0026",

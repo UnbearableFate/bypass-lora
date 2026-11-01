@@ -111,3 +111,14 @@ estimated. Main RB0 full-dev timing will anchor their32row/task eval estimates.
 Estimated extra runtime about450s/request675s,using startup0.21-0.24s/step,
 historical full-LoRA0.38-0.41s/step and dev sample costs. Expected totalT0022
 remains about0.13node_h versus ceiling1.0;use measured scheduler time for billing.
+
+Completed timing:ATT0189/PBS3768185/RES0185 (868MIGseconds) and
+ATT0191/PBS3768226/RES0186 (430MIGseconds),both complete with verified2g timing
+guard. ATT0193/PBS3768635/RES0188 validated and combined the artifacts in PBS
+(1MIGsecond). All21cases have100stable steps;seven latency cases contain896
+decode samples. Slowest prefix layout0.2438990201s/step;RB1 core forecast
+2.443961088node_h,excluding future frozen interventions/analysis/planning.
+No trigger exceeded within that scope. Total measuredT0022 usage is1756MIGseconds
+=0.1219444444node_h,imported once per attempt. See T-0022-review-package.md and
+T-0022-cost-tables.md for exact evidence,conditional estimates and limitations.
+The required independent code review precedes any formal RB training/release.
