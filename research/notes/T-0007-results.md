@@ -1,7 +1,7 @@
 # T-0007: Base F difficulty diagnostic
 
 Status: full diagnostic and authorized FP32 follow-up complete; independent review
-pending. All workloads ran in PBS on GH200 MIG (mg1098), with allocation guards;
+RV-0013 passed with zero findings. All workloads ran in PBS on GH200 MIG (mg1098), with allocation guards;
 login node miyabi-g2 was used for control work only. No training, dev reevaluation,
 or confirmation reading. H-0003 remains untested by this diagnostic.
 
@@ -80,8 +80,8 @@ possible numerical source. No causal claim about a particular CUDA kernel.
 | ATT-0051-1 | RES-0043 / EV-0039 | FP32 control256; saved12288-record aggregate audit | 36s | 0.010000 |
 
 Total475 measured MIG-seconds = **0.032986 node-h**, below0.05. ATT0051 measured
-36s is from qstat history; final ledger export may lag and is imported separately.
-All earlier final ledger usage is imported exactly once. Application full run
+36s is confirmed by qstat history and the final ledger export (U-0056).
+All six final ledger usages are imported exactly once. Application full run
 320.811s; FP32 probe23.107s. Test durations155 tests46.759s and13 tests7.74s.
 
 Code: inference commit073b1ac86b4ead5b614e5f22104ef05cc85b0ce0; report and FP32
@@ -96,6 +96,13 @@ records the original strict gate; the FP32 follow-up above explains the later
 interpretation. Empty category keys in the displayed counts mean zero. All
 probabilities and ranks are full vocabulary; ranks use competition ties and
 categories prioritize correctness before subject copying. See T-0007-method.md.
+
+RV-0013 reviewed source and saved evidence, verified executed snapshot matches,
+and inspected the baseline tests, focused tests, aggregate audit, FP32 control,
+and all six costs. No unresolved findings. The reviewer did not rerun inference
+or every aggregate, inspect every raw row, or test FP32 candidate accuracy or
+all2048 examples in FP32. The review passes implementation/reporting scope;
+it does not retroactively pass the original BF16 gate or establish H-0003.
 
 ## Full calibration results (ATT-0050-1)
 
