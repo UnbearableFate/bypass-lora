@@ -1,0 +1,134 @@
+[
+  {
+    "record_id": "T0024:ATT-0198-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0198-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0199-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0199-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0200-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0200-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0201-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0201-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0202-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0202-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0203-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0203-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0204-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0204-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0205-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0205-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0206-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0206-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0207-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0207-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0208-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0208-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  },
+  {
+    "record_id": "T0024:ATT-0209-1:withdrawn-before-submission",
+    "attempt_id": "ATT-0209-1",
+    "source": "researcher-control",
+    "observed_at": "2026-11-01T19:00:56+00:00",
+    "execution_state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "unsubmitted prepared registration withdrawn: inaccurate metric description",
+    "source_ref": "research/notes/T-0024-registration-correction.md",
+    "note": "No executor call or workload. Immutable RunSpec contained imprecise per-example wording; replace with exact token-normalized V1 calibration metric. No source/spec behavior change; zero compute consumed."
+  }
+]
