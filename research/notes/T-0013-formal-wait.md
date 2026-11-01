@@ -1,5 +1,9 @@
 # T-0013: nine formal training runs in progress
 
+Historical full-nine handoff. **Current continuation is T-0013-main-wait.md**.
+Six C/F runs are imported;only three LoRA runs remain. D0018/D0019 supersede
+all slice-sensitivity work;do not execute the unused sensitivity helper.
+
 Current continuation. Task owned by researcher-2,not delivered. Coordinator owns
 waiting and scientific conclusions. Official validation remains sealed/untouched.
 

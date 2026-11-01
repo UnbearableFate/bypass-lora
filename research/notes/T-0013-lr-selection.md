@@ -1,5 +1,9 @@
 # V5 LR selection locked before seeds1–3
 
+Current policy D0018/D0019:the original lock is final,with no slice-sensitivity
+caveat. The later two completed calibration repeats are plain diagnostics only;
+no actual slice comparison or all-2g lock is run. Nothing below is replaced.
+
 E-0013@3. Twelve finite calibration runs used seed0,identical1101 optimizer
 steps/2202 presentations/200103 nonpadding input tokens and the locked V1
 calibration split. There was no dev or official-validation selection.

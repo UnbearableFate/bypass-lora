@@ -1,0 +1,68 @@
+{
+  "task": "T-0013",
+  "policy_decisions": [
+    "D-0018",
+    "D-0019"
+  ],
+  "formal_code_commit": "2b5c809f6101b5ba132d5565ebbf73ef91e105da",
+  "formal_lr_lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/2b5c809f6101b5ba132d5565ebbf73ef91e105da/research/artifacts/T-0013/lr-lock.json",
+    "sha256": "70ba5356203afc128cbf3e4c14a7b4474ece54a55d28b8401b852d957069e01a",
+    "bytes": 2859
+  },
+  "completed_formal": [
+    {
+      "attempt": "ATT-0129-1",
+      "result": "RES-0147"
+    },
+    {
+      "attempt": "ATT-0130-1",
+      "result": "RES-0148"
+    },
+    {
+      "attempt": "ATT-0131-1",
+      "result": "RES-0149"
+    },
+    {
+      "attempt": "ATT-0132-1",
+      "result": "RES-0150"
+    },
+    {
+      "attempt": "ATT-0133-1",
+      "result": "RES-0151"
+    },
+    {
+      "attempt": "ATT-0134-1",
+      "result": "RES-0152"
+    }
+  ],
+  "pending_formal": [
+    "ATT-0135-1",
+    "ATT-0136-1",
+    "ATT-0137-1"
+  ],
+  "plain_diagnostics": [
+    {
+      "attempt": "ATT-0103-2",
+      "result": "RES-0144"
+    },
+    {
+      "attempt": "ATT-0107-2",
+      "result": "RES-0145"
+    },
+    {
+      "attempt": "ATT-0157-1",
+      "result": "RES-0146"
+    }
+  ],
+  "slice_comparison_canceled": true,
+  "actual_slice_comparison_executed": false,
+  "all_2g_lock_executed": false,
+  "original_lock_final": true,
+  "notification": "N-20261101-211800-4e24",
+  "formal_completed_MIG_seconds": 36130,
+  "other_completed_T0013_MIG_seconds": 10147,
+  "known_completed_MIG_seconds": 46277,
+  "known_completed_node_h": 3.2136805555555554,
+  "usage_note": "Three LoRA runs still pending;their unreported usage is not zero. Completed observations/usage above already imported once."
+}
