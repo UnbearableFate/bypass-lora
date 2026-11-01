@@ -1,0 +1,978 @@
+diff --git a/research/notes/T-0007-method.md b/research/notes/T-0007-method.md
+new file mode 100644
+index 0000000..35daade
+--- /dev/null
++++ b/research/notes/T-0007-method.md
+@@ -0,0 +1,41 @@
++# T-0007 E-0007@2 diagnostic implementation
++
++Post-merge baseline: ATT-0046-1 / RES-0038 / EV-0035, commit
++3ccde7d9dfe595bf5bbcf88b55c597be10f5a210: 155 passed, no skips/failures,
++46.759s pytest, 49s PBS, 0.013611 MIG-h = 0.00340275 node-h.
++
++Explicit split parameter in v2_eval defaults to dev. Only dev and calibration
++are allowed, and every row must match the requested split; confirmation always
++fails. No identity relabeling. Diagnostic entry reads and checks only the locked
++calibration file (2048 unique IDs). Original evaluate runs at batch 1 and batch 8
++on calibration; diagnostic E16 batch 8 is checked against the original results.
++
++Subsets use derive_seed(20261029, 'concat_loop_v2', 'V2', 'diag-fact-subset'), then
++an episode-ID-derived random permutation of distractors. Prefixes of that
++permutation yield nested E=1,2,4,8,16 views; all retain the target and preserve
++source relative order. Source identities remain unchanged and source fact indices
++are recorded. Rendering repeats the exact literal template in make_episode
++(which has no standalone renderer); E16 equality with original text and tokens
++is checked on every row. Token boundary checks use the shared prompt_tokens.
++
++Rank is competition rank 1 + number of strictly greater logits, with tie count
++reported. Top-5 and candidate argmax break ties by ascending token ID. Category
++priority: correct, subject, same-relation tail, other tail, other head, other name,
++non-name. The name universe is all eligible entries in v2_data.CANDIDATES, including
++both seen and unseen pools; it is not an open-ended linguistic name classifier.
++Subject copy is separately measured, including correct self edges. Conditional
++and unconditional candidate scores, coverage, empties, nonempty random baseline,
++and attainable random baseline follow E-0007@2. E1 candidate b is not interpreted;
++nonself E1 candidate a is reported as the two-choice control. Synthetic frequency
++strata denote generator sampling weights, not pretraining frequencies.
++
++Five examples are fixed to the first five calibration identities with E=1,16,1,16,16,
++independent of their scores. Output examples.md is copied into final notes.
++No training, dev inference, confirmation reads, or H-0003 inference.
++
++Smoke ATT-0047-1 passed 13 tests but stopped on the strict original-path check.
++ATT-0048-1 independently confirmed that moving the identical logits to CPU before
++CE changes its reduction result: first M batch max difference 0.00006485;
++smoke M/F max differences 0.00007248/0.00006962, zero top-1 differences. Fixed
++by computing score_logits on the original CUDA batch before transferring logits
++for diagnostic summaries. No tolerance, metric, protocol, or data change.
+diff --git a/research/notes/T-0007-results.md b/research/notes/T-0007-results.md
+new file mode 100644
+index 0000000..d6d6768
+--- /dev/null
++++ b/research/notes/T-0007-results.md
+@@ -0,0 +1,287 @@
++# T-0007: Base F difficulty diagnostic
++
++Status: full diagnostic and authorized FP32 follow-up complete; independent review
++pending. All workloads ran in PBS on GH200 MIG (mg1098), with allocation guards;
++login node miyabi-g2 was used for control work only. No training, dev reevaluation,
++or confirmation reading. H-0003 remains untested by this diagnostic.
++
++## Outcome and evidence limits
++
++E-0007@2's original implementation gate **failed** on exactly one condition:
++F batch1/batch8 per-example NLL mean absolute difference 0.088144 > 0.05.
++This remains in ATT-0050-1/metrics.json; it was not retroactively changed to pass.
++The requested first action—investigate implementation—was performed under
++coordinator MSG-0135, an additional diagnostic selected after seeing this failure.
++
++The first 256 calibration episodes loaded as true FP32 (all parameters asserted
++FP32, eager attention, TF32 disabled, highest matmul precision) give M/F batch
++NLL mean absolute differences 0.000003979/0.000009557 and 100% top-1 agreement.
++On those same 256 episodes the saved BF16 differences were 0.013251/0.102523,
++with 98.8281%/98.4375% top-1 agreement. This supports BF16 numerical sensitivity
++rather than a scoring/masking error in the tested path; it is not a proof that
++all model/evaluator behaviors are error-free. No thresholds or BF16 results were
++changed, and the FP32 follow-up is explicitly post-result diagnostic evidence.
++
++Under MSG-0135's follow-up rule, the E16 retrieval-weak branch applies:
++F candidate-b unconditional accuracy is **14.2090%**, below 50%, though above its
++3.6703% attainable random baseline. F candidate-b falls from 62.5% at E2 to
++32.13%/18.31%/14.21% at E4/E8/E16. E1 b is degenerate and not interpreted.
++E1 nonself two-choice candidate-a accuracy is 69.3221% (random 50%); full-vocabulary
++nonself EM is 66.5512%. E16 nonself EM is 0.2969%. Thus E16 combines weak retrieval
++with strong subject copying; the evidence does not justify claiming the correct
++entity is reliably found but merely hidden by the full-vocabulary argmax.
++
++Design implication for coordinator review: retain the generator and include a
++trained F positive control in any later V2 contract; the E curve is diagnostic
++design context, not authorization for V2 training. V2 release remains the user's
++decision. These results neither support nor challenge learned-memory H-0003.
++
++## Original path consistency
++
++| Line | Batch1 EM | Batch8 EM | Batch1 mean NLL | Batch8 mean NLL | Top1 agreement | NLL mean absolute difference |
++|---|---:|---:|---:|---:|---:|---:|
++| M | 0.008301 | 0.008301 | 9.231220 | 9.233152 | 0.994629 | 0.016228 |
++| F | 0.014160 | 0.014160 | 5.582497 | 5.579768 | 0.992676 | 0.088144 |
++
++Both top-1 agreements pass 99%; M NLL passes 0.05. E1 F NLL1.421515 < M9.233152
++passes. Diagnostic E16 batch8 predictions and NLL match original evaluate exactly
++for every episode in both lines. Calibration M/F EM remains near E-0005's dev
++1.1%/1.3% (that dev result is historical; no dev file was read here).
++
++F individual NLL carries about 0.09 BF16 batch noise in this comparison. Aggregate
++EM is identical across the tested batch sizes; F mean NLL differs by only 0.002730,
++M by 0.001932. This is evidence of stable aggregates here, not a guarantee that
++batching can never affect an aggregate or a trained model.
++
++## BF16 padding and length association
++
++Full2048 F Pearson correlation of absolute NLL change with padding tokens is
+++0.224027, with prompt length -0.216547. All347 unpadded F examples have zero
++change. Padding1–7 tokens has group mean changes 0.10985,0.10542,0.10961,0.10048,
++0.11655,0.10764,0.09534; padding8–11 gives 0.06347,0.13149,0.08832,0.12183
++with only63/24/8/5 examples. The relation is not monotonic and is descriptive,
++not a causal estimate. Shorter F prompts typically receive more padding.
++Examples with lengths82/83/84 have mean changes0.10375/0.10353/0.09595;
++lengths87/88/89 have0.03068/0.02302/0.00614; lengths90/91 have zero.
++Exact counts and all length/padding groups are in ATT-0051-1/precision.json.
++All M prompts are7 tokens and unpadded, so both M correlations are undefined;
++its nonzero0.016228 batch difference also shows padding alone is not the only
++possible numerical source. No causal claim about a particular CUDA kernel.
++
++## Validation and resources
++
++| Attempt | Result / Evidence | Check | PBS time | MIG-h |
++|---|---|---|---:|---:|
++| ATT-0046-1 | RES-0038 / EV-0035 | Post-merge155 tests pass | 49s | 0.013611 |
++| ATT-0047-1 | RES-0039 partial / EV-0036 | 13 tests pass; strict original-path check detects CPU/CUDA CE difference | 25s | 0.006944 |
++| ATT-0048-1 | RES-0040 / EV-0036 | Identical-logit CPU/CUDA audit | 10s | 0.002778 |
++| ATT-0049-1 | RES-0041 / EV-0037 | Fixed13 tests pass; smoke32 complete | 24s | 0.006667 |
++| ATT-0050-1 | RES-0042 / EV-0038 | Full2048; six diagnostic groups | 331s | 0.091944 |
++| ATT-0051-1 | RES-0043 / EV-0039 | FP32 control256; saved12288-record aggregate audit | 36s | 0.010000 |
++
++Total475 measured MIG-seconds = **0.032986 node-h**, below0.05. ATT0051 measured
++36s is from qstat history; final ledger export may lag and is imported separately.
++All earlier final ledger usage is imported exactly once. Application full run
++320.811s; FP32 probe23.107s. Test durations155 tests46.759s and13 tests7.74s.
++
++Code: inference commit073b1ac86b4ead5b614e5f22104ef05cc85b0ce0; report and FP32
++control commit34381e8410c6239051618d19e8a688d4ea70721a. Shared frozen environment
++3c916b51337d-cuda; Qwen3-0.6B-Base revision da87bfb608c14b7cf20ba1ce41287e8de496c0cd.
++Calibration SHA256 c08753365165216b5a9f4c3d629271b2183e1323973886256867e826c1712f18.
++The new split parameter defaults to dev, explicitly opts into calibration, and
++always rejects confirmation. No dependency or generator changes.
++
++Tables below are copied from PBS-produced ATT0051/report/tables.md. Its warning
++records the original strict gate; the FP32 follow-up above explains the later
++interpretation. Empty category keys in the displayed counts mean zero. All
++probabilities and ranks are full vocabulary; ranks use competition ties and
++categories prioritize correctness before subject copying. See T-0007-method.md.
++
++## Full calibration results (ATT-0050-1)
++
++All scores below use batch 8; failed implementation gate limits interpretation.
++
++| Line / E | n | EM | NLL | Subject copy | Nonself EM | Nonself copy | Candidate a | Candidate b | Candidate c |
++|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
++| M.E16 | 2048 | 0.008301 | 9.233152 | 0.762695 | 0.000000 | 0.764473 | 0.013184 | 0.044922 | 0.264160 |
++| F.E1 | 2048 | 0.669922 | 1.421515 | 0.292969 | 0.665512 | 0.283523 | 0.697266 | 0.986816 | 1.000000 |
++| F.E2 | 2048 | 0.069336 | 2.919480 | 0.906738 | 0.058387 | 0.906977 | 0.069336 | 0.625000 | 0.944336 |
++| F.E4 | 2048 | 0.021973 | 4.372667 | 0.946777 | 0.009896 | 0.947056 | 0.022949 | 0.321289 | 0.864746 |
++| F.E8 | 2048 | 0.013672 | 5.323531 | 0.962891 | 0.001484 | 0.963384 | 0.014160 | 0.183105 | 0.704590 |
++| F.E16 | 2048 | 0.014160 | 5.579768 | 0.959473 | 0.002969 | 0.960910 | 0.017578 | 0.142090 | 0.504883 |
++
++27/2048 episodes have answer = subject; nonself denominator is 2021.
++E1 nonself candidate-a two-choice accuracy: 0.6932211776348343
++E1 candidate-b is degenerate and is not interpreted.
++
++## Candidate denominators and random baselines
++
++| Line / E | Set | Accuracy | Coverage | Empty | Random nonempty | Random attainable | Conditional accuracy |
++|---|---|---:|---:|---:|---:|---:|---:|
++| M.E16 | a | 0.013184 | 1.000000 | 0.000000 | 0.035871 | 0.035871 | 0.013184 |
++| M.E16 | b | 0.044922 | 0.986816 | 0.000000 | 0.037211 | 0.036703 | 0.045522 |
++| M.E16 | c | 0.264160 | 1.000000 | 0.000000 | 0.256877 | 0.256877 | 0.264160 |
++| F.E1 | a | 0.697266 | 1.000000 | 0.000000 | 0.506592 | 0.506592 | 0.697266 |
++| F.E1 | b | 0.986816 | 0.986816 | 27.000000 | 1.000000 | 0.986816 | 1.000000 |
++| F.E1 | c | 1.000000 | 1.000000 | 0.000000 | 1.000000 | 1.000000 | 1.000000 |
++| F.E2 | a | 0.069336 | 1.000000 | 0.000000 | 0.254883 | 0.254883 | 0.069336 |
++| F.E2 | b | 0.625000 | 0.986816 | 0.000000 | 0.343424 | 0.336100 | 0.633350 |
++| F.E2 | c | 0.944336 | 1.000000 | 0.000000 | 0.898193 | 0.898193 | 0.944336 |
++| F.E4 | a | 0.022949 | 1.000000 | 0.000000 | 0.129622 | 0.129622 | 0.022949 |
++| F.E4 | b | 0.321289 | 0.986816 | 0.000000 | 0.149056 | 0.146737 | 0.325581 |
++| F.E4 | c | 0.864746 | 1.000000 | 0.000000 | 0.728760 | 0.728760 | 0.864746 |
++| F.E8 | a | 0.014160 | 1.000000 | 0.000000 | 0.067053 | 0.067053 | 0.014160 |
++| F.E8 | b | 0.183105 | 0.986816 | 0.000000 | 0.071896 | 0.070851 | 0.185552 |
++| F.E8 | c | 0.704590 | 1.000000 | 0.000000 | 0.487223 | 0.487223 | 0.704590 |
++| F.E16 | a | 0.017578 | 1.000000 | 0.000000 | 0.035871 | 0.035871 | 0.017578 |
++| F.E16 | b | 0.142090 | 0.986816 | 0.000000 | 0.037211 | 0.036703 | 0.143988 |
++| F.E16 | c | 0.504883 | 1.000000 | 0.000000 | 0.256877 | 0.256877 | 0.504883 |
++
++## Top-1 categories and score distributions
++
++### M.E16
++
++Category counts: {"question_subject": 1545, "non_name_token": 486, "correct": 17}
++
++| Quantity | Mean | Min | P25 | Median | P75 | P90 | P95 | P99 | Max |
++|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
++| answer_rank | 664.6978 | 1 | 174.75 | 389 | 826.5 | 1578.1 | 2281.55 | 3941.23 | 8164 |
++| answer_probability | 0.003678346 | 8.076278e-07 | 3.597611e-05 | 9.245523e-05 | 0.0002272409 | 0.0006131874 | 0.001094959 | 0.1709827 | 0.4874672 |
++| subject_probability | 0.301733 | 0.06389431 | 0.2149433 | 0.2889439 | 0.392656 | 0.4681621 | 0.5198781 | 0.6078118 | 0.675893 |
++
++### F.E16
++
++Category counts: {"question_subject": 1942, "non_name_token": 55, "correct": 29, "other_head": 17, "other_tail_same_relation": 3, "name_outside_support": 2}
++
++| Quantity | Mean | Min | P25 | Median | P75 | P90 | P95 | P99 | Max |
++|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
++| answer_rank | 40.95752 | 1 | 8 | 19 | 44 | 99 | 157.3 | 313.53 | 657 |
++| answer_probability | 0.01596048 | 1.800024e-05 | 0.001245867 | 0.003814147 | 0.01169427 | 0.03099178 | 0.05962872 | 0.2382674 | 0.8188052 |
++| subject_probability | 0.4797646 | 0.02605002 | 0.3212415 | 0.4871872 | 0.6447573 | 0.7585671 | 0.8163712 | 0.8946623 | 0.9380321 |
++
++## E16 F strata
++
++Position bins 0/1/2/3 mean indices 0–3/4–7/8–11/12–15.
++
++| Axis | Value | n | EM | NLL | Subject copy | Candidate a | Candidate b | Candidate c |
++|---|---|---:|---:|---:|---:|---:|---:|---:|
++| position_bin | 0 | 515 | 0.013592 | 5.189529 | 0.959223 | 0.021359 | 0.201942 | 0.570874 |
++| position_bin | 1 | 500 | 0.018000 | 5.844367 | 0.946000 | 0.020000 | 0.076000 | 0.424000 |
++| position_bin | 2 | 522 | 0.009579 | 5.942487 | 0.971264 | 0.011494 | 0.099617 | 0.425287 |
++| position_bin | 3 | 511 | 0.015656 | 5.343631 | 0.960861 | 0.017613 | 0.189824 | 0.598826 |
++| relation | emails | 520 | 0.021154 | 5.479278 | 0.961538 | 0.023077 | 0.138462 | 0.534615 |
++| relation | photographs | 528 | 0.007576 | 5.578248 | 0.956439 | 0.013258 | 0.132576 | 0.477273 |
++| relation | rescues | 530 | 0.015094 | 5.702212 | 0.979245 | 0.018868 | 0.133962 | 0.516981 |
++| relation | tutors | 470 | 0.012766 | 5.554581 | 0.938298 | 0.014894 | 0.165957 | 0.489362 |
++| support_order | natural | 1024 | 0.010742 | 5.618313 | 0.958984 | 0.014648 | 0.149414 | 0.496094 |
++| support_order | shuffled | 1024 | 0.017578 | 5.541222 | 0.959961 | 0.020508 | 0.134766 | 0.513672 |
++| answer_frequency_stratum | high | 1565 | 0.014058 | 5.624959 | 0.959744 | 0.018530 | 0.138019 | 0.501597 |
++| answer_frequency_stratum | low | 483 | 0.014493 | 5.433341 | 0.958592 | 0.014493 | 0.155280 | 0.515528 |
++
++## Five fixed calibration examples
++
++### Calibration index 0, E=1
++
++```text
++Ryan rescues George ;
++Who does Ryan rescue?
++Answer:
++```
++
++Answer: ' George'
++
++Top-5: [{"token_id": 9857, "text": " George", "probability": 0.2162175476551056}, {"token_id": 13646, "text": " Ryan", "probability": 0.14860400557518005}, {"token_id": 758, "text": " In", "probability": 0.13114257156848907}, {"token_id": 576, "text": " The", "probability": 0.048244658857584}, {"token_id": 3070, "text": " **", "probability": 0.029261862859129906}]
++
++### Calibration index 1, E=16
++
++```text
++Eric tutors Karen ;
++Kathleen rescues Tina ;
++Jonathan rescues Kathleen ;
++Kelly photographs Ethan ;
++Albert rescues Terry ;
++Victoria tutors Harry ;
++John photographs Paul ;
++Ruth emails William ;
++Shirley emails Angela ;
++Margaret emails Ralph ;
++Michael emails Gary ;
++Luke tutors Susan ;
++Jennifer photographs Angela ;
++Mason rescues Anthony ;
++Virginia photographs Lauren ;
++Charlotte tutors Oscar ;
++Who does Luke tutor?
++Answer:
++```
++
++Answer: ' Susan'
++
++Top-5: [{"token_id": 24453, "text": " Luke", "probability": 0.48943662643432617}, {"token_id": 2014, "text": " To", "probability": 0.05158624053001404}, {"token_id": 20205, "text": " Based", "probability": 0.04552470147609711}, {"token_id": 29650, "text": " Jennifer", "probability": 0.03128863498568535}, {"token_id": 576, "text": " The", "probability": 0.027612125501036644}]
++
++### Calibration index 2, E=1
++
++```text
++Dean rescues Patricia ;
++Who does Dean rescue?
++Answer:
++```
++
++Answer: ' Patricia'
++
++Top-5: [{"token_id": 53934, "text": " Patricia", "probability": 0.4520922601222992}, {"token_id": 758, "text": " In", "probability": 0.11430682241916656}, {"token_id": 24061, "text": " Dean", "probability": 0.05399472266435623}, {"token_id": 3070, "text": " **", "probability": 0.03274945542216301}, {"token_id": 576, "text": " The", "probability": 0.025505300611257553}]
++
++### Calibration index 3, E=16
++
++```text
++Julia tutors Dean ;
++Andrew emails Harry ;
++Jerry photographs Stephen ;
++Maria tutors Alan ;
++Kelly photographs Shirley ;
++Gary photographs Terry ;
++Elizabeth tutors David ;
++Sophia photographs Angela ;
++Lucas rescues Elizabeth ;
++Susan rescues Walter ;
++Nicole emails Joan ;
++James emails Joan ;
++Luke rescues Justin ;
++Ashley emails Kathleen ;
++Charlotte rescues Alan ;
++Shirley tutors William ;
++Who does Susan rescue?
++Answer:
++```
++
++Answer: ' Walter'
++
++Top-5: [{"token_id": 29933, "text": " Susan", "probability": 0.6859822273254395}, {"token_id": 2014, "text": " To", "probability": 0.02071486786007881}, {"token_id": 20205, "text": " Based", "probability": 0.02071486786007881}, {"token_id": 576, "text": " The", "probability": 0.01613275520503521}, {"token_id": 220, "text": " ", "probability": 0.014237106777727604}]
++
++### Calibration index 4, E=16
++
++```text
++Mason rescues Ethan ;
++Walter tutors Luke ;
++Michael photographs Marie ;
++Marilyn emails William ;
++Olivia emails Anthony ;
++Eva emails Eva ;
++Jerry photographs Patricia ;
++Luke rescues Justin ;
++Bob rescues Emily ;
++Virginia photographs Oscar ;
++Patrick rescues Caroline ;
++Susan tutors William ;
++Alan emails William ;
++Jennifer tutors Jordan ;
++Brian tutors Elizabeth ;
++Sarah photographs Richard ;
++Who does Virginia photograph?
++Answer:
++```
++
++Answer: ' Oscar'
++
++Top-5: [{"token_id": 12989, "text": " Virginia", "probability": 0.4634694457054138}, {"token_id": 576, "text": " The", "probability": 0.04884931817650795}, {"token_id": 11867, "text": " Richard", "probability": 0.03804389014840126}, {"token_id": 2014, "text": " To", "probability": 0.029628610238432884}, {"token_id": 20205, "text": " Based", "probability": 0.023074783384799957}]
++
+diff --git a/src/test_v2_base_diag.py b/src/test_v2_base_diag.py
+new file mode 100644
+index 0000000..279ca2c
+--- /dev/null
++++ b/src/test_v2_base_diag.py
+@@ -0,0 +1,119 @@
++"""E-0007 contract regression tests; run through PBS."""
++import copy
++
++import pytest
++import torch
++from transformers import AutoTokenizer
++
++from v2_data import MODEL, REVISION, encode, identity, make_episode, make_name_pools
++from v2_eval import prompt_tokens
++from v2_base_diag import (FACT_COUNTS, candidate_score, candidate_sets, category,
++                          describe, fact_view, summarize, token_names)
++
++
++@pytest.fixture(scope='module')
++def fixture():
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    pools = make_name_pools(tok)
++    rows = [make_episode(tok, pools, identity('calibration', i, support_order='shuffled' if i % 2 else 'natural')) for i in range(20)]
++    return tok, rows
++
++
++def test_explicit_split_and_confirmation_rejection(fixture):
++    tok, rows = fixture
++    row = rows[0]
++    with pytest.raises(ValueError, match='restricted'):
++        prompt_tokens(tok, row, 'F')
++    assert prompt_tokens(tok, row, 'F', split='calibration')
++    for actual in ('dev', 'calibration', 'confirmation'):
++        r = copy.deepcopy(row)
++        r['identity']['split'] = actual
++        for requested in ('dev', 'calibration', 'confirmation', 'train'):
++            if requested in ('dev', 'calibration') and actual == requested:
++                assert prompt_tokens(tok, r, 'M', split=requested) == r['question_input_ids']
++            else:
++                with pytest.raises(ValueError, match='restricted'):
++                    prompt_tokens(tok, r, 'M', split=requested)
++    r['identity']['split'] = 'dev'
++    assert prompt_tokens(tok, r, 'M') == r['question_input_ids']
++
++
++def test_subsets_render_order_target_boundary_and_no_mutation(fixture):
++    tok, rows = fixture
++    for row in rows:
++        before = copy.deepcopy(row)
++        previous = set()
++        for count in FACT_COUNTS:
++            view = fact_view(tok, row, count)
++            assert view == fact_view(tok, row, count)
++            chosen = view['diagnostic']['source_fact_indices']
++            assert chosen == sorted(chosen) and len(chosen) == count
++            assert previous.issubset(chosen)
++            previous = set(chosen)
++            assert row['query']['target_fact_index'] in chosen
++            fact = view['facts'][view['query']['target_fact_index']]
++            assert fact['head'] == row['query']['head']
++            assert ' ' + fact['tail'] == row['query']['answer_text']
++            ids = prompt_tokens(tok, view, 'F', split='calibration')
++            assert encode(tok, view['support_text'] + view['question_text'] + row['query']['answer_text']) == ids + [row['query']['answer_token_id']]
++            if count == 16:
++                assert view['support_text'] == row['support_text']
++                assert view['support_input_ids'] == row['support_input_ids']
++        assert before == row
++    broken = copy.deepcopy(rows[0])
++    broken['support_text'] += ' '
++    with pytest.raises(ValueError, match='rerender'):
++        fact_view(tok, broken, 16)
++
++
++def test_candidate_absent_truth_empty_and_ties():
++    logits = torch.tensor([1., 5., 5., 2.])
++    assert candidate_score(logits, [2, 1], 1)['prediction'] == 1
++    empty = candidate_score(logits, [], 1)
++    assert empty['prediction'] is None and not empty['correct']
++    assert empty['random_nonempty'] is None and empty['random_attainable'] == 0
++    absent = candidate_score(logits, [2, 3], 1)
++    assert not absent['covered'] and not absent['correct']
++    assert absent['random_nonempty'] == .5 and absent['random_attainable'] == 0
++
++
++def test_category_priority_overlap_and_name_universe():
++    names = {n: i for i, n in enumerate(['Answer', 'Subject', 'Same', 'Other', 'Head', 'Absent'])}
++    row = {'query': {'head': 'Subject', 'relation': 'emails', 'answer_token_id': 0},
++           'facts': [{'head': 'Subject', 'relation': 'emails', 'tail': 'Answer'},
++                     {'head': 'Same', 'relation': 'emails', 'tail': 'Same'},
++                     {'head': 'Head', 'relation': 'tutors', 'tail': 'Other'},
++                     {'head': 'Other', 'relation': 'tutors', 'tail': 'Same'}]}
++    assert [category(i, row, names) for i in range(7)] == [
++        'correct', 'question_subject', 'other_tail_same_relation', 'other_tail_other_relation',
++        'other_head', 'name_outside_support', 'non_name_token']
++    row['query']['answer_token_id'] = 1
++    assert category(1, row, names) == 'correct'
++
++
++def test_scoring_summary_self_edges_and_full_vocab(fixture):
++    tok, rows = fixture
++    names = token_names(tok)
++    row = fact_view(tok, rows[0], 1)
++    head = row['query']['head']
++    row['facts'][0]['tail'] = head
++    row['query'].update(answer_token_id=names[head], answer_text=' ' + head)
++    sets, excluded = candidate_sets(tok, row)
++    assert sets['a'] == [names[head]] and sets['b'] == []
++    assert all(not v for v in excluded.values())
++    logits = torch.zeros(tok.vocab_size)
++    logits[names[head]] = 3
++    rec = describe(logits, tok, row, names, 'F')
++    assert rec['answer_rank'] == 1 and rec['top5'][0]['token_id'] == names[head]
++    assert rec['correct'] and rec['subject_copy'] and rec['category'] == 'correct'
++    summary = summarize([rec])
++    assert summary['answer_is_subject_count'] == 1 and summary['nonself_em'] is None
++    assert summary['candidates']['b'] == {'accuracy': 0., 'coverage': 0., 'empty_count': 1,
++        'random_nonempty': None, 'random_attainable': 0., 'conditional_accuracy': None}
++    logits[0] = 5
++    rec = describe(logits, tok, row, names, 'F')
++    assert rec['prediction'] == 0 and not rec['correct'] and rec['answer_rank'] == 2
++    assert rec['candidates']['a']['correct']  # Restricted scores cannot replace full vocab EM.
++    logits[0] = float('nan')
++    with pytest.raises(ValueError, match='nonfinite'):
++        describe(logits, tok, row, names, 'F')
+diff --git a/src/v2_base_diag.py b/src/v2_base_diag.py
+new file mode 100644
+index 0000000..f49b7cf
+--- /dev/null
++++ b/src/v2_base_diag.py
+@@ -0,0 +1,280 @@
++"""E-0007@2 calibration-only Base diagnostics. Run inside PBS, never train."""
++from __future__ import annotations
++
++import argparse
++from collections import Counter
++import json
++import os
++from pathlib import Path
++import random
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from v2_data import (MODEL, REVISION, CANDIDATES, derive_seed, encode, file_digest,
++                     visible_delimiters)
++from v2_eval import evaluate, left_pad, load_base, prompt_tokens, score_logits
++
++CALIBRATION_SHA = 'c08753365165216b5a9f4c3d629271b2183e1323973886256867e826c1712f18'
++SUBSET_SEED = derive_seed(20261029, 'concat_loop_v2', 'V2', 'diag-fact-subset')
++FACT_COUNTS = (1, 2, 4, 8, 16)
++
++
++def read_calibration(path):
++    if file_digest(path) != CALIBRATION_SHA:
++        raise ValueError('calibration digest mismatch')
++    rows = [json.loads(s) for s in Path(path).read_text().splitlines()]
++    if len(rows) != 2048 or len({r['episode_id'] for r in rows}) != 2048:
++        raise ValueError('calibration size/identity mismatch')
++    if any(r['identity']['split'] != 'calibration' for r in rows):
++        raise ValueError('only calibration is allowed')
++    return rows
++
++
++def fact_view(tok, row, count):
++    """Nested deterministic subsets; preserve source identity and relative order."""
++    if count not in FACT_COUNTS or len(row['facts']) != 16:
++        raise ValueError('invalid diagnostic fact count')
++    target = row['query']['target_fact_index']
++    others = [i for i in range(16) if i != target]
++    random.Random(derive_seed(SUBSET_SEED, row['episode_id'])).shuffle(others)
++    chosen = sorted([target] + others[:count - 1])
++    facts = [{k: row['facts'][i][k] for k in ('head', 'relation', 'tail')} for i in chosen]
++    # Exact literal template in v2_data.make_episode; no prompt redesign.
++    support = ''.join(f"{f['head']} {f['relation']} {f['tail']} ;\n" for f in facts)
++    ids, positions = visible_delimiters(tok, support)
++    if count == 16 and (support != row['support_text'] or ids != row['support_input_ids']):
++        raise ValueError('E16 rerender mismatch')
++    for fact, position in zip(facts, positions):
++        fact.update(position)
++    view = dict(row, support_text=support, support_input_ids=ids, facts=facts,
++                query=dict(row['query'], target_fact_index=chosen.index(target)))
++    view['diagnostic'] = {'source_fact_indices': chosen, 'n_facts': count,
++                          'original_target_fact_index': target}
++    prompt_tokens(tok, view, 'F', split='calibration')
++    return view
++
++
++def token_names(tok):
++    return {name: ids[0] for name in CANDIDATES
++            if len(ids := encode(tok, ' ' + name)) == 1 and tok.decode(ids) == ' ' + name}
++
++
++def candidate_sets(tok, row):
++    facts, query = row['facts'], row['query']
++    all_names = {f[k] for f in facts for k in ('head', 'tail')}
++    names = {'a': all_names, 'b': all_names - {query['head']},
++             'c': {f['tail'] for f in facts if f['relation'] == query['relation']}}
++    ids, excluded = {}, {}
++    for key, values in names.items():
++        valid, invalid = [], []
++        for name in sorted(values):
++            tokens = encode(tok, ' ' + name)
++            if len(tokens) == 1:
++                valid.append(tokens[0])
++            else:
++                invalid.append(name)
++        ids[key], excluded[key] = sorted(set(valid)), invalid
++    return ids, excluded
++
++
++def category(pred, row, names):
++    q, facts = row['query'], row['facts']
++    if pred == q['answer_token_id']:
++        return 'correct'
++    if pred == names[q['head']]:
++        return 'question_subject'
++    if pred in {names[f['tail']] for f in facts if f['relation'] == q['relation']}:
++        return 'other_tail_same_relation'
++    if pred in {names[f['tail']] for f in facts}:
++        return 'other_tail_other_relation'
++    if pred in {names[f['head']] for f in facts}:
++        return 'other_head'
++    if pred in set(names.values()):
++        return 'name_outside_support'
++    return 'non_name_token'
++
++
++def candidate_score(logits, ids, target):
++    # Lowest token ID wins ties, as in full-vocabulary torch.argmax.
++    ids = sorted(set(ids))
++    pred = ids[int(logits[ids].argmax())] if ids else None
++    covered = target in ids
++    return {'size': len(ids), 'token_ids': ids, 'prediction': pred,
++            'correct': pred == target, 'covered': covered,
++            'random_nonempty': 1 / len(ids) if ids else None,
++            'random_attainable': 1 / len(ids) if covered else 0.}
++
++
++def describe(logits, tok, row, names, line, scored=None):
++    target = row['query']['answer_token_id']
++    if scored is None:
++        predictions, losses = score_logits(logits[None], torch.tensor([target], device=logits.device))
++        pred, nll = int(predictions[0]), float(losses[0])
++    else:
++        pred, nll = scored
++    probs = logits.float().softmax(-1)
++    # Stable token-ID tie break also makes the first top-5 token equal argmax.
++    top = torch.argsort(logits, descending=True, stable=True)[:5].tolist()
++    ids, excluded = candidate_sets(tok, row)
++    head_id = names[row['query']['head']]
++    return {'episode_id': row['episode_id'], 'line': line, 'E': len(row['facts']),
++            'source_fact_indices': row['diagnostic']['source_fact_indices'],
++            'target_fact_index': row['query']['target_fact_index'],
++            'original_target_fact_index': row['diagnostic']['original_target_fact_index'],
++            'relation': row['query']['relation'], 'support_order': row['axes']['support_order'],
++            'answer_frequency_stratum': row['axes']['answer_frequency_stratum'],
++            'target': target, 'subject_token_id': head_id, 'answer_is_subject': target == head_id,
++            'prediction': pred, 'correct': pred == target, 'subject_copy': pred == head_id,
++            'category': category(pred, row, names), 'nll': nll,
++            'answer_probability': float(probs[target]), 'subject_probability': float(probs[head_id]),
++            'answer_rank': 1 + int((logits > logits[target]).sum()),
++            'answer_tie_count': int((logits == logits[target]).sum()),
++            'top5': [{'token_id': i, 'text': tok.decode([i]), 'probability': float(probs[i])} for i in top],
++            'candidates': {k: candidate_score(logits, v, target) for k, v in ids.items()},
++            'excluded_non_single_token_names': excluded}
++
++
++def average(values):
++    return sum(values) / len(values) if values else None
++
++
++def distribution(values):
++    x = torch.tensor(values, dtype=torch.float64)
++    return {'mean': float(x.mean()), 'min': float(x.min()), 'max': float(x.max()),
++            **{f'p{p}': float(torch.quantile(x, p / 100)) for p in (25, 50, 75, 90, 95, 99)}}
++
++
++def summarize(records):
++    if not records:
++        return {'examples': 0}
++    nonself = [r for r in records if not r['answer_is_subject']]
++    result = {'examples': len(records), 'answer_is_subject_count': len(records) - len(nonself),
++              'em': average([r['correct'] for r in records]),
++              'nll': average([r['nll'] for r in records]),
++              'subject_copy_rate': average([r['subject_copy'] for r in records]),
++              'nonself_examples': len(nonself),
++              'nonself_em': average([r['correct'] for r in nonself]),
++              'nonself_subject_copy_rate': average([r['subject_copy'] for r in nonself]),
++              'category_counts': dict(Counter(r['category'] for r in records)),
++              'distributions': {k: distribution([r[k] for r in records]) for k in
++                                ('answer_rank', 'answer_probability', 'subject_probability')},
++              'candidates': {}}
++    for key in ('a', 'b', 'c'):
++        cs = [r['candidates'][key] for r in records]
++        result['candidates'][key] = {
++            'accuracy': average([c['correct'] for c in cs]),
++            'coverage': average([c['covered'] for c in cs]),
++            'empty_count': sum(c['size'] == 0 for c in cs),
++            'random_nonempty': average([c['random_nonempty'] for c in cs if c['size']]),
++            'random_attainable': average([c['random_attainable'] for c in cs]),
++            'conditional_accuracy': average([c['correct'] for c in cs if c['covered']])}
++    result['nonself_candidate_a_accuracy'] = average([r['candidates']['a']['correct'] for r in nonself])
++    return result
++
++
++@torch.inference_mode()
++def diagnose(model, tok, views, output):
++    names = token_names(tok)
++    device = next(model.parameters()).device
++    model.eval()
++    if any(p.requires_grad for p in model.parameters()):
++        raise ValueError('Base must be frozen')
++    records = []
++    with (output / 'diagnostics.jsonl').open('w') as handle:
++        for line, count in [('M', 16)] + [('F', e) for e in FACT_COUNTS]:
++            rows = views[count]
++            for start in range(0, len(rows), 8):
++                batch = rows[start:start + 8]
++                inputs = left_pad([prompt_tokens(tok, r, line, split='calibration') for r in batch],
++                                  tok.pad_token_id, device)
++                logits = model(**inputs, use_cache=False, logits_to_keep=1).logits[:, -1, :]
++                targets = torch.tensor([r['query']['answer_token_id'] for r in batch], device=device)
++                predictions, losses = score_logits(logits, targets)
++                # Preserve original device/batch reduction for EM/NLL. CPU
++                # vocabulary summaries must not silently replace CUDA CE.
++                scored = list(zip(predictions.tolist(), losses.tolist()))
++                for row, vector, scores in zip(batch, logits.float().cpu(), scored):
++                    record = describe(vector, tok, row, names, line, scored=scores)
++                    handle.write(json.dumps(record, allow_nan=False) + '\n')
++                    records.append(record)
++    return records
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument('--calibration', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    p.add_argument('--smoke-limit', type=int, default=0)
++    args = p.parse_args()
++    tick = time.monotonic()
++    rows = read_calibration(args.calibration)
++    if args.smoke_limit < 0:
++        raise ValueError('negative smoke limit')
++    if args.smoke_limit:
++        rows = rows[:args.smoke_limit]
++    args.output.mkdir(parents=True, exist_ok=True)
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    views = {e: [fact_view(tok, r, e) for r in rows] for e in FACT_COUNTS}
++    model = load_base()
++    original, predictions = {}, {}
++    for batch in (1, 8):
++        out = args.output / f'original-batch{batch}'
++        out.mkdir(exist_ok=True)
++        original[str(batch)] = evaluate(model, tok, rows, out, batch_size=batch, split='calibration')
++        predictions[batch] = [json.loads(s) for s in (out / 'predictions.jsonl').read_text().splitlines()]
++    records = diagnose(model, tok, views, args.output)
++    groups = {f'{line}.E{e}': summarize([r for r in records if r['line'] == line and r['E'] == e])
++              for line, e in [('M', 16)] + [('F', e) for e in FACT_COUNTS]}
++    checks = {}
++    for line in ('M', 'F'):
++        one = [r for r in predictions[1] if r['line'] == line]
++        eight = [r for r in predictions[8] if r['line'] == line]
++        diag = [r for r in records if r['line'] == line and r['E'] == 16]
++        assert [r['episode_id'] for r in one] == [r['episode_id'] for r in eight] == [r['episode_id'] for r in diag]
++        checks[line] = {
++            'batch_top1_agreement': average([a['prediction'] == b['prediction'] for a, b in zip(one, eight)]),
++            'batch_nll_mean_abs_difference': average([abs(a['nll'] - b['nll']) for a, b in zip(one, eight)]),
++            'diagnostic_original_top1_agreement': average([a['prediction'] == b['prediction'] for a, b in zip(eight, diag)]),
++            'diagnostic_original_nll_max_abs_difference': max(abs(a['nll'] - b['nll']) for a, b in zip(eight, diag))}
++        if checks[line]['diagnostic_original_top1_agreement'] != 1 or checks[line]['diagnostic_original_nll_max_abs_difference'] > 1e-5:
++            raise ValueError('diagnostic scoring differs from original batch8 path')
++    passed = all(c['batch_top1_agreement'] >= .99 and c['batch_nll_mean_abs_difference'] <= .05 for c in checks.values())
++    passed = passed and groups['F.E1']['nll'] < groups['M.E16']['nll']
++    decision = ('investigate_implementation' if not passed else 'entity_found_argmax_suppressed'
++                if groups['F.E16']['candidates']['b']['accuracy'] >= .5 else 'weak_E16_retrieval')
++    f16 = [r for r in records if r['line'] == 'F' and r['E'] == 16]
++    strata = {}
++    for axis in ('position_bin', 'relation', 'support_order', 'answer_frequency_stratum'):
++        key = lambda r: str(r['original_target_fact_index'] // 4) if axis == 'position_bin' else str(r[axis])
++        strata[axis] = {v: summarize([r for r in f16 if key(r) == v]) for v in sorted({key(r) for r in f16})}
++    report = {'contract': 'E-0007@2', 'calibration_sha256': CALIBRATION_SHA, 'model': MODEL,
++              'revision': REVISION, 'torch': torch.__version__, 'cuda': torch.version.cuda,
++              'smoke_limit': args.smoke_limit, 'groups': groups, 'strata_F_E16': strata,
++              'original_path': original, 'implementation_checks': checks,
++              'implementation_checks_passed': passed, 'decision': decision,
++              'elapsed_s': time.monotonic() - tick}
++    (args.output / 'metrics.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
++    examples = []
++    # First five calibration identities, not selected by their predictions.
++    for index, e in enumerate((1, 16, 1, 16, 16)):
++        if index >= len(rows):
++            break
++        row = views[e][index]
++        record = next(r for r in records if r['episode_id'] == row['episode_id'] and r['line'] == 'F' and r['E'] == e)
++        examples.append(f"### Calibration index {row['identity']['index']}, E={e}\n\n```text\n{row['support_text']}{row['question_text']}\n```\n\nAnswer: {row['query']['answer_text']!r}\n\nTop-5: {json.dumps(record['top5'])}\n")
++    (args.output / 'examples.md').write_text('\n'.join(examples))
++    artifacts = ['metrics.json', 'diagnostics.jsonl', 'examples.md',
++                 'original-batch1/predictions.jsonl', 'original-batch8/predictions.jsonl']
++    metrics = {f'{k}.{m}': v[m] for k, v in groups.items() for m in ('em', 'nll', 'subject_copy_rate')}
++    metrics['implementation_checks_passed'] = passed
++    (args.output / 'manifest.json').write_text(json.dumps({'status': 'complete',
++        'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': metrics,
++        'artifacts': [{'path': str((args.output / f).resolve()), 'role': f} for f in artifacts],
++        'validator': {'name': 'v2_base_diag', 'passed': True}}, indent=2))
++    print(json.dumps({'groups': groups, 'checks': checks, 'decision': decision, 'elapsed_s': report['elapsed_s']}))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/v2_diag_report.py b/src/v2_diag_report.py
+new file mode 100644
+index 0000000..6c01263
+--- /dev/null
++++ b/src/v2_diag_report.py
+@@ -0,0 +1,78 @@
++"""Verify saved diagnostic aggregates and render tables; PBS analysis only."""
++import argparse
++from collections import Counter
++import json
++import math
++import os
++from pathlib import Path
++
++
++def main():
++    p = argparse.ArgumentParser()
++    p.add_argument('--source', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args()
++    report = json.loads((args.source / 'metrics.json').read_text())
++    records = [json.loads(s) for s in (args.source / 'diagnostics.jsonl').read_text().splitlines()]
++    assert len(records) == 2048 * 6
++    assert len({(r['episode_id'], r['line'], r['E']) for r in records}) == len(records)
++    lines = ['## Full calibration results (ATT-0050-1)', '',
++             'All scores below use batch 8; failed implementation gate limits interpretation.', '',
++             '| Line / E | n | EM | NLL | Subject copy | Nonself EM | Nonself copy | Candidate a | Candidate b | Candidate c |',
++             '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|']
++    for name, s in report['groups'].items():
++        rows = [r for r in records if f"{r['line']}.E{r['E']}" == name]
++        n = len(rows)
++        assert n == s['examples'] == 2048
++        assert sum(r['answer_is_subject'] for r in rows) == s['answer_is_subject_count'] == 27
++        assert math.isclose(sum(r['prediction'] == r['target'] for r in rows) / n, s['em'], abs_tol=1e-12)
++        assert math.isclose(sum(r['nll'] for r in rows) / n, s['nll'], abs_tol=1e-12)
++        assert Counter(r['category'] for r in rows) == s['category_counts']
++        for k in ('a', 'b', 'c'):
++            cs = [r['candidates'][k] for r in rows]
++            assert all(c['correct'] == (c['prediction'] == r['target']) for c, r in zip(cs, rows))
++            assert math.isclose(sum(c['correct'] for c in cs) / n, s['candidates'][k]['accuracy'], abs_tol=1e-12)
++            assert math.isclose(sum(c['covered'] for c in cs) / n, s['candidates'][k]['coverage'], abs_tol=1e-12)
++        values = [s['em'], s['nll'], s['subject_copy_rate'], s['nonself_em'], s['nonself_subject_copy_rate']]
++        values += [s['candidates'][k]['accuracy'] for k in ('a','b','c')]
++        lines.append(f'| {name} | {n} | ' + ' | '.join(f'{x:.6f}' for x in values) + ' |')
++    lines += ['', '27/2048 episodes have answer = subject; nonself denominator is 2021.',
++              'E1 nonself candidate-a two-choice accuracy: ' + str(report['groups']['F.E1']['nonself_candidate_a_accuracy']),
++              'E1 candidate-b is degenerate and is not interpreted.', '',
++              '## Candidate denominators and random baselines', '',
++              '| Line / E | Set | Accuracy | Coverage | Empty | Random nonempty | Random attainable | Conditional accuracy |',
++              '|---|---|---:|---:|---:|---:|---:|---:|']
++    for name,s in report['groups'].items():
++        for k,c in s['candidates'].items():
++            vals = [c[x] for x in ('accuracy','coverage','empty_count','random_nonempty','random_attainable','conditional_accuracy')]
++            lines.append(f'| {name} | {k} | ' + ' | '.join(str(v) if v is None else f'{v:.6f}' for v in vals) + ' |')
++    lines += ['', '## Top-1 categories and score distributions', '']
++    for name in ('M.E16','F.E16'):
++        s=report['groups'][name]
++        lines += [f'### {name}', '', 'Category counts: ' + json.dumps(s['category_counts']), '',
++                  '| Quantity | Mean | Min | P25 | Median | P75 | P90 | P95 | P99 | Max |',
++                  '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|']
++        for k,d in s['distributions'].items():
++            lines.append(f'| {k} | ' + ' | '.join(f'{d[x]:.7g}' for x in ('mean','min','p25','p50','p75','p90','p95','p99','max')) + ' |')
++        lines.append('')
++    lines += ['## E16 F strata', '', 'Position bins 0/1/2/3 mean indices 0–3/4–7/8–11/12–15.', '',
++              '| Axis | Value | n | EM | NLL | Subject copy | Candidate a | Candidate b | Candidate c |',
++              '|---|---|---:|---:|---:|---:|---:|---:|---:|']
++    for axis, groups in report['strata_F_E16'].items():
++        assert sum(s['examples'] for s in groups.values()) == 2048
++        for k,s in groups.items():
++            vals=[s['em'],s['nll'],s['subject_copy_rate']] + [s['candidates'][c]['accuracy'] for c in ('a','b','c')]
++            lines.append(f"| {axis} | {k} | {s['examples']} | " + ' | '.join(f'{v:.6f}' for v in vals) + ' |')
++    lines += ['', '## Five fixed calibration examples', '', (args.source/'examples.md').read_text()]
++    args.output.mkdir(exist_ok=True, parents=True)
++    (args.output/'tables.md').write_text('\n'.join(lines)+'\n')
++    summary={'checked_records':len(records),'checked_groups':len(report['groups']), 'passed':True}
++    (args.output/'validation.json').write_text(json.dumps(summary,indent=2))
++    (args.output/'manifest.json').write_text(json.dumps({'status':'complete','spec_digest':os.environ['SR_SPEC_DIGEST'],
++        'metrics':summary,'artifacts':[{'path':str((args.output/f).resolve()),'role':f} for f in ('tables.md','validation.json')],
++        'validator':{'name':'saved_diagnostic_aggregate_check','passed':True}},indent=2))
++    print(json.dumps(summary))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/v2_eval.py b/src/v2_eval.py
+index 211f2a7..4a97b58 100644
+--- a/src/v2_eval.py
++++ b/src/v2_eval.py
+@@ -27,9 +27,9 @@ def score_logits(logits, targets):
+     return logits.argmax(-1), losses
+ 
+ 
+-def prompt_tokens(tok, row, line):
+-    if row['identity']['split'] != 'dev' or row['identity']['layout']['name_pool'] != 'seen':
+-        raise ValueError('Base evaluation is restricted to seen-name dev')
++def prompt_tokens(tok, row, line, split='dev'):
++    if split not in ('dev', 'calibration') or row['identity']['split'] != split or row['identity']['layout']['name_pool'] != 'seen':
++        raise ValueError('Base evaluation is restricted to the explicitly selected released split')
+     if line not in ('M', 'F'):
+         raise ValueError('unknown line')
+     prompt = (row['support_text'] if line == 'F' else '') + row['question_text']
+@@ -54,7 +54,7 @@ def left_pad(sequences, pad_id, device):
+ 
+ 
+ @torch.inference_mode()
+-def evaluate(model, tok, rows, output, batch_size=8):
++def evaluate(model, tok, rows, output, batch_size=8, split='dev'):
+     if batch_size < 1 or not rows:
+         raise ValueError('positive batch size and nonempty dev are required')
+     model.eval()
+@@ -68,7 +68,7 @@ def evaluate(model, tok, rows, output, batch_size=8):
+             tick = time.monotonic()
+             for start in range(0, len(rows), batch_size):
+                 batch = rows[start:start + batch_size]
+-                prompts = [prompt_tokens(tok, row, line) for row in batch]
++                prompts = [prompt_tokens(tok, row, line, split=split) for row in batch]
+                 inputs = left_pad(prompts, tok.pad_token_id, device)
+                 # Last position is valid in every left-padded prompt. Compute
+                 # only its vocabulary projection, without support KV reuse.
+diff --git a/src/v2_precision_probe.py b/src/v2_precision_probe.py
+new file mode 100644
+index 0000000..4338ffe
+--- /dev/null
++++ b/src/v2_precision_probe.py
+@@ -0,0 +1,102 @@
++"""MSG-0135 follow-up: true FP32 calibration control and saved BF16 length audit."""
++import argparse
++import json
++import math
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoModelForCausalLM, AutoTokenizer
++
++from v2_base_diag import read_calibration
++from v2_data import MODEL, REVISION
++from v2_eval import evaluate, prompt_tokens
++
++
++def mean(xs):
++    return sum(xs) / len(xs)
++
++
++def correlation(xs, ys):
++    mx, my = mean(xs), mean(ys)
++    numerator = sum((x-mx)*(y-my) for x,y in zip(xs,ys))
++    denominator = math.sqrt(sum((x-mx)**2 for x in xs)*sum((y-my)**2 for y in ys))
++    return numerator / denominator if denominator else None
++
++
++def comparison(one, eight):
++    assert [(r['episode_id'],r['line']) for r in one] == [(r['episode_id'],r['line']) for r in eight]
++    return {line: {'examples':len(a),
++        'top1_agreement':mean([x['prediction']==y['prediction'] for x,y in zip(a,b)]),
++        'nll_mean_abs_difference':mean([abs(x['nll']-y['nll']) for x,y in zip(a,b)]),
++        'nll_max_abs_difference':max(abs(x['nll']-y['nll']) for x,y in zip(a,b))}
++        for line in ('M','F')
++        for a,b in [([r for r in one if r['line']==line],[r for r in eight if r['line']==line])]}
++
++
++def read_predictions(path):
++    return [json.loads(s) for s in path.read_text().splitlines()]
++
++
++def main():
++    p=argparse.ArgumentParser()
++    p.add_argument('--calibration',type=Path,required=True)
++    p.add_argument('--source',type=Path,required=True)
++    p.add_argument('--output',type=Path,required=True)
++    args=p.parse_args()
++    start=time.monotonic()
++    args.output.mkdir(parents=True,exist_ok=True)
++    rows=read_calibration(args.calibration)
++    tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True)
++    bf={batch:read_predictions(args.source/f'original-batch{batch}'/'predictions.jsonl') for batch in (1,8)}
++    relationships={}
++    length_rows=[]
++    for line in ('M','F'):
++        one=[r for r in bf[1] if r['line']==line]
++        eight=[r for r in bf[8] if r['line']==line]
++        assert [r['episode_id'] for r in one] == [r['episode_id'] for r in eight] == [r['episode_id'] for r in rows]
++        lengths=[len(prompt_tokens(tok,r,line,split='calibration')) for r in rows]
++        pads=[max(lengths[i//8*8:i//8*8+8])-lengths[i] for i in range(len(rows))]
++        diffs=[abs(a['nll']-b['nll']) for a,b in zip(one,eight)]
++        relationships[line]={'pearson_pad_vs_abs_delta':correlation(pads,diffs),
++                            'pearson_length_vs_abs_delta':correlation(lengths,diffs)}
++        for axis,values in (('padding_tokens',pads),('prompt_tokens',lengths)):
++            relationships[line][axis]={str(v):{'examples':values.count(v),
++                'mean_abs_delta_nll':mean([d for x,d in zip(values,diffs) if x==v])} for v in sorted(set(values))}
++        length_rows += [{'episode_id':r['episode_id'],'line':line,'prompt_tokens':length,'padding_tokens_batch8':pad,
++                         'abs_delta_nll':diff} for r,length,pad,diff in zip(rows,lengths,pads,diffs)]
++    (args.output/'bf16-lengths.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in length_rows))
++    torch.set_num_threads(4)
++    torch.manual_seed(173)
++    model=AutoModelForCausalLM.from_pretrained(MODEL,revision=REVISION,local_files_only=True,
++                                              torch_dtype=torch.float32,attn_implementation='eager').cuda().eval()
++    model.requires_grad_(False)
++    assert all(p.dtype == torch.float32 for p in model.parameters())
++    summaries, predictions={},{}
++    for batch in (1,8):
++        out=args.output/f'fp32-batch{batch}'
++        out.mkdir(exist_ok=True)
++        summaries[str(batch)]=evaluate(model,tok,rows[:256],out,batch_size=batch,split='calibration')
++        predictions[batch]=read_predictions(out/'predictions.jsonl')
++    ids={r['episode_id'] for r in rows[:256]}
++    report={'authorization':'coordinator MSG-0135; follow-up after E-0007@2 gate failure',
++            'fp32_rows':256,'fp32_checks':comparison(predictions[1],predictions[8]),
++            'bf16_same_prefix_checks':comparison([r for r in bf[1] if r['episode_id'] in ids],
++                                                 [r for r in bf[8] if r['episode_id'] in ids]),
++            'fp32_summaries':summaries,'bf16_full_length_relationship':relationships,
++            'model':MODEL,'revision':REVISION,'dtype':'float32','torch':torch.__version__,
++            'cuda':torch.version.cuda,'float32_matmul_precision':torch.get_float32_matmul_precision(),
++            'cuda_matmul_allow_tf32':torch.backends.cuda.matmul.allow_tf32,
++            'elapsed_s':time.monotonic()-start}
++    (args.output/'precision.json').write_text(json.dumps(report,indent=2,allow_nan=False))
++    metrics={f'{line}.{k}':v for line,c in report['fp32_checks'].items() for k,v in c.items()}
++    artifacts=['precision.json','bf16-lengths.jsonl','fp32-batch1/predictions.jsonl','fp32-batch8/predictions.jsonl']
++    (args.output/'manifest.json').write_text(json.dumps({'status':'complete','spec_digest':os.environ['SR_SPEC_DIGEST'],
++        'metrics':metrics,'artifacts':[{'path':str((args.output/f).resolve()),'role':f} for f in artifacts],
++        'validator':{'name':'fp32_parameter_dtype_and_prediction_identity','passed':True}},indent=2))
++    print(json.dumps(report))
++
++
++if __name__ == '__main__':
++    main()

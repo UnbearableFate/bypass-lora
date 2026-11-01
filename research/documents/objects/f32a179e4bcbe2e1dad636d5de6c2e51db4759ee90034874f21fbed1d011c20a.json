@@ -1,0 +1,92 @@
+[
+  {
+    "id": "Base",
+    "arm": "base",
+    "attempt": "ATT-0024-1",
+    "job": "3759531.opbs",
+    "expected_seconds": 853,
+    "walltime": "00:22:00",
+    "spec_digest": "blake2b:f0495f7dedf6c9491a4733d0f350b03f0d0a21f71b6201a7a36756c2c28e84e9",
+    "notification": "N-20261101-140952-14f7"
+  },
+  {
+    "id": "V1-01",
+    "arm": "F_out",
+    "attempt": "ATT-0025-1",
+    "job": "3759532.opbs",
+    "expected_seconds": 3483,
+    "walltime": "01:28:00",
+    "spec_digest": "blake2b:59bd1cc4661ec68433fd7042adcc485a70bad0de2ae82053b4024f8fb670ae34",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-02",
+    "arm": "F_pre",
+    "attempt": "ATT-0026-1",
+    "job": "3759533.opbs",
+    "expected_seconds": 3864,
+    "walltime": "01:37:00",
+    "spec_digest": "blake2b:162f40fac46064e1784742b5962db1d80f52035ae267123eb08ed2eb50ed22e3",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-03",
+    "arm": "C_gate",
+    "attempt": "ATT-0027-1",
+    "job": "3759534.opbs",
+    "expected_seconds": 3596,
+    "walltime": "01:30:00",
+    "spec_digest": "blake2b:19e9776c887980f3180efe4f8b552610a5d27306def90518f77dd162950368dc",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-04",
+    "arm": "C_up",
+    "attempt": "ATT-0028-1",
+    "job": "3759535.opbs",
+    "expected_seconds": 3514,
+    "walltime": "01:28:00",
+    "spec_digest": "blake2b:e43e3a0c13663285d587da4febae0276d8f03c85ac3f282ccd2a638e62edcd01",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-05",
+    "arm": "C_dual",
+    "attempt": "ATT-0029-1",
+    "job": "3759537.opbs",
+    "expected_seconds": 3670,
+    "walltime": "01:32:00",
+    "spec_digest": "blake2b:0b699d327103b0d7e7f089af3365c627db32d9d1225d138b0e54065c3bd1b01d",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-06",
+    "arm": "linear",
+    "attempt": "ATT-0030-1",
+    "job": "3759538.opbs",
+    "expected_seconds": 3699,
+    "walltime": "01:33:00",
+    "spec_digest": "blake2b:e48be844ca2f7208ed6f2fc413d27f880e7902e9cc48b57b48a16d73036b68f7",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-07",
+    "arm": "lora",
+    "attempt": "ATT-0031-1",
+    "job": "3759541.opbs",
+    "expected_seconds": 3781,
+    "walltime": "01:35:00",
+    "spec_digest": "blake2b:51ed547ac5391b2d11a2c260c957540201e73c5b39663c66a44cf87411f59794",
+    "notification": "N-20261101-140955-4c4f"
+  },
+  {
+    "id": "V1-08",
+    "arm": "lora28",
+    "attempt": "ATT-0032-1",
+    "job": "3759546.opbs",
+    "expected_seconds": 7062,
+    "walltime": "02:57:00",
+    "spec_digest": "blake2b:b23b89af0bcdb20f70be1ddc1aad2fa8251398bbfeb4a94398cf650ba43dc68f",
+    "notification": "N-20261101-140955-4c4f"
+  }
+]
