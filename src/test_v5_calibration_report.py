@@ -42,3 +42,25 @@ def test_grid_report_rejects_incomplete_plan_and_different_pairing(tmp_path):
     write_json(paths[0],value)
     with pytest.raises(ValueError,match='different sample'):
         summarize(paths)
+
+
+def test_grid_report_rejects_null_nll_in_unflagged_success(tmp_path):
+    paths = fixtures(tmp_path)
+    value = json.loads(paths[2].read_text())  # V5-C upper-grid raw minimum.
+    value['metrics']['calibration.nll'] = None
+    write_json(paths[2],value)
+    with pytest.raises(ValueError,match='finite positive calibration NLL'):
+        summarize(paths)
+
+
+def test_grid_report_accepts_explicit_failed_lr_with_partial_usage(tmp_path):
+    paths = fixtures(tmp_path)
+    value = json.loads(paths[2].read_text())
+    value['metrics'].update({'calibration.nll':None,'run.failed_lr':True,
+                             'train.steps':100,'train.input_tokens':14000})
+    write_json(paths[2],value)
+    report = summarize(paths)
+    assert report['required_extensions']['V5-C'] is None
+    row = next(row for row in report['rows'] if row['arm']=='V5-C' and row['lr']==1e-3)
+    assert row['failed_lr'] and row['calibration_nll'] is None
+    assert row['train_steps'] == 100 and row['input_tokens'] == 14000

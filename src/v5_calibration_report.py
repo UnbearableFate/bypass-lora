@@ -25,7 +25,7 @@ def summarize(manifests):
             raise ValueError('report requires each initial-grid candidate exactly once')
         failed = metrics.get('run.failed_lr',False)
         nll = None if failed else metrics['calibration.nll']
-        if nll is not None and (not math.isfinite(nll) or nll <= 0):
+        if not failed and (nll is None or not math.isfinite(nll) or nll <= 0):
             raise ValueError('finite positive calibration NLL required')
         grouped[arm][lr] = nll
         plans.add((metrics['plan.order_sha256'], metrics['plan.steps'],metrics['plan.input_tokens']))
