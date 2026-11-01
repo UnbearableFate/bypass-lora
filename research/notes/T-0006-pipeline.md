@@ -1,7 +1,8 @@
 # T-0006 M-line pipeline implementation and smoke
 
 Status: implementation, fixture smoke, E-0005 integration and focused review-fix
-regression complete; re-check RV-0012 pending. This is not a delivery or V2 release.
+regression complete. RV-0012 passes with zero findings; RV-0011 is resolved.
+Delivered for coordinator acceptance; this does not release V2 training.
 
 ## Implementation
 
@@ -151,5 +152,29 @@ at most1.27e-7 overall and4.47e-8 for shuffled. Re-check requested asRV-0012.
 
 Measured cost through the six runs: first four jobs total0.054444 MIG-instance
 hours (196s), plus12s for each focused regression =220s, about0.015278 node·h.
-Final two scheduler usage imports will be confirmed when the ledger exports end
-observations; no additional training occurred during these two regressions.
+Final two scheduler usage imports are confirmed in
+`research/artifacts/T-0006/scheduler-review-fixes.json`; all six attempts have
+final observations and measured usage. No additional training occurred during
+these two regressions.
+
+## Final review and delivery scope
+
+RV-0012 passes with zero findings and closes RV-0011. Final tested source is
+`9de4127de01ee978caac41502321d5f056b7203b`; later commits update this note only.
+The broad124-test suite, eight-arm integration and probes belong to94fb78b;
+the final diagnostic-only correction has six focused passing checks. The broad
+suite and training smoke were not repeated after that correction. Reviewer
+inspection confirms the correction does not change deployed training or query
+behavior. Both reviews inspected requester artifacts without an independent
+runtime rerun.
+
+Main smoke training forwarded16,672 input tokens (672 pilot +10,752 copy +5,248
+integration). New protocol-gradient unit checks additionally presented672
+tokens in each of the two broad validation jobs. Cost includes all six jobs,
+including the failed test-reference attempt. Actual measured cost is about
+**0.015278 node·h**, below the1 node·h task limit.
+
+No unresolved code findings. Limits: small-batch cost extrapolation, provisional
+E-0005 smoke data (researcher-3 confirms accepted-schema candidate unchanged),
+and no formal calibration/V2 release. Scientific route decisions, including
+the separately reported E-0005 Base-F result, belong to the coordinator.
