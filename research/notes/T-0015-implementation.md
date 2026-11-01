@@ -68,3 +68,11 @@
   - R3: the monitors fired at steps 2, 4, 6, 8 for e1, e4, e8, e16.
   - Read reconstruction max abs ≤ 3e-6.
   - Smoke step seconds 0.13 (E=1) to 0.23 (R6); these include warmup.
+
+## Review
+
+- RV-0040 found two problems:
+  - (high) the R1 gate also required the NLL condition; it is now EM margin ≥ 50 pp only.
+  - (low) stale stage-1 prior gradients were counted in R4's stage-2 statistics; they are now cleared at the stage transition.
+- Fixed in c6037d3 and checked by ATT-0121-1 (15 tests passed; R4 stage-2 nonzero-gradient parameters 557,056 = trainable).
+- RV-0041 passed with no findings. Data deduplication was accepted under MSG-0359/0360.
