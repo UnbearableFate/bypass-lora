@@ -531,10 +531,11 @@ def test_old_gate_failure_is_a_formal_start_only_with_a_passed_readiness_run(tmp
     assert record['formal_start'] is True and record['hop1_gate_passed'] is False
     assert record['readiness']['criteria'] == {'hop1_em_margin': True}
     other = {'adapter.pt': {'sha256': 'b'*64, 'bytes': 1}}
-    for changes in ({'metrics': {'readiness_passed': False}}, {'eligible_as_evidence': False}, {'smoke_only': True},
-                    {'contract': 'E-0022@2'}, {'command': 'arm'}, {'status': 'failed'}, {'start': {'checkpoint_files': other}}):
+    for i, changes in enumerate(({'metrics': {'readiness_passed': False}}, {'eligible_as_evidence': False},
+                                 {'smoke_only': True}, {'contract': 'E-0022@2'}, {'command': 'arm'},
+                                 {'status': 'failed'}, {'start': {'checkpoint_files': other}})):
         with pytest.raises(ValueError):
-            v3.start_provenance(start, sha, ready_run=write_ready(tmp_path/str(len(str(changes))), start, **changes))
+            v3.start_provenance(start, sha, ready_run=write_ready(tmp_path/f'bad{i}', start, **changes))
     # A smoke V3-S0 start is not made formal by a readiness run.
     smoke = write_start(tmp_path/'smoke', eligible_as_evidence=False, smoke_only=True)
     assert v3.start_provenance(smoke, sha, smoke=True, ready_run=write_ready(tmp_path/'s', smoke))['formal_start'] is False

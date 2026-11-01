@@ -185,7 +185,10 @@ class TokenwiseKernelSide(SideBranch):
     """V3-06: the question phase replaces the memory loop by tokenwise_loop (no memory read).
     The support phase is SideBranch's own, so the write protocol and accounting are unchanged."""
 
-    def forward(self, u, features, state, valid, phase, write_mask=None):
+    def forward(self, u, features, state, valid, phase, write_mask=None, runtime=None):
+        # runtime: SideBranch's RB option (2f1687b); not defined for this arm.
+        if runtime:
+            raise ValueError('RB runtime options are not defined for the tokenwise kernel arm')
         if phase != 'query':
             if phase != 'support':
                 raise ValueError('the tokenwise kernel arm is defined on the M-line protocol only')
