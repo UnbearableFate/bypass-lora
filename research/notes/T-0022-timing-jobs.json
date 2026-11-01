@@ -1,7 +1,7 @@
 {
   "task": "T-0022",
   "experiment": "E-0019@1",
-  "source_head": "1b607ae5b21f46b34fc46be6f1ab24317ce2ace3",
+  "source_head": "183ad685785b8249d8a1c679a09e8dd5280d8cd5",
   "probe": {
     "attempt": "ATT-0188-1",
     "result": "RES-0183",
@@ -9,9 +9,9 @@
     "all_required_gates_passed": true,
     "used_MIG_seconds": 221
   },
-  "completed_usage_MIG_seconds": 1756,
-  "completed_usage_node_h": 0.12194444444444444,
-  "usage_note": "All seven attempts ended and exact PBS walltime usage was imported once per accounting reference;includes one-second PBS tabulation job.",
+  "completed_usage_MIG_seconds": 1918,
+  "completed_usage_node_h": 0.13319444444444445,
+  "usage_note": "All eight attempts ended and exact PBS walltime usage was imported once per accounting reference;includes one-second tabulation and162-second revision-validation job.",
   "runs": [
     {
       "attempt": "ATT-0189-1",
@@ -68,14 +68,17 @@
   "code_review_requested": true,
   "review_ticket": "RV-0060",
   "review_snapshot": "a5d04f8",
-  "review_status": "RV-0060 pass;four low fixes require the focused recheck",
+  "review_status": "RV-0060 pass;four low fixes validated in PBS,focused recheck next",
   "review_fix_run": {
     "attempt": "ATT-0197-1",
     "job_id": "3768755.opbs",
     "code_commit": "183ad685785b8249d8a1c679a09e8dd5280d8cd5",
     "spec_digest": "blake2b:7ff4075d5c48ab4f0b0dbd68bb853685f0eee735946ed89bbc6532a3551d3968",
-    "status": "running",
-    "usage": "pending",
+    "status": "complete",
+    "result": "RES-0191",
+    "used_MIG_seconds": 162,
+    "tests_passed": 408,
+    "all_three_CLI_reload_identical": true,
     "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1",
     "notification_id": "N-20261102-033738-2fb0",
     "profile_policy": "record_only"

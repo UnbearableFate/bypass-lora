@@ -42,14 +42,16 @@ RB1 arms:training,three intermediate dev passes,final dev and fresh reload evalu
 
 RB1 core total: 2.443961 node_h. Frozen interventions,analysis and planning overhead are additional.
 
+RBc candidates use one load and one calibration pass,with no export or fresh reload (RV-0060 fix).
+
 | RBc family | Estimated node_h/candidate |
 | --- | ---: |
-| RBc-L | 0.066836 |
-| RBc-T | 0.067244 |
-| RBc-R | 0.069168 |
-| RBc-C | 0.070363 |
+| RBc-L | 0.041651 |
+| RBc-T | 0.041906 |
+| RBc-R | 0.042765 |
+| RBc-C | 0.043450 |
 
-RBc12-16candidate estimate: 0.820830-1.094440 node_h.
+RBc12-16candidate estimate: 0.509314-0.679085 node_h.
 
 | Latency case | Prefill tok/s | Decode p50 ms | Decode p95 ms | Peak CUDA GiB | Persistent adapter M+c bytes |
 | --- | ---: | ---: | ---: | ---: | ---: |

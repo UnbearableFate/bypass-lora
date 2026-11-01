@@ -131,21 +131,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 968.3105915436728,
-          "node_h": 0.06724379107942172,
-          "eval_passes": 2,
+          "seconds": 603.4438302996066,
+          "node_h": 0.04190582154858379,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 363.6840932741073
         },
         "RB1": {
           "seconds": 3745.309339111084,
           "node_h": 0.2600909263271586,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 177.5801236689977
         },
         "RB5": {
           "seconds": 6586.2183515752495,
           "node_h": 0.4573762744149479,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 177.5801236689977
         }
       }
@@ -163,21 +169,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 996.018200567083,
-          "node_h": 0.06916793059493632,
-          "eval_passes": 2,
+          "seconds": 615.8093401589547,
+          "node_h": 0.04276453751103852,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 379.9541573160887
         },
         "RB1": {
           "seconds": 3747.447925167877,
           "node_h": 0.26023943924776927,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 185.52449087699642
         },
         "RB5": {
           "seconds": 6552.796821271235,
           "node_h": 0.4550553348105024,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 185.52449087699642
         }
       }
@@ -195,21 +207,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1028.748179780988,
-          "node_h": 0.07144084581812417,
-          "eval_passes": 2,
+          "seconds": 638.0327073520739,
+          "node_h": 0.04430782689944957,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 390.4572395058642
         },
         "RB1": {
           "seconds": 3913.304949250334,
           "node_h": 0.2717572881423843,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 190.65294897747276
         },
         "RB5": {
           "seconds": 6858.166823940235,
           "node_h": 0.47626158499584964,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 190.65294897747276
         }
       }
@@ -227,21 +245,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1094.740791029366,
-          "node_h": 0.07602366604370597,
-          "eval_passes": 2,
+          "seconds": 680.6817404553664,
+          "node_h": 0.04726956530940044,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 413.802811007979
         },
         "RB1": {
           "seconds": 4201.310380393963,
           "node_h": 0.2917576653051363,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 202.05215381248976
         },
         "RB5": {
           "seconds": 7376.040680107024,
           "node_h": 0.5122250472296545,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 202.05215381248976
         }
       }
@@ -259,21 +283,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1076.8201174368398,
-          "node_h": 0.07477917482200276,
-          "eval_passes": 2,
+          "seconds": 666.3712424627291,
+          "node_h": 0.04627578072657841,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 410.1955397751411
         },
         "RB1": {
           "seconds": 4064.454730999812,
           "node_h": 0.28225380076387585,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 200.29079090583062
         },
         "RB5": {
           "seconds": 7111.776570464203,
           "node_h": 0.493873372948903,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 200.29079090583062
         }
       }
@@ -291,21 +321,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1114.74600535855,
-          "node_h": 0.07741291703878819,
-          "eval_passes": 2,
+          "seconds": 690.9896630527257,
+          "node_h": 0.0479853932675504,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 423.5090443268643
         },
         "RB1": {
           "seconds": 4232.296788523899,
           "node_h": 0.29390949920304854,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 206.7915255502267
         },
         "RB5": {
           "seconds": 7414.298347313038,
           "node_h": 0.5148818296745166,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 206.7915255502267
         }
       }
@@ -323,21 +359,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 962.4320041089923,
-          "node_h": 0.06683555584090224,
-          "eval_passes": 2,
+          "seconds": 599.7715349550231,
+          "node_h": 0.04165080103854327,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 362.41423589993843
         },
         "RB1": {
           "seconds": 3722.7023848921585,
           "node_h": 0.25852099895084435,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 176.96007612301682
         },
         "RB5": {
           "seconds": 6546.056662218214,
           "node_h": 0.4545872682095982,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 176.96007612301682
         }
       }
@@ -355,21 +397,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1013.2229017816995,
-          "node_h": 0.07036270151261802,
-          "eval_passes": 2,
+          "seconds": 625.680587091581,
+          "node_h": 0.04345004077024868,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 387.29096724510885
         },
         "RB1": {
           "seconds": 3795.739204829733,
           "node_h": 0.2635930003353981,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 189.1069176001508
         },
         "RB5": {
           "seconds": 6631.32499619876,
           "node_h": 0.4605086802915806,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 189.1069176001508
         }
       }
@@ -387,21 +435,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1015.4376905093679,
-          "node_h": 0.07051650628537277,
-          "eval_passes": 2,
+          "seconds": 625.4869709566427,
+          "node_h": 0.04343659520532241,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 389.70294662870526
         },
         "RB1": {
           "seconds": 3770.4739659727634,
           "node_h": 0.26183846985921966,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 190.28464190854748
         },
         "RB5": {
           "seconds": 6575.066479266199,
           "node_h": 0.4566018388379305,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 190.28464190854748
         }
       }
@@ -419,21 +473,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 9078.152768067628,
-          "node_h": 0.6304272755602519,
-          "eval_passes": 2,
+          "seconds": 5721.459032935795,
+          "node_h": 0.39732354395387465,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 3356.4454196948345
         },
         "RB1": {
           "seconds": 36492.36201729588,
           "node_h": 2.5341918067566587,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 1638.8893650853684
         },
         "RB5": {
           "seconds": 64649.540242160154,
           "node_h": 4.4895514057055665,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 1638.8893650853684
         }
       }
@@ -451,21 +511,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1112.544989635064,
-          "node_h": 0.07726006872465722,
-          "eval_passes": 2,
+          "seconds": 689.9235121051419,
+          "node_h": 0.047911355007301516,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 421.99398944997563
         },
         "RB1": {
           "seconds": 4230.238097144667,
           "node_h": 0.29376653452393525,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 206.0517526611209
         },
         "RB5": {
           "seconds": 7413.120310016498,
           "node_h": 0.5148000215289235,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 206.0517526611209
         }
       }
@@ -483,21 +549,27 @@
       "adapter_state_M_c_bytes": 16896,
       "estimates": {
         "RBc": {
-          "seconds": 1069.8208604329882,
-          "node_h": 0.07429311530784641,
-          "eval_passes": 2,
+          "seconds": 660.1294146234046,
+          "node_h": 0.04584232045995865,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 409.43298497158503
         },
         "RB1": {
           "seconds": 3996.9794428604155,
           "node_h": 0.27756801686530663,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 199.91844969315676
         },
         "RB5": {
           "seconds": 6979.003036001094,
           "node_h": 0.4846529886111871,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 199.91844969315676
         }
       }
@@ -515,21 +587,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 975.5802318808086,
-          "node_h": 0.06774862721394503,
-          "eval_passes": 2,
+          "seconds": 603.0607975130365,
+          "node_h": 0.041879222049516426,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 372.2722885057446
         },
         "RB1": {
           "seconds": 3668.141693185123,
           "node_h": 0.25473206202674464,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 181.7735783719456
         },
         "RB5": {
           "seconds": 6413.254249242349,
           "node_h": 0.4453648784196076,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 181.7735783719456
         }
       }
@@ -547,21 +625,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 979.1132994610804,
-          "node_h": 0.0679939791292417,
-          "eval_passes": 2,
+          "seconds": 605.95912654677,
+          "node_h": 0.04208049489908125,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 372.86497438434566
         },
         "RB1": {
           "seconds": 3696.7769269557866,
           "node_h": 0.2567206199274852,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 182.06297577360627
         },
         "RB5": {
           "seconds": 6468.860877451628,
           "node_h": 0.4492264498230297,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 182.06297577360627
         }
       }
@@ -579,21 +663,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 973.4292639710875,
-          "node_h": 0.06759925444243663,
-          "eval_passes": 2,
+          "seconds": 602.7986560309646,
+          "node_h": 0.041861017779928095,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 370.3682940621339
         },
         "RB1": {
           "seconds": 3683.0136968992033,
           "node_h": 0.25576484006244465,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 180.8438935850263
         },
         "RB5": {
           "seconds": 6447.521997782026,
           "node_h": 0.4477445831793074,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 180.8438935850263
         }
       }
@@ -611,21 +701,27 @@
       "adapter_state_M_c_bytes": 31680,
       "estimates": {
         "RBc": {
-          "seconds": 951.1928233155807,
-          "node_h": 0.06605505717469311,
-          "eval_passes": 2,
+          "seconds": 587.2880801370746,
+          "node_h": 0.040783894453963514,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 363.526009372485
         },
         "RB1": {
           "seconds": 3561.4043239305474,
           "node_h": 0.24731974471739912,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 177.50293426390868
         },
         "RB5": {
           "seconds": 6221.294703074164,
           "node_h": 0.4320343543801503,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 177.50293426390868
         }
       }
@@ -643,21 +739,27 @@
       "adapter_state_M_c_bytes": 31680,
       "estimates": {
         "RBc": {
-          "seconds": 1053.5379639197954,
-          "node_h": 0.07316235860554135,
-          "eval_passes": 2,
+          "seconds": 653.8103145443578,
+          "node_h": 0.0454034940655804,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 399.4905318594444
         },
         "RB1": {
           "seconds": 4016.2765726840153,
           "node_h": 0.2789080953252788,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 195.06373625949433
         },
         "RB5": {
           "seconds": 7041.697400953635,
           "node_h": 0.48900676395511355,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 195.06373625949433
         }
       }
@@ -675,21 +777,27 @@
       "adapter_state_M_c_bytes": 66560,
       "estimates": {
         "RBc": {
-          "seconds": 953.4716634928889,
-          "node_h": 0.06621330996478395,
-          "eval_passes": 2,
+          "seconds": 588.4496539424365,
+          "node_h": 0.04086455930155809,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 364.7677000444714
         },
         "RB1": {
           "seconds": 3564.7206805694827,
           "node_h": 0.24755004726176963,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 178.10922853733953
         },
         "RB5": {
           "seconds": 6225.142469565976,
           "node_h": 0.4323015603865261,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 178.10922853733953
         }
       }
@@ -707,21 +815,27 @@
       "adapter_state_M_c_bytes": 66560,
       "estimates": {
         "RBc": {
-          "seconds": 1091.01921108994,
-          "node_h": 0.07576522299235694,
-          "eval_passes": 2,
+          "seconds": 674.1430916625288,
+          "node_h": 0.0468154924765645,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 416.62126300632286
         },
         "RB1": {
           "seconds": 4096.2484872788145,
           "node_h": 0.28446170050547326,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 203.42835107730608
         },
         "RB5": {
           "seconds": 7159.594615154313,
           "node_h": 0.4971940704968273,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 203.42835107730608
         }
       }
@@ -739,21 +853,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 1388.792079693895,
-          "node_h": 0.09644389442318715,
-          "eval_passes": 2,
+          "seconds": 898.1596013985591,
+          "node_h": 0.0623721945415666,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 490.34927035336085
         },
         "RB1": {
           "seconds": 6074.507829335019,
           "node_h": 0.4218408214815985,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 239.42835466472698
         },
         "RB5": {
           "seconds": 10927.158328308808,
           "node_h": 0.7588304394658895,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 239.42835466472698
         }
       }
@@ -771,21 +891,27 @@
       "adapter_state_M_c_bytes": 0,
       "estimates": {
         "RBc": {
-          "seconds": 1443.902511951816,
-          "node_h": 0.10027100777443167,
-          "eval_passes": 2,
+          "seconds": 940.2014220467069,
+          "node_h": 0.06529176541991019,
+          "eval_passes": 1,
+          "model_loads": 1,
+          "checkpoint_exports": 0,
           "estimated_eval_seconds_per_pass": 503.28117539006035
         },
         "RB1": {
           "seconds": 6453.0592816139,
           "node_h": 0.448129116778743,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 245.7427614209279
         },
         "RB5": {
           "seconds": 11650.697965286021,
           "node_h": 0.809076247589307,
           "eval_passes": 5,
+          "model_loads": 2,
+          "checkpoint_exports": 1,
           "estimated_eval_seconds_per_pass": 245.7427614209279
         }
       }
@@ -904,17 +1030,17 @@
   "profile_required": false,
   "RB1_core_estimate_exceeds4": false,
   "RBc_family_node_h_per_candidate": {
-    "RBc-L": 0.06683555584090224,
-    "RBc-T": 0.06724379107942172,
-    "RBc-R": 0.06916793059493632,
-    "RBc-C": 0.07036270151261802
+    "RBc-L": 0.04165080103854327,
+    "RBc-T": 0.04190582154858379,
+    "RBc-R": 0.04276453751103852,
+    "RBc-C": 0.04345004077024868
   },
-  "RBc_12candidate_node_h": 0.8208299370836349,
-  "RBc_16candidate_node_h": 1.0944399161115133,
+  "RBc_12candidate_node_h": 0.5093136026052428,
+  "RBc_16candidate_node_h": 0.6790848034736571,
   "actual_T0022_through_timing_MIG_seconds": 1755,
   "actual_T0022_through_timing_node_h": 0.121875,
   "timing_sample_rule": "20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches",
-  "estimate_rule": "two loads+plannedsteps*measuredstep+evalpasses*scaleddev+save;RBc2passes4096calibration/2000dev;RB1/RB5fivepasses",
+  "estimate_rule": "RBc one load+plannedsteps*measuredstep+one4096calibration pass,no export/reload;RB1/RB5 two loads+steps+five scaleddev passes+save",
   "limits": [
     "Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.",
     "Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.",
