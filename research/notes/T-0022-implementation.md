@@ -47,3 +47,16 @@ Intervention/bootstrap costs are explicitly excluded and must be added before
 RB1 release. RB5 estimates assume the same monitoring;its later contract decides.
 Formal train currently enforces the released RB1 recipe;the planner also supports
 exact3epochs for RB5 cost estimates and smoke. No RB5 contract is fabricated.
+
+Coordinator D0026/DOC0208 resolves ATT0186's three comparisons without changing
+any threshold. Topology gates are the exact rounded output identity at each
+adapted layer,U6 bitwise Base,and each Ui bitwise norm_i(Xi+oi). Residual
+subtraction is diagnostic in ulp_bf16(Y),not a Base-logit-tolerance gate.
+The BF16 chunk1 bound0.50002 is retained and reported as passed/exceeded;
+chunk3 still gates. Prefix/reference chunk1 agreement also gates at0.50002.
+A separate fresh FP32 backbone(TF32off) now checks full/chunk3/token logits
+pairwise and stateM/c under the fixed E0019 normwise mixed bound. Deliberately
+clearing only sideM/c/n at token boundaries must fail that same FP32 check.
+The strong std0.5 exit fixture,all earlier passing assertions,and tolerance file
+are unchanged. T0 now rejects non-KernelMatrix backend to avoid a dead extra
+temperature parameter;researcher3 was notified before the shared schema edit.

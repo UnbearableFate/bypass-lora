@@ -69,6 +69,8 @@ class AdapterConfig:
             raise ValueError('prefix requires KernelMatrix')
         if self.branch == 'kernel_tokenwise' and (self.update != 'accumulate' or self.readout != 'increment' or self.read_gain != 1.):
             raise ValueError('T0 requires accumulating increment recurrence')
+        if self.branch == 'kernel_tokenwise' and self.backend != 'kernel_matrix':
+            raise ValueError('T0 uses the KernelMatrix parameter family')
 
 
 class LowDimProjection(nn.Module):

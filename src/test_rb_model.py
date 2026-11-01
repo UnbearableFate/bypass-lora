@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 
 from bypass_core import process_prefix
-from bypass_model import AdapterConfig,BranchModel
+from bypass_model import AdapterConfig,BranchModel,BranchCache
 from calibrate import fixture,load_base
 from rb_train import adapter_config,make_model,PARAMETERS
 from test_model import base,adapted,measure,nonzero_exits,chunked,TOL
@@ -93,7 +93,15 @@ def test_residual_topology_uses_unchanged_first_FFN_input(base,record_property):
             original=h+r['F']
             delta=(r['Z']@model.adapters()[i].side.fusion.P).to(h.dtype)
             assert torch.equal(r['Y'],original+delta)
-            measure((r['Y'].float()-original.float()),delta.float(),record_property,f'layer{i}.residual_delta')
+            assert torch.equal(r['U'],model.adapters()[i].original.post_attention_layernorm(h))
+            # D0026:subtracting the rounded BF16 sum cannot recover an addend
+            # smaller than half an ulp. The gate above is exact,with zero tolerance.
+            error=(r['Y'].float()-original.float()-delta.float()).abs()
+            _,exponent=torch.frexp(r['Y'].float().abs())
+            ulp=torch.ldexp(torch.ones_like(error),exponent-8).clamp_min(2.**-133)
+            ulp=torch.where(r['Y']==0,torch.full_like(ulp,2.**-133),ulp)
+            record_property(f'layer{i}.residual_subtraction.max_abs',error.max().item())
+            record_property(f'layer{i}.residual_subtraction.max_ulp_bf16_Y',(error/ulp).max().item())
             assert output.accounting[i]['base']=={'attention':1,'ffn':1}
 
 
@@ -188,7 +196,14 @@ def test_four_layer_cache_causality_padding_and_ownership(base,impl,record_prope
         full=model(ids,attention_mask=mask)
         for chunk in (3,1):
             values,cache=chunked(model,ids,mask,chunk)
-            measure(values[mask.bool()],full.logits[mask.bool()],record_property,f'{impl}.chunk{chunk}')
+            if chunk==3:
+                measure(values[mask.bool()],full.logits[mask.bool()],record_property,f'{impl}.chunk{chunk}')
+            else:
+                # D0026:retain the locked BF16 comparison as a reported
+                # diagnostic. FP32 continuation below is the decisive carry gate.
+                delta=(values[mask.bool()].float()-full.logits[mask.bool()].float()).abs().max().item()
+                record_property(f'{impl}.chunk1.max_abs_err',delta)
+                record_property(f'{impl}.chunk1.within_locked_bf16',int(delta<=TOL['bf16_atol']))
             for state in cache.memory.values():assert torch.equal(state.counts,mask.sum(-1))
         changed=ids.clone();changed[:,5:]=330
         other=model(changed,attention_mask=mask)
@@ -204,6 +219,52 @@ def test_four_layer_cache_causality_padding_and_ownership(base,impl,record_prope
         assert all(torch.equal(s.M,source[i]) for i,s in prefix.cache.memory.items())
         for counts in full.accounting.values():
             assert counts['side']['writes']==mask.sum() and counts['side']['reads']==mask.sum()*4
+
+
+def test_BF16_token_decode_prefix_reference_agreement(base,record_property):
+    ids=fixture();mask=torch.ones_like(ids)
+    mask[0,:2]=0;mask[1,-2:]=0
+    outputs=[]
+    for impl in ('reference','prefix'):
+        with attached(base,adapter_config('RB1-04',impl)) as model,torch.no_grad():
+            nonzero_exits(model)
+            values,_=chunked(model,ids,mask,1)
+            outputs.append(values)
+    measure(outputs[1][mask.bool()],outputs[0][mask.bool()],record_property,'BF16.token.prefix_reference')
+
+
+@pytest.mark.parametrize('impl',['prefix','reference'])
+def test_FP32_four_layer_cache_and_state_clear_negative_control(impl,record_property):
+    # D0026:fresh FP32 backbone;do not recast the BF16 fixture or rotary buffers.
+    torch.backends.cuda.matmul.allow_tf32=False
+    torch.backends.cudnn.allow_tf32=False
+    fresh=load_base().float()
+    ids=fixture();mask=torch.ones_like(ids)
+    mask[0,:2]=0;mask[1,-2:]=0
+    with attached(fresh,adapter_config('RB1-04',impl)) as model,torch.no_grad():
+        nonzero_exits(model)
+        whole=model(ids,attention_mask=mask)
+        outputs={8:whole.logits}
+        for chunk in (3,1):
+            values,cache=chunked(model,ids,mask,chunk)
+            outputs[chunk]=values
+            for i,state in cache.memory.items():
+                close(state.M,whole.cache.memory[i].M,record_property,f'{impl}.FP32.chunk{chunk}.layer{i}.M')
+                close(state.c,whole.cache.memory[i].c,record_property,f'{impl}.FP32.chunk{chunk}.layer{i}.c')
+                assert torch.equal(state.counts,whole.cache.memory[i].counts)
+        for a,b in ((3,8),(1,8),(1,3)):
+            close(outputs[a][mask.bool()],outputs[b][mask.bool()],record_property,f'{impl}.FP32.logits.{a}_{b}')
+        # Keep backbone KV,deliberately erase only side M,c,n at each boundary.
+        pieces=[];cache=None
+        for start in range(ids.shape[1]):
+            if cache is not None:
+                cache=BranchCache({i:s.reset() for i,s in cache.memory.items()},cache.backbone,cache.phase)
+            result=model(ids[:,start:start+1],attention_mask=mask[:,:start+1],cache=cache,use_cache=True)
+            cache=result.cache;pieces.append(result.logits)
+        bad=torch.cat(pieces,1)
+        with pytest.raises(AssertionError):
+            close(bad[mask.bool()],whole.logits[mask.bool()])
+        record_property(impl+'.FP32.state_clear_rejected',1)
 
 
 @pytest.mark.parametrize('arm',['RB1-01','RB1-02','RB1-05','RB1-06','RB1-08','RB1-09','RB1-07'])

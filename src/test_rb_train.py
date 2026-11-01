@@ -58,3 +58,9 @@ def test_registered_loop_controls_are_explicit_and_defaults_unchanged():
     assert adapter_config('RB1-06').eta==.0625
     assert adapter_config('RB1-08').fusion=='C_dual'
     assert adapter_config('RB1-09').fusion=='C_up'
+
+
+def test_T0_rejects_backend_that_would_create_an_unused_temperature():
+    from bypass_model import AdapterConfig
+    with pytest.raises(ValueError,match='parameter family'):
+        AdapterConfig(branch='kernel_tokenwise',backend='centered_cos_slot')

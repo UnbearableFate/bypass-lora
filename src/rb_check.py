@@ -34,7 +34,7 @@ def main():
         errors={}
         for prop in root.iter('property'):
             name,value=prop.get('name'),prop.get('value')
-            if name.endswith(('.max_abs','.relative_inf')):
+            if name.endswith(('.max_abs','.relative_inf','.max_abs_err','.max_ulp_bf16_Y','.within_locked_bf16','.state_clear_rejected')):
                 errors[name]=max(errors.get(name,0),float(value))
         metrics['errors']=errors
     if result.returncode==0 and args.data_dir:
