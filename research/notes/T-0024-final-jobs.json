@@ -554,5 +554,17 @@
     },
     "plan_order_sha256": "053284831520676982857bf9677a9fa3e338b0bbad4d2ce2af1c3f88d20457d3",
     "split_manifest_sha256": "34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc"
-  }
+  },
+  "evidence": {
+    "id": "EV-0114",
+    "level": "diagnostic",
+    "validity": "valid",
+    "document": "DOC-0241@1",
+    "experiment": "E-0020@1",
+    "neutral_hypothesis_context": "EV-0114 about E-0020; E-0020 tests H-0013@1; no supports/challenges edges"
+  },
+  "lock_artifact_commit": "c414c7d97b66bedd0f7a5141b2d90992016ad38c",
+  "no_remaining_jobs": true,
+  "no_remaining_usage_imports": true,
+  "delivery_document": "research/notes/T-0024-delivery.md"
 }
