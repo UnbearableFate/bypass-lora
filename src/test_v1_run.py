@@ -303,6 +303,43 @@ def test_main_finite_checkpoint_mismatch_remains_partial_assertion(monkeypatch, 
     assert 'train.diverged' not in manifest['metrics']
 
 
+@pytest.mark.parametrize('bad_value', [float('nan'), float('inf')])
+def test_main_nonfinite_reload_is_engineering_failure_with_usage_preserved(
+        monkeypatch, tmp_path, bad_value):
+    patch_main_inputs(monkeypatch, tmp_path)
+    monkeypatch.setattr(v1_run, 'train', lambda *a, **k: {
+        'train.input_tokens': 81, 'train.loss_tokens': 17, 'train.examples': 2})
+    calls = []
+
+    def evaluate_then_nonfinite(*args, **kwargs):
+        calls.append(True)
+        if len(calls) == 1:
+            return {'calibration.nll': 1.0}, [{'scores': [-1.0, -2.0]}]
+        # Exercise the real candidate guard during the reload evaluation.
+        row = {'id': 'reload-row', 'label': 0}
+        splits = {'splits': {'piqa': {'calibration': [row]}}}
+        return original_evaluate(TinyCausalModel(), splits, MainTokenizer())
+
+    original_evaluate = v1_run.evaluate
+    monkeypatch.setattr(v1_run, 'encode_candidates', lambda *a: [{}, {}])
+    monkeypatch.setattr(v1_run, 'batch_tensors', lambda *a: {})
+    monkeypatch.setattr(v1_run, 'token_losses', lambda *a: (
+        torch.tensor([bad_value]), torch.tensor([True])))
+    monkeypatch.setattr(v1_run, 'evaluate', evaluate_then_nonfinite)
+    output = set_main_argv(monkeypatch, tmp_path, 'lora', 'reload-nonfinite')
+    with pytest.raises(v1_run.EvaluationNonfinite):
+        v1_run.main()
+    manifest = json.loads((output / 'manifest.json').read_text())
+    assert len(calls) == 2
+    assert manifest['status'] == 'partial'
+    assert manifest['validator']['passed'] is False
+    metrics = manifest['metrics']
+    assert metrics['failure.stage'] == 'reload_evaluation'
+    assert metrics['train.input_tokens'] == 81 and metrics['train.loss_tokens'] == 17
+    assert 'run.failed_lr' not in metrics and 'train.diverged' not in metrics
+    assert metrics.get('reload.identical') is not True
+
+
 def finite_smoke_manifest():
     metrics = {'train.steps': 5, 'reload.identical': True}
     for split in ('calibration', 'dev'):

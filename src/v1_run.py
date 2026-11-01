@@ -271,7 +271,7 @@ def main():
     except EvaluationNonfinite as exc:
         metrics['failure.stage'] = evaluation_stage
         metrics['failure.reason'] = str(exc)
-        if args.arm == 'base':
+        if args.arm == 'base' or evaluation_stage == 'reload_evaluation':
             metrics['error'] = repr(exc)
             raise
         metrics['train.diverged'] = True
