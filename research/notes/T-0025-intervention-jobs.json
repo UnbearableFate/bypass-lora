@@ -1,0 +1,108 @@
+{
+  "experiment": "E-0021@1",
+  "task": "T-0025",
+  "source_commit": "ffa4c7124939bbd82b1319f56be8e27913e0ff59",
+  "review": "RV-0069",
+  "locked_selection": {
+    "S_F_star": "RB1-03",
+    "C_star_RB": "RB1-09",
+    "attempt": "ATT-0258-1",
+    "result": "RES-0237"
+  },
+  "latency": {
+    "attempt": "ATT-0261-1",
+    "result": "RES-0241",
+    "profile": "2g.24gb",
+    "MIG_seconds": 59
+  },
+  "cost_smoke": {
+    "attempt": "ATT-0260-1",
+    "result": "RES-0242",
+    "profile": "2g.24gb",
+    "MIG_seconds": 335,
+    "rows_per_task": 32,
+    "full_grid_node_h_estimate": 0.6973364615538392
+  },
+  "measured_before_full_grid": {
+    "MIG_seconds": 35681,
+    "node_h": 2.477847222222222,
+    "remaining_to_four_node_h": 1.522152777777778
+  },
+  "budget": {
+    "full_grid_requested_MIG_seconds": 16800,
+    "subtotal_plus_all_requested_node_h": 3.644513888888889,
+    "reserve_after_all_requested_node_h": 0.35548611111111095,
+    "projected_after_full_grid_node_h": 3.175183683776061,
+    "final_analysis_reserved_node_h": 0.02
+  },
+  "notification": "N-20261102-064504-17aa",
+  "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-064504-17aa --notifier miyabi-g2",
+  "profile_policy": "D-0018/D-0019: full intervention profiles metadata only; no fail-fast profile guard.",
+  "runs": [
+    {
+      "arm": "RB1-02",
+      "attempt": "ATT-0262-1",
+      "job_id": "3769588.opbs",
+      "spec_digest": "blake2b:ba4ba6c9a8febef2175c653d3fd1233c7b98aecc0a03656691c4884bb044f82d",
+      "training_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0262-1",
+      "expected_seconds": 2426,
+      "requested_walltime": "01:10:00",
+      "queue": "short-mig",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-064503-aecccd/script.sh",
+      "code_review": "covered"
+    },
+    {
+      "arm": "RB1-03",
+      "attempt": "ATT-0263-1",
+      "job_id": "3769589.opbs",
+      "spec_digest": "blake2b:abd7d97fa237c83aa7fa33f3f9f603771614a5cf960f34351f3bda36984193b9",
+      "training_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0241-1",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0263-1",
+      "expected_seconds": 2556,
+      "requested_walltime": "01:10:00",
+      "queue": "short-mig",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-064505-369f4c/script.sh",
+      "code_review": "covered"
+    },
+    {
+      "arm": "RB1-08",
+      "attempt": "ATT-0264-1",
+      "job_id": "3769590.opbs",
+      "spec_digest": "blake2b:a5c99fe5dbe9878dd95273b21e149ce49afbb00c48fa1a7b9438e5c846325aca",
+      "training_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0246-1",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0264-1",
+      "expected_seconds": 2263,
+      "requested_walltime": "01:00:00",
+      "queue": "short-mig",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-064509-38623c/script.sh",
+      "code_review": "covered"
+    },
+    {
+      "arm": "RB1-09",
+      "attempt": "ATT-0265-1",
+      "job_id": "3769591.opbs",
+      "spec_digest": "blake2b:095f47098cb5a4cb9cd67f1faeb9bb896e2cd19525fb47df09ef3104be5fcd58",
+      "training_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0265-1",
+      "expected_seconds": 2289,
+      "requested_walltime": "01:00:00",
+      "queue": "short-mig",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-064516-1d809f/script.sh",
+      "code_review": "covered"
+    },
+    {
+      "arm": "RB1-01",
+      "attempt": "ATT-0266-1",
+      "job_id": "3769592.opbs",
+      "spec_digest": "blake2b:0dc75183eb09ac886f82a118c9a8d75f765830ded217f76376a888234fbd1cf9",
+      "training_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0239-1",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0266-1",
+      "expected_seconds": 510,
+      "requested_walltime": "00:20:00",
+      "queue": "debug-mig",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-064519-3ac0a0/script.sh",
+      "code_review": "covered"
+    }
+  ]
+}
