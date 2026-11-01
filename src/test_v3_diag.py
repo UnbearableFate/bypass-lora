@@ -50,6 +50,8 @@ def test_analyze_stage_a_on_validated_records(tmp_path):
     assert set(result['bootstrap']['intervals_pp']) == {'V3-02 - V3-01', 'V3-03 - V3-01', 'V3-03 - V3-02'}
     with pytest.raises(ValueError):
         diag.analyze_stage_a(runs[:2] + runs[:1], reference, SYN_START)
+    with pytest.raises(ValueError):  # the analysis start must carry the passed R record
+        diag.analyze_stage_a(runs, reference, dict(SYN_START, readiness=None))
     other = synthetic_arm(tmp_path/'V3-04', 'V3-04', (1, 1, 1), reference)
     with pytest.raises(ValueError):
         diag.analyze_stage_a(runs[:2] + [other], reference, SYN_START)

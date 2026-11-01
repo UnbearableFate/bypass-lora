@@ -860,10 +860,10 @@ def readiness_provenance(ready_run, start_files):
 
 
 def start_provenance(run, expected_sha256, smoke=False, ready_run=None):
-    """A completed V3-S0 run whose adapter.pt has the pinned digest. It is a formal start when it is
-    formal and either passed the E-0010@2 hop1 H3 gate (E-0022) or has an E-0023 readiness run whose
-    rule R passed for this start (``ready_run``). A smoke job (smoke=True) may start from a completed
-    smoke V3-S0 run; its output is smoke too."""
+    """A completed V3-S0 run whose adapter.pt has the pinned digest. It is a formal start only when
+    it is formal and has an E-0023 readiness run whose rule R passed on calibration for exactly this
+    start (``ready_run``; E-0023 rule 1). The old E-0010@2 hop1 H3 result is kept as metadata only.
+    A smoke job (smoke=True) may start from a completed smoke V3-S0 run; its output is smoke too."""
     from v2r16_train import checkpoint_records, file_record
     if not (isinstance(expected_sha256, str) and len(expected_sha256) == 64
             and all(c in '0123456789abcdef' for c in expected_sha256)):
@@ -879,11 +879,11 @@ def start_provenance(run, expected_sha256, smoke=False, ready_run=None):
     if files['adapter.pt']['sha256'] != expected_sha256:
         raise ValueError('common start adapter.pt differs from the pinned digest')
     readiness = readiness_provenance(ready_run, files) if ready_run is not None else None
-    gate = manifest.get('metrics', {}).get('hop1_gate', {}).get('passed') is True
-    formal = manifest.get('eligible_as_evidence') is True and (gate or readiness is not None)
+    gate = manifest.get('metrics', {}).get('hop1_gate', {}).get('passed') is True  # metadata only (E-0023)
+    formal = manifest.get('eligible_as_evidence') is True and readiness is not None
     if not (formal or (smoke and manifest.get('smoke_only') is True)):
-        raise ValueError('the common start must be a formal V3-S0 run that passed the hop1 H3 gate '
-                         'or E-0023 readiness rule R')
+        raise ValueError('the common start must be a formal V3-S0 run whose E-0023 readiness rule R passed '
+                         'on calibration (--ready-run)')
     return {'run': str(run.resolve()), 'checkpoint_files': files, 'expected_adapter_sha256': expected_sha256,
             'source_manifest': file_record(run/'manifest.json'), 'optimizer_state_loaded': False,
             'formal_start': formal, 'hop1_gate_passed': gate, 'readiness': readiness}
@@ -1132,10 +1132,13 @@ def validate_arm_run(run, reference, start):
             or metrics.get('variant') != asdict(arm_variant(arm))):
         raise ValueError(f'{arm}: configuration or variant differs from the arm definition')
     started = metrics.get('start', {})
+    if not start.get('readiness'):
+        raise ValueError('the analysis start has no passed readiness record (E-0023 rule 1)')
     if (started.get('expected_adapter_sha256') != start['expected_adapter_sha256']
             or started.get('formal_start') is not True or started.get('run') != start['run']
-            or started.get('checkpoint_files') != start['checkpoint_files']):
-        raise ValueError(f'{arm}: not trained from the passed common start')
+            or started.get('checkpoint_files') != start['checkpoint_files']
+            or started.get('readiness') != start['readiness']):
+        raise ValueError(f'{arm}: not trained from the readiness-checked common start')
     schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
     if (schedule.get('steps') != STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
             or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']

@@ -23,7 +23,8 @@ Review package for the E-0023@1 code paths that are new since RV-0059 (diff base
   - formal, not a smoke run;
   - `readiness_passed` true;
   - run on the same start checkpoint files.
-- `start_provenance(..., ready_run=None)` makes a start formal if it is eligible and either passed the old H3 gate or has such a readiness run. It records `hop1_gate_passed` and `readiness`. The CLI option `--ready-run` applies to `arm` and `analyze`.
+- `start_provenance(..., ready_run=None)` makes a start formal only if it is eligible and has such a readiness run (E-0023 rule 1). The old H3 result is recorded as `hop1_gate_passed` metadata only; a start that passed H3 but has no readiness run is rejected (RV-0065). The CLI option `--ready-run` applies to `arm` and `analyze`.
+- `validate_arm_run` requires the analysis start to carry a readiness record, and each arm's recorded `start.readiness` (readiness run path, manifest digest, criteria) to equal it (RV-0065).
 - Fix: `TokenwiseKernelSide.forward` takes SideBranch's new `runtime` argument. Researcher-1's RB change 2f1687b added it after RV-0059, and V3-06 failed with a TypeError in ATT-0229-1. A non-empty runtime is rejected, because the RB options are not defined for this arm.
 - Tests:
   - `test_old_gate_failure_is_a_formal_start_only_with_a_passed_readiness_run` covers seven bad readiness manifests and shows a smoke start stays non-formal.
