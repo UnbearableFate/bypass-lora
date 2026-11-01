@@ -159,10 +159,10 @@ def test_independent_probes():
 def test_probe_split_guard(rows):
     from v2_probe import validate_probe_splits
     episodes, _ = rows
-    train = [{**episodes[0], 'split': 'train'}]
-    dev = [{**episodes[1], 'split': 'dev'}]
+    train = [{**episodes[0], 'identity': {**episodes[0]['identity'], 'split': 'train'}}]
+    dev = [{**episodes[1], 'identity': {**episodes[1]['identity'], 'split': 'dev'}}]
     validate_probe_splits(train, dev)
     with pytest.raises(ValueError, match='overlapping'):
-        validate_probe_splits(train, [{**train[0], 'split': 'dev'}])
+        validate_probe_splits(train, [{**train[0], 'identity': {**train[0]['identity'], 'split': 'dev'}}])
     with pytest.raises(ValueError, match='training split'):
         validate_probe_splits(dev, train)

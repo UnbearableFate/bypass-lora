@@ -233,6 +233,8 @@ def evaluate_batch(model, batch, mode='normal'):
         raise ValueError('diagnostics/oracles require model.eval()')
     if mode not in CONTROLS:
         raise ValueError('unknown control')
+    if model.config.steps != 1 or model.config.readout != 'increment' or model.config.layers != (14,):
+        raise ValueError('offline diagnostics require the V2 single-layer single-read protocol')
     original, _ = build_support(model, batch, observe=True)
     selected_original = original.select(batch.owners)
     snapshot = control_snapshot(original, mode).select(batch.owners)
@@ -270,6 +272,8 @@ def evaluate_batch(model, batch, mode='normal'):
         finally:
             handle.remove()
     logits = answer_logits(out, batch.question_mask)
+    if not torch.isfinite(logits).all():
+        raise RuntimeError('nonfinite full-vocabulary evaluation logits')
     losses = F.cross_entropy(logits, batch.labels, reduction='none')
     correct = (logits.argmax(-1) == batch.labels).float()
     details.update(nll=float(losses.mean()), em=float(correct.mean()))

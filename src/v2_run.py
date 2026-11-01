@@ -61,8 +61,8 @@ def fixture(tokenizer, n_facts=2):
                 raise ValueError('fixture delimiter must map uniquely')
             fact['delimiter_token_index'] = indices[0]
         question = 'Which name appears in the facts? Answer:'
-        rows.append({'generator_version': 'T-0006-copy-fixture-v1', 'task': 'copy', 'layout': 'fixture',
-                     'base_seed': 2100042, 'split': 'fixture', 'index': i, 'episode_id': f'copy-{i}',
+        rows.append({'identity': {'generator_version': 'T-0006-copy-fixture-v1', 'task': 'copy', 'layout': 'fixture',
+                                 'base_seed': 2100042, 'split': 'fixture', 'index': i}, 'episode_id': f'copy-{i}',
                      'content_sha256': hashlib.sha256(text.encode()).hexdigest(), 'support_text': text,
                      'support_input_ids': encoded['input_ids'], 'question_text': question,
                      'question_input_ids': tokenizer.encode(question, add_special_tokens=False), 'facts': facts,

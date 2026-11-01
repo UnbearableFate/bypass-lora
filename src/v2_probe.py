@@ -18,9 +18,9 @@ from v2_run import read_rows
 
 
 def validate_probe_splits(train, heldout):
-    if any(e['split'] != 'train' for e in train):
+    if any(e['identity']['split'] != 'train' for e in train):
         raise ValueError('probe fitting requires training split')
-    if any(e['split'] == 'train' for e in heldout):
+    if any(e['identity']['split'] not in ('dev', 'calibration') for e in heldout):
         raise ValueError('probe evaluation requires held-out split')
     for key in ('episode_id', 'content_sha256'):
         if {e[key] for e in train} & {e[key] for e in heldout}:
