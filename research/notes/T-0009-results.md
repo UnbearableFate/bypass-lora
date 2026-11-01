@@ -123,7 +123,8 @@ The saved-output audit `src/v2_fline_audit.py` (commitc09e6a7) independently
 recomputes schedule/counts, every finite training record, original/reloaded
 identity/target alignment, summary EM/NLL/copy/ranks, curve EM/NLL, and records
 the error/outlier. ATT-0076-1 audit passed, result RES-0076; final diagnostic
-evidence EV-0062 links the final run and audit. Final output review pending.
+evidence EV-0062 links the final run and audit. Final output review **RV-0021
+passed with zero findings**, supporting the F prerequisite and task delivery.
 This audit is read-only and does not perform fresh inference.
 
 | Attempt | PBS job | Wall seconds | node-hours |
@@ -136,10 +137,11 @@ This audit is read-only and does not perform fresh inference.
 |ATT-0060-1|3761514.opbs|57|0.003958333|
 |ATT-0067-1|3761606.opbs|61|0.004236111|
 |ATT-0069-1|3761643.opbs|713|0.049513889|
+|ATT-0076-1|3761896.opbs|2|0.000138889|
 
 All above usage imported from executor ledger, including failed work.
-Total before output audit:999MIGseconds = **0.069375node-hours**, versus
-E-0008 budget1node-hour. Formal application703.882s, training region681.332s,
+Final total including output audit:1001MIGseconds = **0.069513889node-hours**,
+versus E-0008 budget1node-hour. Formal application703.882s, training region681.332s,
 throughput5871.54 counted input tokens/s; this region includes three dev curve
 evaluations, so it is not a pure optimizer-only benchmark. Peak CUDA allocated
 memory2395061248bytes. Scheduler wall713s includes startup/exit overhead.
