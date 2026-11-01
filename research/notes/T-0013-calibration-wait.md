@@ -21,6 +21,12 @@ T-0013-calibration-jobs.json. Official validation remains sealed and untouched.
 - Prepared full latency-smoke ATT-0100-1 was never submitted and is recorded
   cancelled, superseded by the low-fix regression. Full latency is deferred to
   final seed1 checkpoints per coordinator MSG-0314; do not run smoke latency.
+- Initial-grid report low null-NLL issue is fixed in
+  **87bbb59f877f05f63f603319e069ff9a4274203e**. **RV-0038 pass**;
+  ATT-0114-1 / RES-0104 / EV-0076:4 tests passed,including null unflagged success
+  rejection and explicit failed-LR partial usage acceptance. PBS3764578 mg1098
+  Exit0,10MIGseconds;end and exact10/14400 node·h usage already imported from
+  verified job_get. Strip its usage if reimporting a later executor export.
 
 ## Running jobs and wake-up
 
@@ -58,14 +64,15 @@ new null-path regressions were separately validated in ATT0110.
 2. For Base verify complete,full dev counts and exact repeat; record diagnostic
    evidence only. For initial grid wait for all9 before selection; any engineering
    failure stops for reporting, nonfinite LR candidates remain eliminated.
-3. New helper **src/v5_calibration_report.py** and2 tests are in commit
-   **783a5509fe0dbc413bb625c5a1e662f207d9ad6a**. It validates all initial-grid
+3. Helper **src/v5_calibration_report.py** and4 tested regressions are in commit
+   **87bbb59f877f05f63f603319e069ff9a4274203e**. It validates all initial-grid
    manifests and equal seed0 order/steps/tokens, calls reviewed extension_lr, and
    marks smallest-LR-within1% initial values as provisional. It does not lock LR.
-   **RV-0037 pending** covers helper and test plus unchanged v5_train.py; keep
-   these files frozen. Register a small PBS report job from that snapshot, run
+   **RV-0038 pass** covers the fixed helper plus unchanged v5_train.py. Register
+   a small PBS report job from that snapshot, run
    test_v5_calibration_report.py then the report CLI on the9 absolute manifests.
-   Tests/report are not yet run. Read required_extensions from initial-grid.json.
+   Unit tests passed;the report CLI on actual grid results is not yet run.
+   Read required_extensions from initial-grid.json.
 4. Run only required endpoint candidates (3e-3 for raw minimum1e-3 or3e-5 for
    raw minimum1e-4), same seed0/200k plan and reviewed trainer. Do not select from
    dev; endpoint expansion happens before the1% tie rule. Register all runs first,
@@ -79,8 +86,9 @@ new null-path regressions were separately validated in ATT0110.
    If projected total would exceed budget, stop/report before changing schedule.
    Submit three arms×seeds1,2,3,exact3epochs; use only final checkpoint,3dev
    monitoring records and final JSONL predictions;require fresh-Base exact reload.
-   Read the long-job wakeup skill before >1h jobs;the site MCP/coordinator owns
-   notifications,do not create an unsolicited Goal or background watcher.
+   The long-job wakeup skill was read:no Goal was requested,the existing site
+   MCP notifications/coordinator continuation own wakeup. Do not add a duplicate
+   watcher or implicitly create a Goal.
 7. After training run reviewed fixed256 latency on final seed1 adapters using
    corrected src/v5_latency.py (RV0035);construct valid arm->directory map and
    record checkpoint provenance. Base and all adapters use the same256inputs,
@@ -89,6 +97,12 @@ new null-path regressions were separately validated in ATT0110.
    dev monitoring/reload/steps/tokens/costs to coordinator and researcher-1
    (T0014 evaluation). Evidence for calibration/dev/cost is diagnostic only,
    no --supports/--challenges. T0014 owns final confirmation/WikiText/science.
+   T0014 MSG0344 requires top-level learning_rate_lock FileRef and each entry's
+   checkpoint_inventory FileRef for checkpoint.json,plus training_manifest ref.
+   It verifies phase=train,contractE0013@3,validator passed,actual58329examples/
+   29165steps,metrics.lr_lock.sha256 against lock,adapter dir=manifest parent/
+   adapter,inventory listed in manifest artifacts,and exact checkpoint file
+   paths/bytes/SHA256. Current producer preserves these fields;confirmed MSG0347.
 
 All workloads go through miyabi-mcp PBS. Login only for bounded reads,edits and
 records;unchanged environment3c916b51337d-cuda/cuda12.8,HF_HUB_OFFLINE=1.
