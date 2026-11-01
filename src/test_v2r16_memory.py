@@ -1,5 +1,6 @@
 """E-0016 real-model and masked-slot regressions; execute only inside PBS."""
 from dataclasses import replace
+from copy import deepcopy
 import json
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from v2_memory import answer_logits
 from v2_run import fixture
 from v2_train import adapted
 from v2r16_environment import selected_profile
-from v2r16_memory import (ADDRESS, DECODER, _query, compact_snapshot, evaluate_batch,
+from v2r16_memory import (ADDRESS, DECODER, _query, compact_snapshot, evaluate, evaluate_batch,
                           freeze_for_address, single_slot, train_forward)
 from v2r16_objective import slot_marginal
 
@@ -60,7 +61,8 @@ def exits(model):
         model.adapters()[14].side.fusion.P.normal_(std=.025)
 
 
-def test_default_wrapper_preserves_exact_outputs_and_gradients(real_inputs):
+@pytest.mark.parametrize('explicit_builder', (False, True))
+def test_default_wrapper_preserves_exact_outputs_and_gradients(real_inputs, explicit_builder):
     base, batch, _, _ = real_inputs
     with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
         model.model.eval()
@@ -69,10 +71,61 @@ def test_default_wrapper_preserves_exact_outputs_and_gradients(real_inputs):
         reference_loss.backward()
         grads = {name: p.grad.clone() for name, p in model.adapters()[14].side.named_parameters()}
         model.zero_grad(set_to_none=True)
-        loss, logits, _, _ = train_forward(model, batch)
+        calls = []
+        def writer(model, selected):
+            calls.append(selected)
+            return build_support(model, selected)
+        options = {'support_fn': writer} if explicit_builder else {}
+        loss, logits, _, _ = train_forward(model, batch, **options)
         loss.backward()
         assert torch.equal(reference_loss, loss) and torch.equal(reference_logits, logits)
         assert all(torch.equal(p.grad, grads[name]) for name, p in model.adapters()[14].side.named_parameters())
+        assert calls == ([batch] if explicit_builder else [])
+
+
+@torch.no_grad()
+def test_evaluation_support_writer_preserves_defaults_and_receives_global_donors(real_inputs, tmp_path):
+    base, _, fixture_rows, pad = real_inputs
+    rows = deepcopy(fixture_rows)
+    for row in rows:
+        row['identity']['split'] = 'dev'
+    calls = []
+    def writer(model, batch):
+        calls.append([r['episode_id'] for r in batch.rows])
+        return build_support(model, batch)
+    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
+        model.eval()
+        exits(model)
+        reference = evaluate(model, rows, pad, tmp_path/'default', 'dev', ('normal', 'shuffled'))
+        actual = evaluate(model, rows, pad, tmp_path/'explicit', 'dev', ('normal', 'shuffled'),
+                          support_fn=writer)
+    assert actual == reference
+    recipients = [r['episode_id'] for r in rows]
+    assert calls == [recipients, recipients, recipients[::-1]]
+
+
+def test_standard_training_and_shuffled_evaluation_use_returned_support(real_inputs):
+    base, batch, rows, pad = real_inputs
+    calls = []
+    def zero_values(model, selected):
+        calls.append([r['episode_id'] for r in selected.rows])
+        support, accounting = build_support(model, selected)
+        state = support.memory[14]
+        return Snapshot({14: replace(state, slot_values=state.slot_values*0)}), accounting
+    with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
+        model.eval()
+        exits(model)
+        _, zero_logits = evaluate_batch(model, batch, 'zero')
+        loss, logits, _, _ = train_forward(model, batch, support_fn=zero_values)
+        assert torch.equal(logits, zero_logits)
+        loss.backward()
+        assert torch.isfinite(loss)
+        for mode in ('normal', 'shuffled'):
+            donors = collate(rows[::-1], pad) if mode == 'shuffled' else None
+            _, actual = evaluate_batch(model, batch, mode, donors, support_fn=zero_values)
+            assert torch.equal(actual, zero_logits)
+    recipients = [r['episode_id'] for r in rows]
+    assert calls == [recipients, recipients, recipients, recipients[::-1]]
 
 
 def test_d2a_has_only_nonzero_address_gradients_and_frozen_decoder(real_inputs):

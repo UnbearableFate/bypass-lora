@@ -15,7 +15,6 @@ import torch.nn.functional as F
 from v2_memory import (CONTROLS, Snapshot, answer_logits, build_support,
                        capture_projection, collate, control_snapshot, read_vectors,
                        slot_columns)
-from v2_memory import train_forward as legacy_forward
 from v2r16_objective import slot_marginal
 
 ADDRESS = {'projection.A_q', 'projection.A_k', 'reader.Rq'}
@@ -146,12 +145,20 @@ def _marginal_from_support(model, batch, snapshot, support_counts, *, diagnostic
     return loss, mixture, support_counts, output.accounting
 
 
-def train_forward(model, batch, *, protocol='standard'):
-    if protocol == 'standard':
-        return legacy_forward(model, batch)
-    if protocol not in ('teacher', 'marginal'):
+def train_forward(model, batch, *, protocol='standard', support_fn=build_support):
+    """Answer objectives with an optional structured-support writer.
+
+    The writer has the build_support(model, batch) -> (Snapshot, accounting)
+    contract. The standard path preserves the legacy operations and their order.
+    """
+    if protocol not in ('standard', 'teacher', 'marginal'):
         raise ValueError('unknown training protocol')
-    support, support_counts = build_support(model, batch)
+    support, support_counts = support_fn(model, batch)
+    if protocol == 'standard':
+        memory = support.select(batch.owners).memory
+        output = model(batch.question_ids, batch.question_mask, memory=memory, phase='query')
+        logits = answer_logits(output, batch.question_mask)
+        return F.cross_entropy(logits, batch.labels), logits, support_counts, output.accounting
     snapshot = compact_snapshot(support.select(batch.owners))
     if protocol == 'marginal':
         # No target_fact_index or other slot labels enter this branch.
@@ -164,10 +171,11 @@ def train_forward(model, batch, *, protocol='standard'):
 
 
 @torch.no_grad()
-def evaluate_batch(model, batch, mode='normal', donor_batch=None, *, strategy='standard'):
+def evaluate_batch(model, batch, mode='normal', donor_batch=None, *, strategy='standard',
+                   support_fn=build_support):
     if model.training or mode not in (*CONTROLS, *TF_CONTROLS):
         raise ValueError('evaluation needs eval mode and a registered control')
-    original, support_counts = build_support(model, batch)
+    original, support_counts = support_fn(model, batch)
     original = compact_snapshot(original).select(batch.owners)
     shuffled = mode in ('shuffled', 'tf_shuffled')
     if shuffled:
@@ -175,7 +183,7 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None, *, strategy='s
             raise ValueError('shuffled requires one explicit global donor per query')
         if any(a['episode_id'] == b['episode_id'] for a, b in zip(batch.rows, donor_batch.rows)):
             raise ValueError('donor must differ from recipient')
-        donor, _ = build_support(model, donor_batch)
+        donor, _ = support_fn(model, donor_batch)
         snapshot = compact_snapshot(donor).select(donor_batch.owners)
     else:
         snapshot = control_snapshot(original, mode if mode in CONTROLS else 'normal')
@@ -211,7 +219,8 @@ def evaluate_batch(model, batch, mode='normal', donor_batch=None, *, strategy='s
 
 
 @torch.no_grad()
-def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None, *, strategy='standard'):
+def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=None, *,
+             strategy='standard', support_fn=build_support):
     """E-0016 per-example diagnostics, including position-0 versus later facts."""
     from v2_train import distribution, write_json
     if split not in ('dev', 'calibration') or len(rows) < 2 or any(r['identity']['split'] != split for r in rows):
@@ -229,7 +238,8 @@ def evaluate(model, rows, pad_id, output, split, controls=CONTROLS, prior_token=
             if mode in ('shuffled', 'tf_shuffled'):
                 donors = collate([rows[(i-1) % len(rows)] for i in range(start, start+len(selected))],
                                 pad_id, next(model.parameters()).device)
-            details, logits = evaluate_batch(model, batch, mode, donors, strategy=strategy)
+            details, logits = evaluate_batch(model, batch, mode, donors, strategy=strategy,
+                                             support_fn=support_fn)
             losses = (-logits.gather(1, batch.labels[:, None]).squeeze(1)
                       if strategy == 'marginal' and mode != 'zero' else
                       F.cross_entropy(logits, batch.labels, reduction='none'))

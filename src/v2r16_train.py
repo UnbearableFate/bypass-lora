@@ -21,15 +21,16 @@ from v1_data import derive_seed
 from v2_schedule import DATA_HASHES, ORDER_HASH_ENCODING, load_data, make_step_schedule
 
 ARMS = ('D1', 'D2a', 'D2b', 'D3')
+SCHEDULE_ARMS = (*ARMS, 'D4', 'D5')
 RESUME_SEED_RULE = ('base = derive_seed(20261029, "concat_loop_v2", "V2R16", arm, 0); '
                     'epoch indices shuffled by random.Random(base + epoch), epochs 0..2')
 STANDARD = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
 
 
 def make_arm_schedule(rows, arm, steps=6000):
-    if arm not in ARMS:
+    if arm not in SCHEDULE_ARMS:
         raise ValueError('unsupported E-0016 arm')
-    if arm in ('D1', 'D3'):
+    if arm in ('D1', 'D3', 'D4'):
         return make_step_schedule(rows, steps)
     if type(steps) is not int or steps <= 0 or not rows or len(rows) % 8:
         raise ValueError('positive integer steps and complete batch-8 rows required')

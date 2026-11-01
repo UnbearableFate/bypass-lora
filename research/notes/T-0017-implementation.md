@@ -1,7 +1,8 @@
 # T-0017 implementation state
 
 Contract E-0016@1, researcher-1 branch sr/researcher-1/T-0017, reference master
-e1660c954ff1f1efb2738a1708d3eb095f060541. D1/D2a/D2b/D3 only; no D4/D5,
+e1660c954ff1f1efb2738a1708d3eb095f060541. Runs are D1/D2a/D2b/D3 only;
+shared support/schedule hooks also serve T-0018 D4/D5 (MSG-0430). No
 confirmation access or hypothesis decisions. Task estimate about0.5 node hours;
 the full E-0016 contract ceiling is0.9 including other researchers' arms.
 
@@ -41,9 +42,22 @@ and checks torch's actual device name before tests, timing or training. A host
 listing containing an unrelated2g slice is insufficient. Unknown or1g profiles
 fail fast. No work falls back to login.
 
-Next: finish unit/real-model/analysis checks, commit, register a PBS smoke,
-stage reference and candidate snapshots, enforce D3 stable step<=3x fresh
-V2-03 before scaling, import outputs and request independent code review.
+MSG-0430 adds keyword support_fn=build_support to v2r16_memory.train_forward,
+evaluate_batch and evaluate. Both recipient and shuffled donor support use it.
+The standard training path executes the same operations in the same order as
+legacy train_forward; exact logits/loss/gradients are checked both with the
+argument omitted and with an explicit wrapper of build_support. The evaluator
+also checks full-record equality and donor propagation. make_arm_schedule
+accepts D4 (released order) and D5 (derived-seed continuation order); this does
+not add D4/D5 to the T-0017 runner's CLI. resume_provenance stays D1-specific:
+R1 lacks its contract/arm/checkpoint inventory schema and uses nested metrics
+with a normal-only reload check. Researcher-3 owns the R1 source validator.
+
+The initial source7354cdf smoke ATT-0150-1 / RES-0138 passed all43 tests,
+old/new exact default identity, four protocol save/reload checks and the D3
+cost gate on the verified allocated MIG2g.24gb. See T-0017-smoke.md.
+Next: validate the shared hooks in a registered PBS smoke, then request the
+independent code review of the final implementation including those hooks.
 After passing review, D1 and D3 run independently; D2a/b are released from
 validated D1 final checkpoint provenance. All full jobs use6000x8, seed0,
 LR3e-3 and final checkpoints. Only screening evidence will be recorded.

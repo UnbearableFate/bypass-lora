@@ -16,13 +16,13 @@ def rows(count=32):
              'question_input_ids': [2, 3]} for i in range(count)]
 
 
-@pytest.mark.parametrize('arm', ('D1', 'D3'))
+@pytest.mark.parametrize('arm', ('D1', 'D3', 'D4'))
 def test_from_scratch_schedule_keeps_released_v2_order(arm):
     data = rows()
     assert make_arm_schedule(data, arm, 10) == make_step_schedule(data, 10)
 
 
-@pytest.mark.parametrize('arm', ('D2a', 'D2b'))
+@pytest.mark.parametrize('arm', ('D2a', 'D2b', 'D5'))
 def test_resume_order_uses_new_arm_namespace_for_each_complete_epoch(arm):
     data = rows()
     plan = make_arm_schedule(data, arm, 12)
@@ -45,11 +45,11 @@ def test_resume_order_uses_new_arm_namespace_for_each_complete_epoch(arm):
 
 def test_resume_arms_do_not_reuse_each_other_or_d1_order():
     data = rows()
-    orders = [tuple(make_arm_schedule(data, arm, 10)['order']) for arm in ('D1', 'D2a', 'D2b')]
-    assert len(set(orders)) == 3
+    orders = [tuple(make_arm_schedule(data, arm, 10)['order']) for arm in ('D1', 'D2a', 'D2b', 'D5')]
+    assert len(set(orders)) == 4
 
 
-@pytest.mark.parametrize('arm', ('D1', 'D2a', 'D2b', 'D3'))
+@pytest.mark.parametrize('arm', ('D1', 'D2a', 'D2b', 'D3', 'D4', 'D5'))
 def test_formal_resume_has_fresh_warmup_and_smoke_recomputes_actual_tokens(arm):
     data = rows(16384)
     plan = make_arm_schedule(data, arm)
