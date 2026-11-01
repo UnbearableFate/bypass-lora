@@ -1,0 +1,726 @@
+{
+  "cost_source": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0175-1/cost-summary.json",
+    "bytes": 9011,
+    "sha256": "cc36b0911cb2d1ee274534b95acbeee5be6c577ec13d0431f1ab0f8c7683d695"
+  },
+  "validation": {
+    "V5-C": {
+      "seeds": {
+        "1": {
+          "piqa": {
+            "accuracy": 0.719804134929271,
+            "correct": 1323,
+            "n": 1838,
+            "gold_nll_sum": 106417.78486466408,
+            "gold_loss_tokens": 41729,
+            "nll": 2.55021172001879
+          },
+          "boolq": {
+            "accuracy": 0.8281345565749235,
+            "correct": 2708,
+            "n": 3270,
+            "gold_nll_sum": 2288.083284290682,
+            "gold_loss_tokens": 3270,
+            "nll": 0.6997196588044899
+          },
+          "macro_accuracy": 0.7739693457520973,
+          "macro_nll": 1.62496568941164
+        },
+        "2": {
+          "piqa": {
+            "accuracy": 0.7263329706202394,
+            "correct": 1335,
+            "n": 1838,
+            "gold_nll_sum": 106682.77859544754,
+            "gold_loss_tokens": 41729,
+            "nll": 2.5565620694348663
+          },
+          "boolq": {
+            "accuracy": 0.8321100917431192,
+            "correct": 2721,
+            "n": 3270,
+            "gold_nll_sum": 2331.5107723244764,
+            "gold_loss_tokens": 3270,
+            "nll": 0.7130002361848552
+          },
+          "macro_accuracy": 0.7792215311816793,
+          "macro_nll": 1.6347811528098608
+        },
+        "3": {
+          "piqa": {
+            "accuracy": 0.7154515778019587,
+            "correct": 1315,
+            "n": 1838,
+            "gold_nll_sum": 106480.72121286392,
+            "gold_loss_tokens": 41729,
+            "nll": 2.551719936084352
+          },
+          "boolq": {
+            "accuracy": 0.827217125382263,
+            "correct": 2705,
+            "n": 3270,
+            "gold_nll_sum": 2325.3011486656615,
+            "gold_loss_tokens": 3270,
+            "nll": 0.7111012687050953
+          },
+          "macro_accuracy": 0.7713343515921108,
+          "macro_nll": 1.6314106023947237
+        }
+      },
+      "summary": {
+        "piqa": {
+          "accuracy": {
+            "seed_mean": 0.7205295611171563,
+            "seed_sample_sd": 0.0054768476135442345
+          },
+          "nll": {
+            "seed_mean": 2.5528312418460026,
+            "seed_sample_sd": 0.0033178283256482506
+          }
+        },
+        "boolq": {
+          "accuracy": {
+            "seed_mean": 0.8291539245667686,
+            "seed_sample_sd": 0.002600887017772273
+          },
+          "nll": {
+            "seed_mean": 0.7079403878981468,
+            "seed_sample_sd": 0.007182395804727605
+          }
+        },
+        "macro_accuracy": {
+          "seed_mean": 0.7748417428419625,
+          "seed_sample_sd": 0.004015309201211042
+        },
+        "macro_nll": {
+          "seed_mean": 1.630385814872075,
+          "seed_sample_sd": 0.004987331203197329
+        }
+      }
+    },
+    "V5-F": {
+      "seeds": {
+        "1": {
+          "piqa": {
+            "accuracy": 0.7247007616974973,
+            "correct": 1332,
+            "n": 1838,
+            "gold_nll_sum": 106465.62519168854,
+            "gold_loss_tokens": 41729,
+            "nll": 2.551358172774055
+          },
+          "boolq": {
+            "accuracy": 0.825993883792049,
+            "correct": 2701,
+            "n": 3270,
+            "gold_nll_sum": 2185.803305568523,
+            "gold_loss_tokens": 3270,
+            "nll": 0.6684413778497011
+          },
+          "macro_accuracy": 0.7753473227447731,
+          "macro_nll": 1.6098997753118782
+        },
+        "2": {
+          "piqa": {
+            "accuracy": 0.7143634385201306,
+            "correct": 1313,
+            "n": 1838,
+            "gold_nll_sum": 106388.29476094246,
+            "gold_loss_tokens": 41729,
+            "nll": 2.549505014760537
+          },
+          "boolq": {
+            "accuracy": 0.828440366972477,
+            "correct": 2709,
+            "n": 3270,
+            "gold_nll_sum": 2178.3096383956436,
+            "gold_loss_tokens": 3270,
+            "nll": 0.6661497365124293
+          },
+          "macro_accuracy": 0.7714019027463038,
+          "macro_nll": 1.6078273756364831
+        },
+        "3": {
+          "piqa": {
+            "accuracy": 0.719804134929271,
+            "correct": 1323,
+            "n": 1838,
+            "gold_nll_sum": 106534.3552327156,
+            "gold_loss_tokens": 41729,
+            "nll": 2.5530052297614514
+          },
+          "boolq": {
+            "accuracy": 0.8217125382262997,
+            "correct": 2687,
+            "n": 3270,
+            "gold_nll_sum": 2338.197877623752,
+            "gold_loss_tokens": 3270,
+            "nll": 0.7150452225149089
+          },
+          "macro_accuracy": 0.7707583365777854,
+          "macro_nll": 1.63402522613818
+        }
+      },
+      "summary": {
+        "piqa": {
+          "accuracy": {
+            "seed_mean": 0.7196227783822996,
+            "seed_sample_sd": 0.005171047308445132
+          },
+          "nll": {
+            "seed_mean": 2.5512894724320145,
+            "seed_sample_sd": 0.0017511185185199879
+          }
+        },
+        "boolq": {
+          "accuracy": {
+            "seed_mean": 0.8253822629969418,
+            "seed_sample_sd": 0.0034053604665626614
+          },
+          "nll": {
+            "seed_mean": 0.6832121122923466,
+            "seed_sample_sd": 0.027592083734941635
+          }
+        },
+        "macro_accuracy": {
+          "seed_mean": 0.7725025206896209,
+          "seed_sample_sd": 0.0024845962253583
+        },
+        "macro_nll": {
+          "seed_mean": 1.6172507923621804,
+          "seed_sample_sd": 0.014563994351917693
+        }
+      }
+    },
+    "V5-L": {
+      "seeds": {
+        "1": {
+          "piqa": {
+            "accuracy": 0.7247007616974973,
+            "correct": 1332,
+            "n": 1838,
+            "gold_nll_sum": 107540.77738273144,
+            "gold_loss_tokens": 41729,
+            "nll": 2.577123280757541
+          },
+          "boolq": {
+            "accuracy": 0.8287461773700305,
+            "correct": 2710,
+            "n": 3270,
+            "gold_nll_sum": 2215.6993062924885,
+            "gold_loss_tokens": 3270,
+            "nll": 0.6775838857163573
+          },
+          "macro_accuracy": 0.7767234695337639,
+          "macro_nll": 1.6273535832369492
+        },
+        "2": {
+          "piqa": {
+            "accuracy": 0.735582154515778,
+            "correct": 1352,
+            "n": 1838,
+            "gold_nll_sum": 107217.50403082371,
+            "gold_loss_tokens": 41729,
+            "nll": 2.5693763097803375
+          },
+          "boolq": {
+            "accuracy": 0.8308868501529052,
+            "correct": 2717,
+            "n": 3270,
+            "gold_nll_sum": 2309.7989499730465,
+            "gold_loss_tokens": 3270,
+            "nll": 0.7063605351599531
+          },
+          "macro_accuracy": 0.7832345023343417,
+          "macro_nll": 1.6378684224701452
+        },
+        "3": {
+          "piqa": {
+            "accuracy": 0.7236126224156693,
+            "correct": 1330,
+            "n": 1838,
+            "gold_nll_sum": 107529.36352536082,
+            "gold_loss_tokens": 41729,
+            "nll": 2.576849757371632
+          },
+          "boolq": {
+            "accuracy": 0.8305810397553517,
+            "correct": 2716,
+            "n": 3270,
+            "gold_nll_sum": 2334.0669247994374,
+            "gold_loss_tokens": 3270,
+            "nll": 0.7137819341894304
+          },
+          "macro_accuracy": 0.7770968310855104,
+          "macro_nll": 1.645315845780531
+        }
+      },
+      "summary": {
+        "piqa": {
+          "accuracy": {
+            "seed_mean": 0.7279651795429816,
+            "seed_sample_sd": 0.006618892851249398
+          },
+          "nll": {
+            "seed_mean": 2.574449782636503,
+            "seed_sample_sd": 0.004395884311188067
+          }
+        },
+        "boolq": {
+          "accuracy": {
+            "seed_mean": 0.8300713557594293,
+            "seed_sample_sd": 0.0011577794792661394
+          },
+          "nll": {
+            "seed_mean": 0.6992421183552469,
+            "seed_sample_sd": 0.019120109091448182
+          }
+        },
+        "macro_accuracy": {
+          "seed_mean": 0.7790182676512053,
+          "seed_sample_sd": 0.003656135376260282
+        },
+        "macro_nll": {
+          "seed_mean": 1.636845950495875,
+          "seed_sample_sd": 0.009024677591181092
+        }
+      }
+    }
+  },
+  "primary": {
+    "contrast": "V5-C - V5-L",
+    "delta": -0.004176524809242872,
+    "delta_seed_mean": -0.004176524809242872,
+    "delta_seed_sample_sd": 0.0015108320128375367,
+    "by_seed": {
+      "1": -0.0027541237816666175,
+      "2": -0.0040129711526624146,
+      "3": -0.005762479493399586
+    },
+    "ci95": [
+      -0.01020108808382111,
+      0.0019706205166942306
+    ],
+    "task_deltas": {
+      "piqa": {
+        "by_seed": {
+          "1": -0.004896626768226331,
+          "2": -0.009249183895538637,
+          "3": -0.008161044613710589
+        },
+        "seed_mean": -0.007435618425825186
+      },
+      "boolq": {
+        "by_seed": {
+          "1": -0.0006116207951070152,
+          "2": 0.0012232415902140303,
+          "3": -0.0033639143730886945
+        },
+        "seed_mean": -0.0009174311926605597
+      }
+    },
+    "decision": "challenged"
+  },
+  "secondary": {
+    "S1": {
+      "contrast": "V5-C - V5-F",
+      "seed_mean_difference": 0.0023392221523416876,
+      "ci95": [
+        -0.0023929996372869054,
+        0.007087359781440399
+      ],
+      "two_sided_empirical_p": 0.3356,
+      "task_ci95": {
+        "piqa": [
+          -0.005984766050054406,
+          0.007798331519767863
+        ],
+        "boolq": [
+          -0.002956167176350662,
+          0.010295616717635068
+        ]
+      },
+      "by_seed": {
+        "1": -0.0013779769926758334,
+        "2": 0.007819628435375425,
+        "3": 0.0005760150143254705
+      },
+      "task_deltas": {
+        "piqa": {
+          "by_seed": {
+            "1": -0.004896626768226331,
+            "2": 0.01196953210010876,
+            "3": -0.0043525571273123065
+          },
+          "seed_mean": 0.0009067827348567074
+        },
+        "boolq": {
+          "by_seed": {
+            "1": 0.002140672782874553,
+            "2": 0.003669724770642202,
+            "3": 0.0055045871559632475
+          },
+          "seed_mean": 0.0037716615698266676
+        }
+      },
+      "holm_adjusted_p": 0.3356,
+      "holm_reject_at_0_05": false
+    },
+    "S2": {
+      "contrast": "V5-F - V5-L",
+      "seed_mean_difference": -0.0065157469615845605,
+      "ci95": [
+        -0.012521363468468915,
+        -0.0003785984300180036
+      ],
+      "two_sided_empirical_p": 0.0346,
+      "task_ci95": {
+        "piqa": [
+          -0.018140188610808846,
+          0.0016322089227421106
+        ],
+        "boolq": [
+          -0.01202854230377166,
+          0.0027522935779816515
+        ]
+      },
+      "by_seed": {
+        "1": -0.0013761467889907841,
+        "2": -0.01183259958803784,
+        "3": -0.0063384945077250565
+      },
+      "task_deltas": {
+        "piqa": {
+          "by_seed": {
+            "1": 0.0,
+            "2": -0.021218715995647397,
+            "3": -0.003808487486398282
+          },
+          "seed_mean": -0.008342401160681892
+        },
+        "boolq": {
+          "by_seed": {
+            "1": -0.0027522935779815683,
+            "2": -0.0024464831804281717,
+            "3": -0.008868501529051942
+          },
+          "seed_mean": -0.004689092762487228
+        }
+      },
+      "holm_adjusted_p": 0.0692,
+      "holm_reject_at_0_05": false
+    }
+  },
+  "wikitext": {
+    "base_nll": 2.647376056184969,
+    "delta_nll_vs_base": {
+      "V5-C": {
+        "by_seed": {
+          "1": 0.17786870428527957,
+          "2": 0.23637387034421797,
+          "3": 0.18612347486778358
+        },
+        "seed_mean": 0.2001220164990937,
+        "seed_sample_sd": 0.03166516997820526
+      },
+      "V5-F": {
+        "by_seed": {
+          "1": 0.25791339350113995,
+          "2": 0.22277388520814823,
+          "3": 0.23336343269793813
+        },
+        "seed_mean": 0.23801690380240878,
+        "seed_sample_sd": 0.01802601885493344
+      },
+      "V5-L": {
+        "by_seed": {
+          "1": 0.3197492794577128,
+          "2": 0.3504908634861854,
+          "3": 0.3392741342021295
+        },
+        "seed_mean": 0.3365047590486759,
+        "seed_sample_sd": 0.01555677750050874
+      }
+    }
+  },
+  "latency_ms": {
+    "base": {
+      "count": 768,
+      "mean_ms": 36.650579542083506,
+      "median_ms": 35.837196512147784,
+      "p95_ms": 42.62098501203582
+    },
+    "V5-C": {
+      "count": 768,
+      "mean_ms": 37.803234421820285,
+      "median_ms": 37.782364030135795,
+      "p95_ms": 38.540544046554714
+    },
+    "V5-F": {
+      "count": 768,
+      "mean_ms": 38.090068237049,
+      "median_ms": 38.06972553138621,
+      "p95_ms": 39.00493198307231
+    },
+    "V5-L": {
+      "count": 768,
+      "mean_ms": 55.760591947015804,
+      "median_ms": 55.736401001922786,
+      "p95_ms": 56.867382023483515
+    },
+    "V5-L-merged": {
+      "count": 768,
+      "mean_ms": 35.929941649025444,
+      "median_ms": 35.91556448373012,
+      "p95_ms": 36.759474023710936
+    }
+  },
+  "latency_rule": "batch1, first64 dev rows per task, both candidates, 16 warmups, 3 timed passes; synchronized host forward walltime",
+  "merge_note": "BF16 merged weights incur one rounding; timing only, unmerged checkpoint used for task scoring",
+  "arms": {
+    "V5-C": {
+      "parameters": 524288,
+      "mergeable": false,
+      "training_seconds_seed_mean": 5387.580923918693,
+      "training_seconds_seed_sd": 103.5572645019633,
+      "training_seconds_min": 5293.831502134039,
+      "training_seconds_max": 5498.739314445993,
+      "stable_step_ms_seed_mean": 184.64350983526396,
+      "peak_cuda_GiB_max": 3.0772509574890137,
+      "formal_training_node_hours": 1.2611805555555555,
+      "dev_by_seed": {
+        "1": {
+          "piqa_accuracy": 0.733,
+          "boolq_accuracy": 0.83,
+          "macro_nll": 1.617506628393934
+        },
+        "2": {
+          "piqa_accuracy": 0.731,
+          "boolq_accuracy": 0.826,
+          "macro_nll": 1.633767242371726
+        },
+        "3": {
+          "piqa_accuracy": 0.722,
+          "boolq_accuracy": 0.817,
+          "macro_nll": 1.6262742205153469
+        }
+      },
+      "training_runs": [
+        {
+          "arm": "V5-C",
+          "seed": 1,
+          "attempt": "ATT-0129-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765067.opbs",
+          "scheduler_MIG_seconds": 5961,
+          "scheduler_node_h": 0.4139583333333333,
+          "load.seconds": 1.356329571979586,
+          "train.seconds": 5293.831502134039,
+          "train.steady_step_seconds": 0.18142728084070864,
+          "train.peak_cuda_bytes": 3297333248,
+          "monitor.seconds": 483.91473820398096,
+          "save.seconds": 0.022914755973033607,
+          "reload.load_seconds": 0.4771584940026514,
+          "reload.eval_seconds": 157.1487457100302
+        },
+        {
+          "arm": "V5-C",
+          "seed": 2,
+          "attempt": "ATT-0130-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 1g.24gb",
+          "job_id": "3765068.opbs",
+          "scheduler_MIG_seconds": 6177,
+          "scheduler_node_h": 0.42895833333333333,
+          "load.seconds": 1.3945316940080374,
+          "train.seconds": 5498.739314445993,
+          "train.steady_step_seconds": 0.1884562960682832,
+          "train.peak_cuda_bytes": 3304173056,
+          "monitor.seconds": 498.6390081560239,
+          "save.seconds": 0.007169728050939739,
+          "reload.load_seconds": 0.26211749797221273,
+          "reload.eval_seconds": 155.37971111602383
+        },
+        {
+          "arm": "V5-C",
+          "seed": 3,
+          "attempt": "ATT-0131-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765069.opbs",
+          "scheduler_MIG_seconds": 6023,
+          "scheduler_node_h": 0.4182638888888889,
+          "load.seconds": 1.3762702960520983,
+          "train.seconds": 5370.171955176047,
+          "train.steady_step_seconds": 0.18404695259680004,
+          "train.peak_cuda_bytes": 3298535424,
+          "monitor.seconds": 467.9897815839504,
+          "save.seconds": 0.0074566699913702905,
+          "reload.load_seconds": 0.26186476403381675,
+          "reload.eval_seconds": 160.01123384200037
+        }
+      ]
+    },
+    "V5-F": {
+      "parameters": 524288,
+      "mergeable": false,
+      "training_seconds_seed_mean": 5332.367704425317,
+      "training_seconds_seed_sd": 263.38557347889054,
+      "training_seconds_min": 5061.45790131198,
+      "training_seconds_max": 5587.521683879953,
+      "stable_step_ms_seed_mean": 182.75304587200753,
+      "peak_cuda_GiB_max": 3.07564640045166,
+      "formal_training_node_hours": 1.247847222222222,
+      "dev_by_seed": {
+        "1": {
+          "piqa_accuracy": 0.731,
+          "boolq_accuracy": 0.82,
+          "macro_nll": 1.6133810009907315
+        },
+        "2": {
+          "piqa_accuracy": 0.736,
+          "boolq_accuracy": 0.828,
+          "macro_nll": 1.6051349619651365
+        },
+        "3": {
+          "piqa_accuracy": 0.733,
+          "boolq_accuracy": 0.819,
+          "macro_nll": 1.6248034095630262
+        }
+      },
+      "training_runs": [
+        {
+          "arm": "V5-F",
+          "seed": 1,
+          "attempt": "ATT-0132-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765071.opbs",
+          "scheduler_MIG_seconds": 6287,
+          "scheduler_node_h": 0.43659722222222225,
+          "load.seconds": 1.4265358410193585,
+          "train.seconds": 5587.521683879953,
+          "train.steady_step_seconds": 0.19150194484781063,
+          "train.peak_cuda_bytes": 3295838208,
+          "monitor.seconds": 510.3001245270134,
+          "save.seconds": 0.00763568002730608,
+          "reload.load_seconds": 0.2602967380080372,
+          "reload.eval_seconds": 165.24250361096347
+        },
+        {
+          "arm": "V5-F",
+          "seed": 2,
+          "attempt": "ATT-0133-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765072.opbs",
+          "scheduler_MIG_seconds": 6002,
+          "scheduler_node_h": 0.41680555555555554,
+          "load.seconds": 1.3242890649707988,
+          "train.seconds": 5348.123528084019,
+          "train.steady_step_seconds": 0.18329463721892814,
+          "train.peak_cuda_bytes": 3301803520,
+          "monitor.seconds": 471.8846842269413,
+          "save.seconds": 0.03618737799115479,
+          "reload.load_seconds": 0.45267631503520533,
+          "reload.eval_seconds": 156.18417916400358
+        },
+        {
+          "arm": "V5-F",
+          "seed": 3,
+          "attempt": "ATT-0134-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765073.opbs",
+          "scheduler_MIG_seconds": 5680,
+          "scheduler_node_h": 0.39444444444444443,
+          "load.seconds": 0.8546214970410801,
+          "train.seconds": 5061.45790131198,
+          "train.steady_step_seconds": 0.17346255554928383,
+          "train.peak_cuda_bytes": 3302450176,
+          "monitor.seconds": 445.4697915830184,
+          "save.seconds": 0.02963927498785779,
+          "reload.load_seconds": 0.5230594499735162,
+          "reload.eval_seconds": 147.43489470297936
+        }
+      ]
+    },
+    "V5-L": {
+      "parameters": 630784,
+      "mergeable": true,
+      "training_seconds_seed_mean": 11397.996885406319,
+      "training_seconds_seed_sd": 589.2047274804308,
+      "training_seconds_min": 10992.858981295954,
+      "training_seconds_max": 12073.915253722982,
+      "stable_step_ms_seed_mean": 390.740705227085,
+      "peak_cuda_GiB_max": 3.9845991134643555,
+      "formal_training_node_hours": 2.585208333333333,
+      "dev_by_seed": {
+        "1": {
+          "piqa_accuracy": 0.746,
+          "boolq_accuracy": 0.836,
+          "macro_nll": 1.6163751824736017
+        },
+        "2": {
+          "piqa_accuracy": 0.741,
+          "boolq_accuracy": 0.827,
+          "macro_nll": 1.643579135425608
+        },
+        "3": {
+          "piqa_accuracy": 0.74,
+          "boolq_accuracy": 0.827,
+          "macro_nll": 1.642619896694704
+        }
+      },
+      "training_runs": [
+        {
+          "arm": "V5-L",
+          "seed": 1,
+          "attempt": "ATT-0135-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765074.opbs",
+          "scheduler_MIG_seconds": 11945,
+          "scheduler_node_h": 0.8295138888888889,
+          "load.seconds": 0.6121956590213813,
+          "train.seconds": 10992.858981295954,
+          "train.steady_step_seconds": 0.37685048430474066,
+          "train.peak_cuda_bytes": 4268922880,
+          "monitor.seconds": 697.9696672120481,
+          "save.seconds": 0.02579880302073434,
+          "reload.load_seconds": 0.49989144498249516,
+          "reload.eval_seconds": 235.28994313598378
+        },
+        {
+          "arm": "V5-L",
+          "seed": 2,
+          "attempt": "ATT-0136-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 1g.24gb",
+          "job_id": "3765075.opbs",
+          "scheduler_MIG_seconds": 13178,
+          "scheduler_node_h": 0.9151388888888888,
+          "load.seconds": 0.5968870869837701,
+          "train.seconds": 12073.915253722982,
+          "train.steady_step_seconds": 0.41392331507606067,
+          "train.peak_cuda_bytes": 4275067904,
+          "monitor.seconds": 812.2587229530327,
+          "save.seconds": 0.02327418903587386,
+          "reload.load_seconds": 0.3053523249691352,
+          "reload.eval_seconds": 272.1740610250272
+        },
+        {
+          "arm": "V5-L",
+          "seed": 3,
+          "attempt": "ATT-0137-1",
+          "hardware_metadata": "NVIDIA GH200 120GB MIG 2g.24gb",
+          "job_id": "3765077.opbs",
+          "scheduler_MIG_seconds": 12104,
+          "scheduler_node_h": 0.8405555555555555,
+          "load.seconds": 1.1781288539641537,
+          "train.seconds": 11127.21642120002,
+          "train.steady_step_seconds": 0.3814483163004538,
+          "train.peak_cuda_bytes": 4278430720,
+          "monitor.seconds": 722.4904691629927,
+          "save.seconds": 0.03882959298789501,
+          "reload.load_seconds": 0.49204151099547744,
+          "reload.eval_seconds": 228.0973280610051
+        }
+      ]
+    }
+  }
+}

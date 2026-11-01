@@ -1,0 +1,135 @@
+{
+  "passed": true,
+  "raw_sealed_file_access_attempts": [],
+  "lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/a09c3181ba9e2eb9c4ca2e63004845c54269455d/research/artifacts/T-0020/confirmation-lock.json",
+    "bytes": 14646,
+    "sha256": "f7b52c1b5c0d856a1e704d183076337134df997f1bfcfb39d9bc8bb3615d05e2"
+  },
+  "source_commit": "2b5c809f6101b5ba132d5565ebbf73ef91e105da",
+  "receipt": {
+    "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0020/unseal-receipt.json",
+    "bytes": 422,
+    "sha256": "7314826ed6d2b79dd6246ab873eb6088c3d7eee3d91698633b5131e560c91e64"
+  },
+  "receipt_attempts": [
+    {
+      "attempt": "ATT-0179-1",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1"
+    }
+  ],
+  "bundle_count": 10,
+  "bundles": [
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/Base/prediction-bundle.json",
+      "bytes": 538,
+      "sha256": "dfbd7340ab5e3a2522ed508529f7c9391f5c88d9f219552ae72865e7d0d06f2a"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-C-s1/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "140dd4ddfcc09df20dd2e80bfddb480ee2559f3bfdcc4fd2daac79f20ca0e7bb"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-C-s2/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "e8b5f81c9cd9a9d06ba0e2ee670d66e0b749118ffb9382573e6895dd95415782"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-C-s3/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "00127dd8c4148fd00ca412988477660022a17aebb5978124941bd9f2025453a7"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-F-s1/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "b34bb43760ad9aef10da5ed545659834c0b7752a91a25242925550b606311835"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-F-s2/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "9f773436ce9cb8ab54fd9d41785d7cd02615b6e6e9a419848240436056bac764"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-F-s3/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "86af4a862b6aec3d52ee1c0ace3227c0319681c1b57155d10f4b18ba583ed979"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-L-s1/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "6d14e1cb9ce35da2ec9c310c2881962e8c354ecdf0f74e6930581b46b24e3a10"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-L-s2/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "c9f79fd310fe2afbe27bbdfed97f9565a37bef7e4b44706f75ad9fe71de66beb"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/V5-L-s3/prediction-bundle.json",
+      "bytes": 541,
+      "sha256": "552355b46f6979e47ea50e82ee4e0a05cd36c896d12f027b62bbeba5cb96cf56"
+    }
+  ],
+  "counts_by_task": {
+    "piqa": 1838,
+    "boolq": 3270
+  },
+  "exclusions": {
+    "piqa": {
+      "raw_examples": 1838,
+      "examples": 1838,
+      "excluded_ids": [],
+      "protocol_deviation": false
+    },
+    "boolq": {
+      "raw_examples": 3270,
+      "examples": 3270,
+      "excluded_ids": [],
+      "protocol_deviation": false
+    }
+  },
+  "wikitext_block_metadata": {
+    "input_tokens": 298938,
+    "blocks": 291,
+    "discarded_tail_tokens": 954,
+    "predicted_tokens": 297693,
+    "block_length": 1024
+  },
+  "analysis_input": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/analysis-input.json",
+    "bytes": 2567,
+    "sha256": "d071e5ccd400bb2fabbab7ada225884c37958eca578d34c03b87088990577684"
+  },
+  "original_analysis": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0179-1/analysis/analysis.json",
+    "bytes": 16529,
+    "sha256": "0966de6ba7b276b8fd6274920c4eb220f953d8220813485d7aff53645cffe82c"
+  },
+  "full_locked_analysis_identical": true,
+  "bootstrap": {
+    "method": "paired task-stratified row bootstrap",
+    "repetitions": 10000,
+    "rng": "numpy.random.default_rng",
+    "seed": 20261029,
+    "seed_resampling": false,
+    "shared_indices_across_arms_and_seeds": true
+  },
+  "holm": {
+    "alpha": 0.05,
+    "adjusted_p": {
+      "S2": 0.0692,
+      "S1": 0.3356
+    },
+    "reject": {
+      "S2": false,
+      "S1": false
+    },
+    "order": [
+      "S2",
+      "S1"
+    ]
+  },
+  "sealed_rule_evidence_edge": "challenged",
+  "wall_seconds": 0.7636354209971614
+}

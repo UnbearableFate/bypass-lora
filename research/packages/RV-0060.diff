@@ -1,0 +1,3617 @@
+diff --git a/research/artifacts/T-0022/cost-summary.json b/research/artifacts/T-0022/cost-summary.json
+new file mode 100644
+index 0000000..d27176a
+--- /dev/null
++++ b/research/artifacts/T-0022/cost-summary.json
+@@ -0,0 +1,927 @@
++{
++  "experiment": "E-0019@1",
++  "scope": "RB0 engineering/cost diagnostics only",
++  "sources": [
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/manifest.json",
++      "sha256": "d4d32271c6361efd93b6b97b881ac24b023f66ab82644302552cf4002b0efe23",
++      "bytes": 719
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/allocation.json",
++      "sha256": "b658981c39cedeca31f210aecc64be0a559a2734d41cbdb9fcd0c2199c4f6a02",
++      "bytes": 413
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/mig-profile.json",
++      "sha256": "9f1984e5c15a5a4f720123831ba1a894af49b2ed39ae840c0c36b6b112acc2e5",
++      "bytes": 382
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/manifest.json",
++      "sha256": "306b0612446d73c4fdce0c9f204b9642e8709fe8c8d1e00dd90e9cc3ffeaf9c7",
++      "bytes": 1039
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/allocation.json",
++      "sha256": "82f4903e63d7c22841831c8ffd221c40c138636682dac76a02b2f2570b50708c",
++      "bytes": 413
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/mig-profile.json",
++      "sha256": "51d637b72b782d85301172111d94c9943b988ba0161af5e34f13b8ecf73802ac",
++      "bytes": 382
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/timings.json",
++      "sha256": "f0b1454398bce6465ac1b6d1b2cadd45e9d277f533aaed69055096b52bdb391e",
++      "bytes": 46120
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/timings.json",
++      "sha256": "16f10cb7e130bed59727b40d7dd72a1e6093465b74ad22db244ff1daaa82ccda",
++      "bytes": 25097
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/cost-estimates.json",
++      "sha256": "cbc5ae7c51d6e4ebdb950aec85ce65e3cbe2da7ed6893e1d607ce32a006748d8",
++      "bytes": 15201
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/schedules.json",
++      "sha256": "401cf27197b9c3d56da6985d5f8e931494402399ed7e8dc7f22ac486ab4372f3",
++      "bytes": 953
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/latency-base.json",
++      "sha256": "31591f1bd3eb07c8cb4bfb62efe2c6ec61924a86ae5638d26edc05a69a1e88fc",
++      "bytes": 3557
++    },
++    {
++      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/checks/checks.xml",
++      "sha256": "61faab42b1300b783cdc54df22f023a9eef59ec5f83f23ffe5d89a5d5e0c6a43",
++      "bytes": 573317
++    }
++  ],
++  "source_hashes_unchanged_since397check_snapshot": {
++    "src/bypass_core.py": "58985103765600a58ff76be7a0293dc0949f1340305264ea45f8a933dc441016",
++    "src/bypass_model.py": "3d5116560cf57e5d2ed10fcf6595242a19f04b0710cee93f113b69604e5426fd",
++    "src/rb_train.py": "58e49eff473be1685bb0e94c9cdd719379b265768aeb38acf6eda962b4bb0b7d",
++    "src/rb_data.py": "2a8100fca6431d4b011f796c240b97690a9a1c37e85dff239023fce475bd5a88",
++    "src/rb_history.py": "cbecf9f20eb3f5b75bc5711d3950854014f16918b5eefff515eee15a0ca1e964",
++    "src/v1_run.py": "38d2456cc69d3406b76ab77a32cbf9ac8107983617bbbc448a13306d046b6358",
++    "src/v1_data.py": "63d9715eed984b474003cebad05b8f6fe5b34b8a2de0716a1f9e2a759123df1f",
++    "src/v1_lora.py": "f81cdc627679ac66cd710395af2a3c9e888beff901cc67b636ea605ae1b18bbe",
++    "src/calibrate.py": "30c7c268463e630e409dcc54b6a63af8becd0d50d548650c1ebb49ee30b0692d",
++    "src/tolerances.json": "924b849a5157481b8c30b40d697f9889a4ba12a999b2c15b8e49e1f2571c6acd",
++    "pyproject.toml": "cd1881a570a7ff4ca6e0878d36c1448f1330ec027e2985765f3d23c3dbb71b4d",
++    "uv.lock": "31429457ceece707abf1505af6e6210b44a6e2817d2527241892f0587aca47a3"
++  },
++  "schedules": {
++    "RBc": {
++      "plan.steps": 1096,
++      "plan.examples": 2192,
++      "plan.input_tokens": 200229,
++      "plan.order_sha256": "053284831520676982857bf9677a9fa3e338b0bbad4d2ce2af1c3f88d20457d3",
++      "plan.epoch_end_steps": {}
++    },
++    "RB1": {
++      "plan.steps": 13115,
++      "plan.examples": 26230,
++      "plan.input_tokens": 2000069,
++      "plan.order_sha256": "33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf",
++      "plan.epoch_end_steps": {
++        "1": 8722
++      }
++    },
++    "RB5": {
++      "plan.steps": 26165,
++      "plan.examples": 52329,
++      "plan.input_tokens": 3629259,
++      "plan.order_sha256": "02d68feddba6014f733fa3ede8b08308b6948681120ccd27bc27d396ef86b997",
++      "plan.epoch_end_steps": {
++        "1": 8722,
++        "2": 17443,
++        "3": 26165
++      }
++    },
++    "excluded": [
++      {
++        "task": "piqa",
++        "id": 5528,
++        "candidate_lengths": [
++          537,
++          537
++        ],
++        "reason": "a complete candidate exceeds max_length"
++      }
++    ]
++  },
++  "cases": [
++    {
++      "case": "RB1-01",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.21769417720031925,
++      "tokens_per_second": 843.5687272931373,
++      "peak_cuda_bytes": 2718761472,
++      "parameters": 663552,
++      "load_seconds": 1.1669188139494509,
++      "save_seconds": 0.01574915600940585,
++      "sample_eval_seconds": 5.747553162043914,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 968.3105915436728,
++          "node_h": 0.06724379107942172,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 363.6840932741073
++        },
++        "RB1": {
++          "seconds": 3745.309339111084,
++          "node_h": 0.2600909263271586,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 177.5801236689977
++        },
++        "RB5": {
++          "seconds": 6586.2183515752495,
++          "node_h": 0.4573762744149479,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 177.5801236689977
++        }
++      }
++    },
++    {
++      "case": "RB1-02",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.21496926406922284,
++      "tokens_per_second": 854.2616582660188,
++      "peak_cuda_bytes": 2727168000,
++      "parameters": 663552,
++      "load_seconds": 0.24886942299781367,
++      "save_seconds": 0.00583366904174909,
++      "sample_eval_seconds": 6.004680322017521,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 996.018200567083,
++          "node_h": 0.06916793059493632,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 379.9541573160887
++        },
++        "RB1": {
++          "seconds": 3747.447925167877,
++          "node_h": 0.26023943924776927,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 185.52449087699642
++        },
++        "RB5": {
++          "seconds": 6552.796821271235,
++          "node_h": 0.4550553348105024,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 185.52449087699642
++        }
++      }
++    },
++    {
++      "case": "RB1-03",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.22565991376934108,
++      "tokens_per_second": 813.7909694838763,
++      "peak_cuda_bytes": 2728759296,
++      "parameters": 663552,
++      "load_seconds": 0.25220235501183197,
++      "save_seconds": 0.006030568038113415,
++      "sample_eval_seconds": 6.1706678490154445,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1028.748179780988,
++          "node_h": 0.07144084581812417,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 390.4572395058642
++        },
++        "RB1": {
++          "seconds": 3913.304949250334,
++          "node_h": 0.2717572881423843,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 190.65294897747276
++        },
++        "RB5": {
++          "seconds": 6858.166823940235,
++          "node_h": 0.47626158499584964,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 190.65294897747276
++        }
++      }
++    },
++    {
++      "case": "RB1-04",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.2432743524684338,
++      "tokens_per_second": 754.8679017605373,
++      "peak_cuda_bytes": 2731941888,
++      "parameters": 663552,
++      "load_seconds": 0.2502391419839114,
++      "save_seconds": 0.006000424036756158,
++      "sample_eval_seconds": 6.539614184002858,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1094.740791029366,
++          "node_h": 0.07602366604370597,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 413.802811007979
++        },
++        "RB1": {
++          "seconds": 4201.310380393963,
++          "node_h": 0.2917576653051363,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 202.05215381248976
++        },
++        "RB5": {
++          "seconds": 7376.040680107024,
++          "node_h": 0.5122250472296545,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 202.05215381248976
++        }
++      }
++    },
++    {
++      "case": "RB1-05",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.2335112520662369,
++      "tokens_per_second": 786.4289124187873,
++      "peak_cuda_bytes": 2728771584,
++      "parameters": 663552,
++      "load_seconds": 0.24737042299238965,
++      "save_seconds": 0.005964775977190584,
++      "sample_eval_seconds": 6.482605962955859,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1076.8201174368398,
++          "node_h": 0.07477917482200276,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 410.1955397751411
++        },
++        "RB1": {
++          "seconds": 4064.454730999812,
++          "node_h": 0.28225380076387585,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 200.29079090583062
++        },
++        "RB5": {
++          "seconds": 7111.776570464203,
++          "node_h": 0.493873372948903,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 200.29079090583062
++        }
++      }
++    },
++    {
++      "case": "RB1-06",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.2438315370719647,
++      "tokens_per_second": 753.1429371492675,
++      "peak_cuda_bytes": 2731941888,
++      "parameters": 663552,
++      "load_seconds": 0.24125409498810768,
++      "save_seconds": 0.0060438839718699455,
++      "sample_eval_seconds": 6.693008553003892,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1114.74600535855,
++          "node_h": 0.07741291703878819,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 423.5090443268643
++        },
++        "RB1": {
++          "seconds": 4232.296788523899,
++          "node_h": 0.29390949920304854,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 206.7915255502267
++        },
++        "RB5": {
++          "seconds": 7414.298347313038,
++          "node_h": 0.5148818296745166,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 206.7915255502267
++        }
++      }
++    },
++    {
++      "case": "RB1-07",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.21634898676828015,
++      "tokens_per_second": 848.8137741855338,
++      "peak_cuda_bytes": 2816188416,
++      "parameters": 630784,
++      "load_seconds": 0.23880955704953521,
++      "save_seconds": 0.007423696981277317,
++      "sample_eval_seconds": 5.727484721050132,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 962.4320041089923,
++          "node_h": 0.06683555584090224,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 362.41423589993843
++        },
++        "RB1": {
++          "seconds": 3722.7023848921585,
++          "node_h": 0.25852099895084435,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 176.96007612301682
++        },
++        "RB5": {
++          "seconds": 6546.056662218214,
++          "node_h": 0.4545872682095982,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 176.96007612301682
++        }
++      }
++    },
++    {
++      "case": "RB1-08",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.2172862675378565,
++      "tokens_per_second": 845.1523516920162,
++      "peak_cuda_bytes": 2752333824,
++      "parameters": 1318912,
++      "load_seconds": 0.24387062498135492,
++      "save_seconds": 0.00747682002838701,
++      "sample_eval_seconds": 6.120629042037763,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1013.2229017816995,
++          "node_h": 0.07036270151261802,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 387.29096724510885
++        },
++        "RB1": {
++          "seconds": 3795.739204829733,
++          "node_h": 0.2635930003353981,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 189.1069176001508
++        },
++        "RB5": {
++          "seconds": 6631.32499619876,
++          "node_h": 0.4605086802915806,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 189.1069176001508
++        }
++      }
++    },
++    {
++      "case": "RB1-09",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 0.21491130370064637,
++      "tokens_per_second": 854.4920478254381,
++      "peak_cuda_bytes": 2733459456,
++      "parameters": 925696,
++      "load_seconds": 0.24123547202907503,
++      "save_seconds": 0.006537451990880072,
++      "sample_eval_seconds": 6.158747233042959,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1015.4376905093679,
++          "node_h": 0.07051650628537277,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 389.70294662870526
++        },
++        "RB1": {
++          "seconds": 3770.4739659727634,
++          "node_h": 0.26183846985921966,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 190.28464190854748
++        },
++        "RB5": {
++          "seconds": 6575.066479266199,
++          "node_h": 0.4566018388379305,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 190.28464190854748
++        }
++      }
++    },
++    {
++      "case": "RB1-02-reference",
++      "attempt": "ATT-0189-1",
++      "step_seconds": 2.1576381781505187,
++      "tokens_per_second": 85.11158259046579,
++      "peak_cuda_bytes": 2742597632,
++      "parameters": 663552,
++      "load_seconds": 0.24216998799238354,
++      "save_seconds": 0.006145449005998671,
++      "sample_eval_seconds": 53.044245932018384,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 9078.152768067628,
++          "node_h": 0.6304272755602519,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 3356.4454196948345
++        },
++        "RB1": {
++          "seconds": 36492.36201729588,
++          "node_h": 2.5341918067566587,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 1638.8893650853684
++        },
++        "RB5": {
++          "seconds": 64649.540242160154,
++          "node_h": 4.4895514057055665,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 1638.8893650853684
++        }
++      }
++    },
++    {
++      "case": "Cdual32-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.24389902014343534,
++      "tokens_per_second": 752.9345541937913,
++      "peak_cuda_bytes": 2757107712,
++      "parameters": 1318912,
++      "load_seconds": 0.616196577961091,
++      "save_seconds": 0.01129150198539719,
++      "sample_eval_seconds": 6.669065085006878,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1112.544989635064,
++          "node_h": 0.07726006872465722,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 421.99398944997563
++        },
++        "RB1": {
++          "seconds": 4230.238097144667,
++          "node_h": 0.29376653452393525,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 206.0517526611209
++        },
++        "RB5": {
++          "seconds": 7413.120310016498,
++          "node_h": 0.5148000215289235,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 206.0517526611209
++        }
++      }
++    },
++    {
++      "case": "Cup32-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.22850755502993705,
++      "tokens_per_second": 803.649577257702,
++      "peak_cuda_bytes": 2738233344,
++      "parameters": 925696,
++      "load_seconds": 0.2521493390086107,
++      "save_seconds": 0.006311498989816755,
++      "sample_eval_seconds": 6.470554778003134,
++      "adapter_state_M_c_bytes": 16896,
++      "estimates": {
++        "RBc": {
++          "seconds": 1069.8208604329882,
++          "node_h": 0.07429311530784641,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 409.43298497158503
++        },
++        "RB1": {
++          "seconds": 3996.9794428604155,
++          "node_h": 0.27756801686530663,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 199.91844969315676
++        },
++        "RB5": {
++          "seconds": 6979.003036001094,
++          "node_h": 0.4846529886111871,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 199.91844969315676
++        }
++      }
++    },
++    {
++      "case": "T0-R32-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.2103534525714349,
++      "tokens_per_second": 873.0068261543596,
++      "peak_cuda_bytes": 2722718208,
++      "parameters": 663552,
++      "load_seconds": 0.24112498899921775,
++      "save_seconds": 0.006020873028319329,
++      "sample_eval_seconds": 5.883278396038804,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 975.5802318808086,
++          "node_h": 0.06774862721394503,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 372.2722885057446
++        },
++        "RB1": {
++          "seconds": 3668.141693185123,
++          "node_h": 0.25473206202674464,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 181.7735783719456
++        },
++        "RB5": {
++          "seconds": 6413.254249242349,
++          "node_h": 0.4453648784196076,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 181.7735783719456
++        }
++      }
++    },
++    {
++      "case": "T0-Cdual32-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.2124202260916354,
++      "tokens_per_second": 864.5127791210429,
++      "peak_cuda_bytes": 2744738304,
++      "parameters": 1318912,
++      "load_seconds": 0.28158436599187553,
++      "save_seconds": 0.007614163972903043,
++      "sample_eval_seconds": 5.89264502399601,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 979.1132994610804,
++          "node_h": 0.0679939791292417,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 372.86497438434566
++        },
++        "RB1": {
++          "seconds": 3696.7769269557866,
++          "node_h": 0.2567206199274852,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 182.06297577360627
++        },
++        "RB5": {
++          "seconds": 6468.860877451628,
++          "node_h": 0.4492264498230297,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 182.06297577360627
++        }
++      }
++    },
++    {
++      "case": "T0-Cup32-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.211839716542745,
++      "tokens_per_second": 866.8818246032024,
++      "peak_cuda_bytes": 2730058240,
++      "parameters": 925696,
++      "load_seconds": 0.2540326379821636,
++      "save_seconds": 0.008281240006908774,
++      "sample_eval_seconds": 5.85318824503338,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 973.4292639710875,
++          "node_h": 0.06759925444243663,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 370.3682940621339
++        },
++        "RB1": {
++          "seconds": 3683.0136968992033,
++          "node_h": 0.25576484006244465,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 180.8438935850263
++        },
++        "RB5": {
++          "seconds": 6447.521997782026,
++          "node_h": 0.4477445831793074,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 180.8438935850263
++        }
++      }
++    },
++    {
++      "case": "R44-S1",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.20382301755889784,
++      "tokens_per_second": 900.9777315603443,
++      "peak_cuda_bytes": 2739292160,
++      "parameters": 916608,
++      "load_seconds": 0.3720435200375505,
++      "save_seconds": 0.006690285983495414,
++      "sample_eval_seconds": 5.745054851984605,
++      "adapter_state_M_c_bytes": 31680,
++      "estimates": {
++        "RBc": {
++          "seconds": 951.1928233155807,
++          "node_h": 0.06605505717469311,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 363.526009372485
++        },
++        "RB1": {
++          "seconds": 3561.4043239305474,
++          "node_h": 0.24731974471739912,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 177.50293426390868
++        },
++        "RB5": {
++          "seconds": 6221.294703074164,
++          "node_h": 0.4320343543801503,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 177.50293426390868
++        }
++      }
++    },
++    {
++      "case": "R44-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.23183301366050726,
++      "tokens_per_second": 792.1218686693156,
++      "peak_cuda_bytes": 2745835520,
++      "parameters": 916608,
++      "load_seconds": 0.23079971299739555,
++      "save_seconds": 0.006317802995909005,
++      "sample_eval_seconds": 6.31342726299772,
++      "adapter_state_M_c_bytes": 31680,
++      "estimates": {
++        "RBc": {
++          "seconds": 1053.5379639197954,
++          "node_h": 0.07316235860554135,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 399.4905318594444
++        },
++        "RB1": {
++          "seconds": 4016.2765726840153,
++          "node_h": 0.2789080953252788,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 195.06373625949433
++        },
++        "RB5": {
++          "seconds": 7041.697400953635,
++          "node_h": 0.48900676395511355,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 195.06373625949433
++        }
++      }
++    },
++    {
++      "case": "R64-S1",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.20386373862042093,
++      "tokens_per_second": 900.7977644416891,
++      "peak_cuda_bytes": 2762164224,
++      "parameters": 1343488,
++      "load_seconds": 0.24729636998381466,
++      "save_seconds": 0.00701313599711284,
++      "sample_eval_seconds": 5.764678154955618,
++      "adapter_state_M_c_bytes": 66560,
++      "estimates": {
++        "RBc": {
++          "seconds": 953.4716634928889,
++          "node_h": 0.06621330996478395,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 364.7677000444714
++        },
++        "RB1": {
++          "seconds": 3564.7206805694827,
++          "node_h": 0.24755004726176963,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 178.10922853733953
++        },
++        "RB5": {
++          "seconds": 6225.142469565976,
++          "node_h": 0.4323015603865261,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 178.10922853733953
++        }
++      }
++    },
++    {
++      "case": "R64-S4",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.23473916688701138,
++      "tokens_per_second": 782.3151220792766,
++      "peak_cuda_bytes": 2771656704,
++      "parameters": 1343488,
++      "load_seconds": 0.24770174804143608,
++      "save_seconds": 0.007154673046898097,
++      "sample_eval_seconds": 6.584156144992448,
++      "adapter_state_M_c_bytes": 66560,
++      "estimates": {
++        "RBc": {
++          "seconds": 1091.01921108994,
++          "node_h": 0.07576522299235694,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 416.62126300632286
++        },
++        "RB1": {
++          "seconds": 4096.2484872788145,
++          "node_h": 0.28446170050547326,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 203.42835107730608
++        },
++        "RB5": {
++          "seconds": 7159.594615154313,
++          "node_h": 0.4971940704968273,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 203.42835107730608
++        }
++      }
++    },
++    {
++      "case": "LoRA28-r1",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.37185061294818295,
++      "tokens_per_second": 493.85423502203577,
++      "peak_cuda_bytes": 3655368704,
++      "parameters": 630784,
++      "load_seconds": 0.26205925398971885,
++      "save_seconds": 0.02114868798526004,
++      "sample_eval_seconds": 7.749331223021727,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 1388.792079693895,
++          "node_h": 0.09644389442318715,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 490.34927035336085
++        },
++        "RB1": {
++          "seconds": 6074.507829335019,
++          "node_h": 0.4218408214815985,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 239.42835466472698
++        },
++        "RB5": {
++          "seconds": 10927.158328308808,
++          "node_h": 0.7588304394658895,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 239.42835466472698
++        }
++      }
++    },
++    {
++      "case": "LoRA28-r2",
++      "attempt": "ATT-0191-1",
++      "step_seconds": 0.3982864891702775,
++      "tokens_per_second": 461.0751431276628,
++      "peak_cuda_bytes": 3665862656,
++      "parameters": 1261568,
++      "load_seconds": 0.398254526022356,
++      "save_seconds": 0.021659989026375115,
++      "sample_eval_seconds": 7.953703130013309,
++      "adapter_state_M_c_bytes": 0,
++      "estimates": {
++        "RBc": {
++          "seconds": 1443.902511951816,
++          "node_h": 0.10027100777443167,
++          "eval_passes": 2,
++          "estimated_eval_seconds_per_pass": 503.28117539006035
++        },
++        "RB1": {
++          "seconds": 6453.0592816139,
++          "node_h": 0.448129116778743,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 245.7427614209279
++        },
++        "RB5": {
++          "seconds": 11650.697965286021,
++          "node_h": 0.809076247589307,
++          "eval_passes": 5,
++          "estimated_eval_seconds_per_pass": 245.7427614209279
++        }
++      }
++    }
++  ],
++  "latency": {
++    "Base": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 12253.712351073136,
++      "decode_tokens": 128,
++      "decode_p50_ms": 38.582280511036515,
++      "decode_p95_ms": 39.51348701957613,
++      "peak_cuda_bytes": 1484018176,
++      "adapter_persistent_state": {
++        "M_c_bytes": 0,
++        "counts_bytes": 0
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    },
++    "RB1-01": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 11579.485260873944,
++      "decode_tokens": 128,
++      "decode_p50_ms": 40.37216102005914,
++      "decode_p95_ms": 41.23312700539827,
++      "peak_cuda_bytes": 1489336832,
++      "adapter_persistent_state": {
++        "M_c_bytes": 0,
++        "counts_bytes": 0
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    },
++    "RB1-02": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 10833.119255920112,
++      "decode_tokens": 128,
++      "decode_p50_ms": 43.37793798185885,
++      "decode_p95_ms": 44.45818503154442,
++      "peak_cuda_bytes": 1489375744,
++      "adapter_persistent_state": {
++        "M_c_bytes": 16896,
++        "counts_bytes": 32
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    },
++    "RB1-04": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 9939.951662820069,
++      "decode_tokens": 128,
++      "decode_p50_ms": 47.563822008669376,
++      "decode_p95_ms": 48.327939002774656,
++      "peak_cuda_bytes": 1489375744,
++      "adapter_persistent_state": {
++        "M_c_bytes": 16896,
++        "counts_bytes": 32
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    },
++    "RB1-07": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 11533.23232354168,
++      "decode_tokens": 128,
++      "decode_p50_ms": 40.828029974363744,
++      "decode_p95_ms": 41.42232198501006,
++      "peak_cuda_bytes": 1489064448,
++      "adapter_persistent_state": {
++        "M_c_bytes": 0,
++        "counts_bytes": 0
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    },
++    "RB1-07-merged": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 12258.502825324513,
++      "decode_tokens": 128,
++      "decode_p50_ms": 37.52006948343478,
++      "decode_p95_ms": 39.30676996242255,
++      "peak_cuda_bytes": 1484018176,
++      "adapter_persistent_state": {
++        "M_c_bytes": 0,
++        "counts_bytes": 0
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    },
++    "RB1-08": {
++      "batch": 1,
++      "prefill_length": 512,
++      "prefill_passes": 5,
++      "prefill_tokens_per_second": 10383.361872321762,
++      "decode_tokens": 128,
++      "decode_p50_ms": 45.67417351063341,
++      "decode_p95_ms": 46.54784395825118,
++      "peak_cuda_bytes": 1494618624,
++      "adapter_persistent_state": {
++        "M_c_bytes": 16896,
++        "counts_bytes": 32
++      },
++      "state_note": "FP32 adapter M+c;counts separately;backbone KV is excluded"
++    }
++  },
++  "full_dev_seconds": 185.52449087699642,
++  "RB1_training_monitor_reload_node_h": 2.443961088134835,
++  "max_nonreference_RB1_or_side_proxy_step_seconds": 0.24389902014343534,
++  "profile_required": false,
++  "RB1_core_estimate_exceeds4": false,
++  "RBc_family_node_h_per_candidate": {
++    "RBc-L": 0.06683555584090224,
++    "RBc-T": 0.06724379107942172,
++    "RBc-R": 0.06916793059493632,
++    "RBc-C": 0.07036270151261802
++  },
++  "RBc_12candidate_node_h": 0.8208299370836349,
++  "RBc_16candidate_node_h": 1.0944399161115133,
++  "actual_T0022_through_timing_MIG_seconds": 1755,
++  "actual_T0022_through_timing_node_h": 0.121875,
++  "timing_sample_rule": "20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches",
++  "estimate_rule": "two loads+plannedsteps*measuredstep+evalpasses*scaleddev+save;RBc2passes4096calibration/2000dev;RB1/RB5fivepasses",
++  "limits": [
++    "Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.",
++    "Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.",
++    "RB5 matrix/monitoring remains conditional;S2 unmeasured layouts need labeled interpolation;S1concatT0 and mixed-rankLoRA are not measured here.",
++    "Latency uses synthetic512tokens and128fixed decoder steps;mergedLoRA timing only,unmerged adapters for task scoring.",
++    "D0026/D0027 preserve0.50002;reference-matched BF16shape-change exceedances remain diagnostics,decisiveFP32 and same-shapeBF16 gates pass."
++  ],
++  "formal_RB_training_started": false,
++  "confirmation_evaluated": false
++}
+diff --git a/research/notes/T-0022-cost-tables.md b/research/notes/T-0022-cost-tables.md
+new file mode 100644
+index 0000000..fa115aa
+--- /dev/null
++++ b/research/notes/T-0022-cost-tables.md
+@@ -0,0 +1,71 @@
++# RB0 measured timing and conditional costs
++
++Reference scan is a diagnostic comparator and is excluded from the RB1 sum. Node_h uses measured/predicted one-MIG seconds divided by14400.
++
++| Case | Trainable/stored/with-grad | Step s | Tokens/s | Peak CUDA GiB | RB5 3epochs node_h |
++| --- | ---: | ---: | ---: | ---: | ---: |
++| RB1-01 | 663552 | 0.217694 | 843.6 | 2.532 | 0.457376 |
++| RB1-02 | 663552 | 0.214969 | 854.3 | 2.540 | 0.455055 |
++| RB1-03 | 663552 | 0.225660 | 813.8 | 2.541 | 0.476262 |
++| RB1-04 | 663552 | 0.243274 | 754.9 | 2.544 | 0.512225 |
++| RB1-05 | 663552 | 0.233511 | 786.4 | 2.541 | 0.493873 |
++| RB1-06 | 663552 | 0.243832 | 753.1 | 2.544 | 0.514882 |
++| RB1-07 | 630784 | 0.216349 | 848.8 | 2.623 | 0.454587 |
++| RB1-08 | 1318912 | 0.217286 | 845.2 | 2.563 | 0.460509 |
++| RB1-09 | 925696 | 0.214911 | 854.5 | 2.546 | 0.456602 |
++| RB1-02-reference | 663552 | 2.157638 | 85.1 | 2.554 | 4.489551 |
++| Cdual32-S4 | 1318912 | 0.243899 | 752.9 | 2.568 | 0.514800 |
++| Cup32-S4 | 925696 | 0.228508 | 803.6 | 2.550 | 0.484653 |
++| T0-R32-S4 | 663552 | 0.210353 | 873.0 | 2.536 | 0.445365 |
++| T0-Cdual32-S4 | 1318912 | 0.212420 | 864.5 | 2.556 | 0.449226 |
++| T0-Cup32-S4 | 925696 | 0.211840 | 866.9 | 2.543 | 0.447745 |
++| R44-S1 | 916608 | 0.203823 | 901.0 | 2.551 | 0.432034 |
++| R44-S4 | 916608 | 0.231833 | 792.1 | 2.557 | 0.489007 |
++| R64-S1 | 1343488 | 0.203864 | 900.8 | 2.572 | 0.432302 |
++| R64-S4 | 1343488 | 0.234739 | 782.3 | 2.581 | 0.497194 |
++| LoRA28-r1 | 630784 | 0.371851 | 493.9 | 3.404 | 0.758830 |
++| LoRA28-r2 | 1261568 | 0.398286 | 461.1 | 3.414 | 0.809076 |
++
++RB1 arms:training,three intermediate dev passes,final dev and fresh reload evaluation.
++
++| Arm | Estimated node_h |
++| --- | ---: |
++| RB1-01 | 0.260091 |
++| RB1-02 | 0.260239 |
++| RB1-03 | 0.271757 |
++| RB1-04 | 0.291758 |
++| RB1-05 | 0.282254 |
++| RB1-06 | 0.293909 |
++| RB1-07 | 0.258521 |
++| RB1-08 | 0.263593 |
++| RB1-09 | 0.261838 |
++
++RB1 core total: 2.443961 node_h. Frozen interventions,analysis and planning overhead are additional.
++
++| RBc family | Estimated node_h/candidate |
++| --- | ---: |
++| RBc-L | 0.066836 |
++| RBc-T | 0.067244 |
++| RBc-R | 0.069168 |
++| RBc-C | 0.070363 |
++
++RBc12-16candidate estimate: 0.820830-1.094440 node_h.
++
++| Latency case | Prefill tok/s | Decode p50 ms | Decode p95 ms | Peak CUDA GiB | Persistent adapter M+c bytes |
++| --- | ---: | ---: | ---: | ---: | ---: |
++| Base | 12253.7 | 38.582 | 39.513 | 1.382 | 0 |
++| RB1-01 | 11579.5 | 40.372 | 41.233 | 1.387 | 0 |
++| RB1-02 | 10833.1 | 43.378 | 44.458 | 1.387 | 16896 |
++| RB1-04 | 9940.0 | 47.564 | 48.328 | 1.387 | 16896 |
++| RB1-07 | 11533.2 | 40.828 | 41.422 | 1.387 | 0 |
++| RB1-07-merged | 12258.5 | 37.520 | 39.307 | 1.382 | 0 |
++| RB1-08 | 10383.4 | 45.674 | 46.548 | 1.392 | 16896 |
++
++Complete R_resS1 dev pass: 185.524s. All21training cases have100stable steps;all7latency cases have512token prefill and128decode samples.
++Measured T0022 usage through timing:1755MIGseconds=0.121875node_h. This tabulation job is additional until its scheduler end.
++
++Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.
++Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.
++RB5 matrix/monitoring remains conditional;S2 unmeasured layouts need labeled interpolation;S1concatT0 and mixed-rankLoRA are not measured here.
++Latency uses synthetic512tokens and128fixed decoder steps;mergedLoRA timing only,unmerged adapters for task scoring.
++D0026/D0027 preserve0.50002;reference-matched BF16shape-change exceedances remain diagnostics,decisiveFP32 and same-shapeBF16 gates pass.
+diff --git a/research/notes/T-0022-implementation.md b/research/notes/T-0022-implementation.md
+new file mode 100644
+index 0000000..b92c75a
+--- /dev/null
++++ b/research/notes/T-0022-implementation.md
+@@ -0,0 +1,124 @@
++# T-0022 RB0 implementation record
++
++Task baseline:de9da72 on sr/researcher-2/T-0022. Shared core/model default paths
++remain reference;new fixed_query defaults False,impl defaults reference.
++No dependency,existing tolerance,data split or scoring change is authorized.
++All workload execution is in Miyabi-G PBS via miyabi-mcp.
++
++FP32 convention fixed before any run,per coordinator MSG-0543:
++for each output or q/k/v/Rq/Ro gradient tensor,pass if
++max(abs(actual-reference)) <=1e-5+1e-4*max(abs(reference)). Report max absolute
++and normwise relative max(abs(actual-reference))/max(max(abs(reference)),1e-8).
++Do not impose these two error thresholds separately or use per-element ratios.
++GPU BF16 and existing FP32 tolerances remain src/tolerances.json.
++
++T0 ignores history-only interventions(window,strict,swap,permute);iv_off disables
++the branch for every arm and therefore returns Base. F-line history diagnostics
++require no-grad evaluation,full-sequence input,and no backbone cache;normal
++prefix inference supports chunked prefill/decode through MemoryState. Unsupported
++in-sequence reset is rejected explicitly. No new options affect old M/V5 paths.
++
++The A2 manifest samples1000 IDs per task from V1 train using a fresh RNG with
++derive_seed(20261101,residual_la_v21,RB5,confirmation) in each task. IDs remain in
++source order in the manifest. Filtering happens before any RB training encoding;
++the calibration and dev slices remain intact. No confirmation labels/content are
++exported or evaluated. Formal RBc/RB1 are not released by this implementation task.
++
++Initial core/split run ATT0180/PBS3767828/RES0176:260 checks passed in28.22s;
++measured scheduler38MIGseconds (0.00263889node_h). Max prefix output error
++9.536743e-7;all5 gradient comparisons passed the pre-fixed mixed normwise rule.
++The A2 manifest has2000 IDs,IDs SHA256
++72c91fd9ad6ec077e7aa33ec6381754d6e24d1f3e538a1ae8b88854b74dbcac5;
++file SHA25634277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc,
++24798bytes. Durable read-only source: runs/ATT-0180-1/rb-confirmation.json.
++RB raw train counts after A2:PIQA12065,BoolQ5379,before encoding exclusions.
++
++After that run,MSG0548 required a single recurrence implementation. Prefix now
++flattens B*T causal states and calls the unchanged LatentReader.forward directly;
++current-weight tracing observes state.read without changing loop semantics.
++researcher3 was notified (MSG0551);their T0021 does not edit either shared module.
++The expanded core/model regression will validate this consolidation before timing.
++
++RB0 probe is20warmups+4measurement steps per timing case,not a stable timing
++claim. Full benchmark is20+100steps for every RB1 arm plus reference S1.
++One R_res S1 full dev pass anchors32rows/task samples for per-arm evaluation-cost
++estimates. RBc estimates count2passes;RB1/RB5 count5(monitors,final,reload).
++Intervention/bootstrap costs are explicitly excluded and must be added before
++RB1 release. RB5 estimates assume the same monitoring;its later contract decides.
++Formal train currently enforces the released RB1 recipe;the planner also supports
++exact3epochs for RB5 cost estimates and smoke. No RB5 contract is fabricated.
++
++Coordinator D0026/DOC0208 resolves ATT0186's three comparisons without changing
++any threshold. Topology gates are the exact rounded output identity at each
++adapted layer,U6 bitwise Base,and each Ui bitwise norm_i(Xi+oi). Residual
++subtraction is diagnostic in ulp_bf16(Y),not a Base-logit-tolerance gate.
++The BF16 chunk1 bound0.50002 is retained and reported as passed/exceeded;
++chunk3 still gates. Prefix/reference chunk1 agreement also gates at0.50002.
++A separate fresh FP32 backbone(TF32off) now checks full/chunk3/token logits
++pairwise and stateM/c under the fixed E0019 normwise mixed bound. Deliberately
++clearing only sideM/c/n at token boundaries must fail that same FP32 check.
++The strong std0.5 exit fixture,all earlier passing assertions,and tolerance file
++are unchanged. T0 now rejects non-KernelMatrix backend to avoid a dead extra
++temperature parameter;researcher3 was notified before the shared schema edit.
++
++ATT0187/PBS3767969/RES0182:395/397passed;D0026 topology and FP32 carry gates
++passed,the state-clear variants were rejected,and every topology subtraction
++was <=0.5ulp_bf16(Y). Maximum full/token FP32 logit error0.00019454956
++(relative infinity norm1.10723e-5). Two previously unreached failures concerned
++B2->B3 beam expansion(std0.5 exits),identical prefix/reference BF16 error
++0.857421875 versus unchanged0.50002. Full timing still did not start.
++Scheduler102MIGseconds recorded once;T0022 cumulative236seconds=0.01638889node_h.
++
++Coordinator D0027/MSG0569 explicitly generalizes D0026:BF16 comparisons across
++GEMM-shape changes with the same excess in unchanged reference are diagnostic;
++the same comparison in FP32(TF32off) is decisive under the existing mixed gate.
++Same-shape BF16 gates remain0.50002. A true same-B permutation,FP32B2->B3
++expansion/ownership,and BF16prefix/reference expanded-batch agreement are added.
++The original BF16expansion comparison is retained in named D0027 diagnostics
++with its actual error and whether it meets the unchanged bound. No fixture or
++tolerance has been changed. No more per-case rulings are needed for this rule.
++
++ATT0188/PBS3767999/RES0183 complete:397checks passed;all10startup cases completed
++20warmups+4measured steps on verified2g mg1098. Required D0026/27 gates passed;
++the original BF16shape-change exceedances remain recorded as diagnostics.
++Prefix/T0/LoRA startup steps0.209-0.241s;referenceS1 1.56685s. These are only
++four measured steps,not the final100-step result. Scheduler221MIGseconds
++imported once;T0022 subtotal457s=0.03173611node_h before full timing.
++
++Measured plans after A2/excluding PIQA5528:RBc1096steps/2192examples/200229tokens;
++RB1 13115steps/26230examples/2000069tokens;RB5 3epochs26165steps/52329examples/
++3629259tokens. All per-arm counts and source hashes remain in ATT0188 outputs.
++
++Full timing expected about900s/request1350s(debug-mig),from120times the sum of
++startup step times(~427s),32rows/task sample evaluations(~144s),one complete
++dev pass(~183s),seven512/128 latency cases(~65s) and setup/planning(~40s).
++Request is1.5times expected. This is a planning estimate,not measured usage.
++Full benchmark also reports Base latency. RBc cost estimates now scale the
++dev-based pass estimate by4096calibration/2000dev rows,explicitly an approximation
++that does not measure calibration length differences. No training/loss/model
++path changed after the397passing checks;the new cost branch and Base timing
++are exercised in the full benchmark. The experiment ceiling remains1node_h.
++
++RB5 cost coverage:the RB1 LoRA4r7 proxy cannot stand in for full28-layer LoRA,
++and r44/r64 matching widths or S4concat/T0 layouts have different compute.
++src/rb5_cost.py therefore times11 additional diagnostic layouts(20+100steps,
++same R1 examples/order/initialization seed as the main timing run):C_dual/C_upS4;
++R_res/C_dual/C_upT0S4;r44/r64R_resS1/S4;LoRA28r1/r2. This changes no shared
++model or training code. Actual model configs/counts/grad counts are asserted.
++These are conditional RB5 cost proxies only,not formal models or performance
++comparisons. S2 future-layout costs can be reported as interpolation,explicitly
++estimated. Main RB0 full-dev timing will anchor their32row/task eval estimates.
++Estimated extra runtime about450s/request675s,using startup0.21-0.24s/step,
++historical full-LoRA0.38-0.41s/step and dev sample costs. Expected totalT0022
++remains about0.13node_h versus ceiling1.0;use measured scheduler time for billing.
++
++Completed timing:ATT0189/PBS3768185/RES0185 (868MIGseconds) and
++ATT0191/PBS3768226/RES0186 (430MIGseconds),both complete with verified2g timing
++guard. ATT0193/PBS3768635/RES0188 validated and combined the artifacts in PBS
++(1MIGsecond). All21cases have100stable steps;seven latency cases contain896
++decode samples. Slowest prefix layout0.2438990201s/step;RB1 core forecast
++2.443961088node_h,excluding future frozen interventions/analysis/planning.
++No trigger exceeded within that scope. Total measuredT0022 usage is1756MIGseconds
++=0.1219444444node_h,imported once per attempt. See T-0022-review-package.md and
++T-0022-cost-tables.md for exact evidence,conditional estimates and limitations.
++The required independent code review precedes any formal RB training/release.
+diff --git a/research/notes/T-0022-review-package.md b/research/notes/T-0022-review-package.md
+new file mode 100644
+index 0000000..3dfdf7a
+--- /dev/null
++++ b/research/notes/T-0022-review-package.md
+@@ -0,0 +1,197 @@
++# T-0022 RB0 code review package
++
++Target: E-0019@1 / H-0017@1, task T-0022. This is an implementation and cost
++diagnostic. No RBc, RB1 or RB5 scientific training or confirmation evaluation has
++started. The coordinator owns release and hypothesis-state decisions.
++
++## Code and compatibility
++
++- `bypass_core.py`: inclusive/strict causal FP32 prefix states and continuation,
++  prefix reads, T0. Prefix flattens B*T states and invokes the existing
++  `LatentReader.forward`; its update/readout/fixed-query semantics are unchanged.
++- `bypass_model.py`: appended default-off config fields (`fixed_query=False`,
++  `impl=reference`), T0 wiring, optional history capture/interventions/read tracing.
++  Ordinary F/M defaults retain their prior paths and parameter creation order.
++- `rb_history.py`: off/window1/window8/strict/swap/permute and current-read weights.
++  History diagnostics require full uncached no-grad inference; T0 ignores history
++  changes except iv_off. No intervention edits the original attention or KV state.
++- `rb_data.py`: A2 IDs-only split, exclusion before encoding, deterministic paired
++  order, whole-step 2M-token and exact three-epoch plans.
++- `rb_train.py`: nine RB1 arms, seeds, V1 objective/optimizer/scoring reuse,
++  accounting, RBc grids/extension/lock, monitoring, final save and fresh reload.
++  Formal train mode currently enforces the released RB1 recipe. RB5 planning and
++  diagnostic layouts do not create a formal RB5 training contract.
++- `rb_latency.py`, `rb_benchmark.py`, `rb5_cost.py`: synchronized timing on a
++  verified 2g slice; all benchmark adapters are diagnostics. Merged LoRA is only
++  a deployment timing comparator.
++- `rb_check.py`, `rb0_run.py`, `rb_report.py`: PBS validation, terminal manifests,
++  artifact verification and combined cost tables.
++
++Baseline is de9da72acc1c9f9e0903ff1e144a87cc4ba4c615. New default-path regression
++loads that snapshot's actual core/model modules and checks initial parameters
++and logits bitwise for V1 tokenwise, F memory and M memory configurations.
++The 397-test suite also includes existing core/model, V1 data/LoRA, V5 trainer
++and V2 memory regressions. Researcher-3 confirmed T-0021 edits neither shared
++module; there is no second implementation of the native read loop here.
++
++No dependency or tolerance-file change. Environment is Python 3.13.13,
++torch 2.10.0+cu128, transformers 4.57.1, cuda/12.8, lock 3c916b51337d.
++Qwen3-0.6B-Base model/tokenizer revision is
++da87bfb608c14b7cf20ba1ce41287e8de496c0cd; eager BF16 backbone, FP32 new params
++and memory. FP32 comparison jobs disable TF32.
++
++## Validation and numeric conventions
++
++ATT-0188-1 / PBS 3767999.opbs / RES-0183: complete, validator passed, 397 passed,
++zero failed, zero skipped; then all ten 20+4-step startup cases completed.
++Exact executed source: 70a49714777960922fee7d03410faeaffe7acabf.
++
++Runtime evidence (all absolute paths are in the shared main project):
++
++- `/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/checks/checks.xml`
++- `/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/checks/checks.log`
++- `/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/checks/manifest.json`
++- `/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1/manifest.json`
++- Its `allocation.json`, `mig-profile.json` and saved nvidia-smi output establish
++  the allocation and the timing startup profile.
++
++The coordinator fixed the FP32 rule before any run (MSG-0543): for **each tensor**,
++`max(abs(a-r)) <= 1e-5 + 1e-4*max(abs(r))`. Both maximum absolute error and
++`max(abs(a-r))/max(max(abs(r)),1e-8)` are reported. Separate absolute and relative
++gates are not imposed. The following maxima are transcribed from RES-0183's
++checks manifest; maxima in the two columns can come from different cases.
++
++| FP32 prefix vs reference tensor | Max absolute error | Max relative infinity error |
++| --- | ---: | ---: |
++| Output | 9.536743e-7 | 5.305607e-7 |
++| q gradient | 4.768372e-7 | 2.245134e-6 |
++| k gradient | 1.788139e-7 | 3.267611e-7 |
++| v gradient | 4.768372e-7 | 1.739042e-7 |
++| Rq gradient | 7.152557e-7 | 7.622943e-7 |
++| Ro gradient | 7.629395e-6 | 6.635038e-7 |
++
++| Design check | Observed result |
++| --- | --- |
++| Prefix/reference and same-kernel slots | All 192 combinations pass outputs, M/c/counts and five gradients; B3, T17/64, r8/32, masks/initial state, inclusive/strict, S1/2/4, fixed query, both update/readout modes |
++| Zero exits and original calls | Four-layer memory prefix/reference and T0, each R_res/C_dual/C_up: zero logit error; attention/FFN once per layer |
++| Residual topology (D-0026) | Exact rounded output identity at all four layers; U6 bitwise Base; every Ui bitwise norm_i(Xi+oi); each block once |
++| Residual subtraction diagnostic | All four layers at most 0.5 ulp_bf16(Y); layer27 absolute subtraction discrepancy 1.59375 is retained |
++| Two-step gradients and frozen backbone | R_res S1/S4 and C_dual: exit-only first step, all new projections/read params finite nonzero after update; original params unchanged/no grads |
++| Causality, masks, continuation and ownership | Required same-shape gates pass; true same-B permutation error zero; prefix reset request explicitly rejected |
++| Writes/reads and native loops | Writes = valid tokens, reads = S*valid tokens; no prefix tensor-to-host item; fixed-query S4 increment equals four S1 increments |
++| T0 and history | Formula/history independence, within-task donor derangement, strict first read, window/self-donor/identity permutation, current weights pass |
++| Model interventions | iv_off equals Base (error zero), T0 unchanged; intervention causal prefix errors zero; identity effects within locked BF16 bound |
++| Checkpoint classes | Fresh-base reload logits/predictions identical for T0, memory, fixed-query, eta/4, concat and LoRA representatives |
++| Parameter counts/init pairing | R32/T0 663552, C_dual32 1318912, C_up32 925696, R44 916608, R64 1343488, LoRA4r7/28r1 630784, LoRA28r2 1261568; RB1-01..06 identical initialization |
++| Deliberate broken controls | Full-sequence future leakage, duplicate-write accounting and padding writes rejected; clearing only side M/c/n across token decode rejected in FP32 |
++| Data, planning, LR lock | A2 regeneration/filtering and unchanged calibration/dev, complete-step budget, paired order, family raw-minimum extension, 1% selection, successful null NLL/order mismatch/missing extension rejection pass |
++| Shared defaults | Baseline initial parameters/logits bitwise equal; M/V5 regressions pass |
++
++**D-0026 / D-0027 are part of the review scope.** Existing BF16 bound 0.50002
++is unchanged. Strong four-layer S4 fixtures retain observed full-vs-token error
++0.8203125 and B2-to-B3 expansion error 0.857421875, both identical in prefix and
++unchanged reference. These cross-GEMM-shape observations exceed the BF16 bound
++and are reported as diagnostics under the coordinator's rulings; they are not
++claimed as passing that numerical bound. Prefix/reference token and expansion
++logit differences are zero. Chunk3, true same-B permutation and other same-shape
++BF16 comparisons remain gated. Fresh FP32 backbone/TF32-off comparisons are the
++decisive carry/expansion gates: prefix full/token max 0.00019454956, relative
++1.1072281e-5; expanded prefix max 0.00017124414, relative 9.745914e-6; expanded
++reference max 0.00024902821, relative 1.4172782e-5. All pass the per-tensor mixed
++rule. Both side-state-clear negative variants are rejected. No exit fixture,
++locked threshold, data split or metric was changed to obtain those results.
++
++Earlier failed attempts remain in the record: ATT-0186-1/RES-0177 (390/393) and
++ATT-0187-1/RES-0182 (395/397). They stopped before their benchmark portions and
++are not timing evidence. The rulings and regression changes are documented in
++`T-0022-implementation.md`, D-0026 and D-0027.
++
++## Timing and combined costs
++
++ATT-0189-1 / PBS 3768185.opbs / RES-0185: complete; ten 20+100-step cases,
++required latency cases, Base and merged LoRA, one complete dev pass and saves.
++Source f493cec9bd36798a6706592f7d5f248dc45b1558, outputs
++`/work/xg24i002/x10041/bypass-lora/runs/ATT-0189-1/benchmark/`.
++
++ATT-0191-1 / PBS 3768226.opbs / RES-0186: complete; eleven additional conditional
++RB5 width/depth/concat/T0/full-28-layer-LoRA layouts, each 20+100 steps.
++Source b4229ed05a753f44056a3d3ec0bb79b752d7cca0, outputs
++`/work/xg24i002/x10041/bypass-lora/runs/ATT-0191-1/`.
++
++Both timing allocations pass their 2g.24gb fail-fast guard with nonempty allocated
++MIG identities. Profile is metadata for ordinary jobs, per D-0019.
++
++ATT-0193-1 / PBS 3768635.opbs / RES-0188 independently verifies the saved artifacts
++and constructs the combined tables in PBS; source
++1b607ae5b21f46b34fc46be6f1ab24317ce2ace3. It checks all 21 stable step logs,
++parameter/gradient counts, writes/reads/original calls, identical input-token
++sequences across cases/jobs, schedule agreement, numeric/training/dependency
++hash equality to the 397-test snapshot, and seven latency cases (896 raw decode
++samples, each 512-token prefill and 128 decode). Application validator passed.
++
++Combined output:
++`/work/xg24i002/x10041/bypass-lora/runs/ATT-0193-1/{manifest.json,cost-summary.json,cost-tables.md}`.
++Small committed copies: `research/artifacts/T-0022/cost-summary.json` and
++`research/notes/T-0022-cost-tables.md`. The JSON includes input paths/bytes/SHA256
++and the exact source-file hash comparison. Raw step logs and latency samples
++remain in their originating runs.
++
++Slowest measured prefix side-layout step is 0.2438990201 s (C_dual32 S4), below
++the 0.4 s profiling trigger. Reference R_res S1 is 2.157638178 s/step versus
++prefix S1 0.214969264 s. RB1 nine-arm core total is **2.443961088 node_h**, below
++4 for the scope measured. RBc estimate is 0.820830-1.094440 node_h for 12-16
++candidates; conditional RB5 per-run costs are in the table.
++
++These are forecasts, not billed usage. They use the first 120 paired R1 batches,
++20 warmups/100 stable effective-batch2 microbatch1 steps; two loads plus planned
++steps, sampled/scaled evals and save. The full R_res S1 dev pass took 185.524491 s;
++other evals scale 32 rows/task against that anchor. RBc also scales the 4096/2000
++row ratio, without measuring calibration length differences. RB1/RB5 estimates
++assume five eval passes; RB5 monitoring/matrix remain conditional on its later
++contract. Frozen interventions, bootstrap/analysis and data-planning overhead
++must be added before the coordinator releases RB1. Unmeasured S2 layouts require
++labeled interpolation; S1 concat T0 and mixed-rank LoRA are unmeasured (the latter
++was explicitly deferred by E-0019 Design). No whole-release cost claim is made.
++
++## A2 split and measured usage
++
++Read-only split source:
++`/work/xg24i002/x10041/bypass-lora/runs/ATT-0180-1/rb-confirmation.json`.
++Committed identical copy: `research/artifacts/T-0022/rb-confirmation.json`.
++1000 source-order IDs per task, 24798 bytes; SHA256
++`34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc`.
++IDs SHA256 `72c91fd9ad6ec077e7aa33ec6381754d6e24d1f3e538a1ae8b88854b74dbcac5`.
++No confirmation contents or official validation have been evaluated.
++
++Measured schedule after A2 and the complete-candidate max_length exclusion:
++RBc 1096 steps/2192 examples/200229 tokens; RB1 13115/26230/2000069;
++RB5 three epochs 26165/52329/3629259. Hashes and epoch boundaries are preserved
++in the cost JSON. PIQA row5528 is excluded because a complete candidate is537
++tokens, following the existing V1 exclusion rule.
++
++| Attempt | Result | PBS | Measured MIG seconds |
++| --- | --- | --- | ---: |
++| ATT-0180-1 | RES-0176 complete | 3767828 | 38 |
++| ATT-0186-1 | RES-0177 partial/failed | 3767931 | 96 |
++| ATT-0187-1 | RES-0182 partial/failed | 3767969 | 102 |
++| ATT-0188-1 | RES-0183 complete | 3767999 | 221 |
++| ATT-0189-1 | RES-0185 complete | 3768185 | 868 |
++| ATT-0191-1 | RES-0186 complete | 3768226 | 430 |
++| ATT-0193-1 | RES-0188 complete | 3768635 | 1 |
++
++Each exact PBS walltime was imported once with its own `miyabi-pbs:<job>`
++accounting reference. Total is **1756 MIG seconds / 14400 = 0.1219444444 node_h**,
++within E-0019's 1.0 node_h ceiling. The generated cost table stops its usage
++subtotal before the one-second tabulation job; this paragraph supplies that
++final accounting increment without altering the executed output.
++
++## Review request and completion boundary
++
++Review the implementation against E-0019 plus MSG-0543, D-0026 and D-0027;
++distinguish the explicit numeric diagnostics from required pass gates. Check the
++new training/lock/split/export/history/latency paths for concrete result-integrity
++risks and confirm shared defaults retain existing semantics. Runtime proof is
++limited to the named checks and diagnostic benchmarks, not a full RBc/RB1 run.
++After the independent answer, fix/test/recheck findings as required. On passing
++review, record one diagnostic evidence item for H-0017's implementation scope
++and deliver; the coordinator decides scientific release and hypothesis state.
+diff --git a/src/bypass_core.py b/src/bypass_core.py
+index a7b6ed0..04d1c8c 100644
+--- a/src/bypass_core.py
++++ b/src/bypass_core.py
+@@ -283,6 +283,7 @@ class SequenceResult:
+     outputs: torch.Tensor
+     state: MemoryState
+     accounting: dict[str, int]
++    diagnostics: Optional[dict] = None
+ 
+ 
+ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
+@@ -294,12 +295,19 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
+                      steps: int = 1, mode: str = "inclusive",
+                      update: str = "accumulate", readout: str = "increment",
+                      fixed_query: bool = False,
+-                     backend: str = "kernel_matrix") -> SequenceResult:
++                     backend: str = "kernel_matrix", impl: str = "reference") -> SequenceResult:
+     """Process [B,T,r] features causally, writing at most once per token.
+ 
+     ``mode='inclusive'`` writes before reading; ``mode='strict'`` reads first.
+     Set ``write=False`` per position for read-only M-line queries.
+     """
++    if impl == "prefix":
++        return process_prefix(qbar, kbar, vbar, reader, state=state, valid=valid,
++                              reset=reset, write=write, read=read, steps=steps,
++                              mode=mode, update=update, readout=readout,
++                              fixed_query=fixed_query, backend=backend)
++    if impl != "reference":
++        raise ValueError("unknown sequence implementation")
+     if qbar.ndim != 3 or kbar.shape != qbar.shape or vbar.shape != qbar.shape:
+         raise ValueError("qbar, kbar, vbar must share [batch, time, rank] shape")
+     if mode not in {"inclusive", "strict"}:
+@@ -355,10 +363,107 @@ def process_sequence(qbar: torch.Tensor, kbar: torch.Tensor, vbar: torch.Tensor,
+     })
+ 
+ 
++def kernel_prefix_states(kbar, vbar, reader, valid, write=None, state=None):
++    """FP32 inclusive sufficient statistics, with no token loop or host sync.
++
++    Returned prefixes include the initial state's statistics. Masked positions
++    contribute neither keys nor values. The final state owns fresh storage.
++    """
++    batch, length, rank = kbar.shape
++    if vbar.shape != kbar.shape or valid.shape != (batch, length) or rank != reader.rank:
++        raise ValueError("prefix feature/mask shape mismatch")
++    if state is None:
++        state = MemoryState.empty(batch, rank, device=kbar.device)
++    if state.backend != "kernel_matrix" or (state.batch_size, state.rank) != (batch, rank):
++        raise ValueError("prefix requires a matching KernelMatrix state")
++    active = valid if write is None else valid & write
++    if active.shape != valid.shape:
++        raise ValueError("prefix write mask shape mismatch")
++    keys = torch.where(active[..., None], elu_plus_one(rmsnorm_no_affine(
++        kbar.float(), reader.eps_norm)), torch.zeros_like(kbar, dtype=torch.float32))
++    values = torch.where(active[..., None], vbar.float(), torch.zeros_like(vbar, dtype=torch.float32))
++    matrices = (keys[..., :, None] * values[..., None, :]).cumsum(1) + state.M[:, None]
++    masses = keys.cumsum(1) + state.c[:, None]
++    counts = active.long().cumsum(1) + state.counts[:, None]
++    final = (MemoryState(matrices[:, -1].clone(), masses[:, -1].clone(), counts[:, -1].clone(),
++                         "kernel_matrix", rank) if length else state)
++    return keys, values, matrices, masses, counts, final
++
++
++def read_kernel_prefix(qbar, reader, matrices, masses, counts, active, *, steps=1,
++                       update="accumulate", readout="increment", fixed_query=False,
++                       current_keys=None):
++    """Batch all causal states through the single, unchanged LatentReader loop."""
++    batch, length, rank = qbar.shape
++    state = MemoryState(matrices.reshape(-1, rank, rank), masses.reshape(-1, rank),
++                        counts.reshape(-1), "kernel_matrix", rank)
++    weights = []
++    if current_keys is not None:
++        class ObservedState:
++            def read(self, query, eps, temperature):
++                weight = (query * current_keys.reshape(-1, rank)).sum(-1) / (
++                    (query * state.c).sum(-1) + eps)
++                weights.append(torch.where(active.reshape(-1), weight, torch.zeros_like(weight)))
++                return state.read(query, eps, temperature)
++        memory = ObservedState()
++    else:
++        memory = state
++    outputs = reader(qbar.float().reshape(-1, rank), memory, steps=steps,
++                     update=update, readout=readout, fixed_query=fixed_query).reshape(batch, length, rank)
++    outputs = torch.where(active[..., None], outputs, torch.zeros_like(outputs))
++    return outputs, (torch.stack(weights, -1).reshape(batch, length, steps) if weights else None)
++
++
++def process_prefix(qbar, kbar, vbar, reader, state=None, valid=None, reset=None,
++                   write=None, read=None, steps=1, mode="inclusive", update="accumulate",
++                   readout="increment", fixed_query=False, backend="kernel_matrix",
++                   trace_reads=False):
++    """Causal vectorized KernelMatrix scan with chunk/decode continuation.
++
++    Reset is deliberately rejected, including an explicitly supplied all-false
++    reset tensor: callers needing reset must split the sequence or use reference.
++    Accounting stays on-device; no autograd tensor is converted to a host scalar.
++    """
++    if backend != "kernel_matrix" or reset is not None:
++        raise ValueError("prefix supports KernelMatrix without an in-sequence reset")
++    if qbar.ndim != 3 or kbar.shape != qbar.shape or vbar.shape != qbar.shape:
++        raise ValueError("qbar, kbar, vbar must share [batch,time,rank]")
++    if mode not in ("inclusive", "strict"):
++        raise ValueError("unknown prefix mode")
++    valid = torch.ones(qbar.shape[:2], dtype=torch.bool, device=qbar.device) if valid is None else valid.bool()
++    read = valid if read is None else valid & read.bool()
++    if read.shape != valid.shape:
++        raise ValueError("prefix read mask shape mismatch")
++    initial = state or MemoryState.empty(qbar.shape[0], reader.rank, device=qbar.device)
++    keys, _, matrices, masses, counts, final = kernel_prefix_states(kbar, vbar, reader, valid, write, initial)
++    if mode == "strict" and qbar.shape[1]:
++        matrices = torch.cat((initial.M[:, None], matrices[:, :-1]), 1)
++        masses = torch.cat((initial.c[:, None], masses[:, :-1]), 1)
++        counts = torch.cat((initial.counts[:, None], counts[:, :-1]), 1)
++    outputs, weights = read_kernel_prefix(qbar, reader, matrices, masses, counts, read,
++        steps=steps, update=update, readout=readout, fixed_query=fixed_query,
++        current_keys=keys if trace_reads else None)
++    return SequenceResult(outputs, final, {"valid_tokens": valid.sum().detach(),
++        "writes": (valid if write is None else valid & write).sum().detach(),
++        "reads": read.sum().detach()*steps, "reader_steps": steps},
++        {"current_weight": weights} if trace_reads else None)
++
++
++def process_kernel_tokenwise(qbar, kbar, vbar, reader, valid, steps=1):
++    """T0: identical Q/K/V/Rq/Ro parameters, current-token nonlinear reads, no state."""
++    z = qbar.float()
++    key = rmsnorm_no_affine(kbar.float(), reader.eps_norm)
++    for _ in range(steps):
++        a = F.silu(rmsnorm_no_affine(z, reader.eps_norm) @ reader.Rq + key) * vbar.float()
++        z = z + reader.eta * (a @ reader.Ro)
++    return torch.where(valid[..., None], z-qbar, torch.zeros_like(z))
++
++
+ __all__ = [
+     "elu_plus_one", "rmsnorm_no_affine", "MemoryState", "KernelMatrix",
+     "KernelSlotReference", "SoftmaxSlot", "CenteredCosineSlot", "centered_cosine_scores",
+     "LatentReader", "SequenceResult",
+-    "process_sequence",
++    "process_sequence", "process_prefix", "kernel_prefix_states", "read_kernel_prefix",
++    "process_kernel_tokenwise",
+ ]
+ 
+diff --git a/src/bypass_model.py b/src/bypass_model.py
+index 5505b4a..d5d4238 100644
+--- a/src/bypass_model.py
++++ b/src/bypass_model.py
+@@ -12,7 +12,7 @@ import torch
+ from torch import nn
+ import torch.nn.functional as F
+ 
+-from bypass_core import LatentReader, process_sequence
++from bypass_core import LatentReader, process_sequence, process_kernel_tokenwise
+ 
+ 
+ FUSIONS = ('F_out', 'F_pre', 'F_attnres', 'C_gate', 'C_up', 'C_dual')
+@@ -41,9 +41,11 @@ class AdapterConfig:
+     # E-0014 R4: rank of a separate query-only tokenwise F_out prior path; 0 = absent.
+     prior_rank: int = 0
+     model_revision: str = 'da87bfb608c14b7cf20ba1ce41287e8de496c0cd'
++    fixed_query: bool = False
++    impl: str = 'reference'
+ 
+     def __post_init__(self):
+-        if self.fusion not in FUSIONS or self.branch not in ('tokenwise_silu', 'tokenwise_linear', 'memory'):
++        if self.fusion not in FUSIONS or self.branch not in ('tokenwise_silu', 'tokenwise_linear', 'memory', 'kernel_tokenwise'):
+             raise ValueError('unknown branch or fusion')
+         if self.tap not in ('qknorm_pre_rope', 'raw_qkv', 'direct_hidden'):
+             raise ValueError('unknown feature tap')
+@@ -59,6 +61,16 @@ class AdapterConfig:
+             raise ValueError('prior_rank must be a nonnegative integer')
+         if self.prior_rank and self.branch != 'memory':
+             raise ValueError('the prior path is defined only beside an M-line memory branch')
++        if self.impl not in ('reference', 'prefix'):
++            raise ValueError('unknown memory implementation')
++        if self.fixed_query and self.branch != 'memory':
++            raise ValueError('fixed_query is defined only for memory')
++        if self.impl == 'prefix' and self.backend != 'kernel_matrix':
++            raise ValueError('prefix requires KernelMatrix')
++        if self.branch == 'kernel_tokenwise' and (self.update != 'accumulate' or self.readout != 'increment' or self.read_gain != 1.):
++            raise ValueError('T0 requires accumulating increment recurrence')
++        if self.branch == 'kernel_tokenwise' and self.backend != 'kernel_matrix':
++            raise ValueError('T0 uses the KernelMatrix parameter family')
+ 
+ 
+ class LowDimProjection(nn.Module):
+@@ -151,7 +163,7 @@ class SideBranch(nn.Module):
+         super().__init__()
+         self.config = config
+         d = layer.self_attn.q_proj.in_features
+-        if config.branch == 'memory':
++        if config.branch in ('memory', 'kernel_tokenwise'):
+             dims = (d, d, d) if config.tap == 'direct_hidden' else (
+                 layer.self_attn.q_proj.out_features, layer.self_attn.k_proj.out_features,
+                 layer.self_attn.v_proj.out_features)
+@@ -165,20 +177,36 @@ class SideBranch(nn.Module):
+         self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features)
+         # Created last so that memory-path initialization is unchanged by its presence.
+         self.prior = PriorPath(d, config.prior_rank) if config.prior_rank else None
++        self.diagnostics = None
+ 
+-    def forward(self, u, features, state, valid, phase, write_mask=None):
++    def forward(self, u, features, state, valid, phase, write_mask=None, runtime=None):
+         cfg = self.config
+-        if cfg.branch != 'memory':
++        self.diagnostics = None
++        if cfg.branch not in ('memory', 'kernel_tokenwise'):
+             z = u.float() @ self.A
+             if cfg.branch == 'tokenwise_silu':
+                 z = F.silu(z)
+             return z * valid.unsqueeze(-1), state, None
+         q, k, v = self.projection(features['q'], features['k'], features['v'])
++        if cfg.branch == 'kernel_tokenwise':
++            if phase != 'F':
++                raise ValueError('T0 is an F-line branch')
++            z = process_kernel_tokenwise(q, k, v, self.reader, valid, cfg.steps)
++            if runtime and runtime.get('kind') == 'iv_off':
++                z = torch.zeros_like(z)
++            return z, None, {'valid_tokens': valid.sum().detach(), 'writes': 0,
++                             'reads': 0, 'reader_steps': cfg.steps}
++        if runtime:
++            from rb_history import run_history
++            result = run_history(q, k, v, self.reader, valid, cfg, runtime)
++            self.diagnostics = result.diagnostics
++            return result.outputs, result.state, result.accounting
+         result = process_sequence(q, k, v, self.reader, state=state, valid=valid,
+                                   write=(write_mask if phase == 'support' else valid) if phase != 'query' else torch.zeros_like(valid),
+                                   read=valid if phase != 'support' else torch.zeros_like(valid),
+                                   steps=cfg.steps, mode=cfg.mode, update=cfg.update,
+-                                  readout=cfg.readout, backend=cfg.backend)
++                                  readout=cfg.readout, backend=cfg.backend,
++                                  fixed_query=cfg.fixed_query, impl=cfg.impl)
+         if phase == 'support' and (result.state.counts > cfg.slot_capacity).any():
+             raise ValueError('support slot capacity exceeded')
+         return result.outputs, result.state, result.accounting
+@@ -192,6 +220,7 @@ class AdaptedLayer(nn.Module):
+         self.attention_type = layer.attention_type
+         self.request = None
+         self.result = None
++        self.runtime = None
+         self.calls = {'attention': 0, 'ffn': 0}
+         # Count executions, not the requested number of executions.
+         self.handles = [layer.self_attn.register_forward_hook(self._attention_called),
+@@ -218,7 +247,7 @@ class AdaptedLayer(nn.Module):
+                                   position_embeddings=position_embeddings, **kwargs)
+         h = hidden_states + o
+         u = layer.post_attention_layernorm(h)
+-        z, state, counts = self.side(u, features, state, valid, phase, write_mask)
++        z, state, counts = self.side(u, features, state, valid, phase, write_mask, self.runtime)
+         self.result = (state, counts)
+         if phase == 'support':
+             return h + layer.mlp(u)
+@@ -251,6 +280,7 @@ class BranchOutput:
+     logits: torch.Tensor
+     cache: BranchCache
+     accounting: dict
++    diagnostics: object = None
+ 
+ 
+ class BranchModel(nn.Module):
+@@ -271,9 +301,20 @@ class BranchModel(nn.Module):
+             yield from layer.side.parameters()
+ 
+     def forward(self, input_ids, attention_mask=None, cache=None, memory=None, phase='F', use_cache=False,
+-                write_mask=None):
++                write_mask=None, intervention=None, capture_history=False, trace_reads=False):
+         if phase not in ('F', 'support', 'query'):
+             raise ValueError('unknown protocol phase')
++        runtime = None
++        if intervention is not None or capture_history or trace_reads:
++            if self.training or torch.is_grad_enabled() or phase != 'F' or cache is not None or memory is not None or use_cache:
++                raise ValueError('history diagnostics require no-grad uncached F-line evaluation')
++            if self.config.branch not in ('memory', 'kernel_tokenwise') or self.config.backend != 'kernel_matrix':
++                raise ValueError('history diagnostics require a KernelMatrix/T0 branch')
++            from rb_history import KINDS
++            if intervention is not None and (not isinstance(intervention, dict) or intervention.get('kind') not in KINDS):
++                raise ValueError('unknown history intervention')
++            runtime = dict(intervention or {})
++            runtime.update(capture_history=capture_history, trace_reads=trace_reads)
+         if self.model.is_gradient_checkpointing:
+             raise ValueError('checkpoint replay requires an explicit replay-safe state protocol')
+         if cache is not None and cache.phase != phase:
+@@ -309,9 +350,16 @@ class BranchModel(nn.Module):
+         if phase == 'query' and self.config.branch == 'memory':
+             if any(states.get(i) is None for i in self.config.layers):
+                 raise ValueError('query is missing support memory for an adapter layer')
++        if runtime is not None and runtime.get('kind') == 'iv_swap' and self.config.branch == 'memory':
++            donors = runtime.get('donor')
++            if not isinstance(donors, dict) or any(i not in donors for i in self.config.layers):
++                raise ValueError('iv_swap missing donor history for an adapter layer')
+         before = {i: dict(layer.calls) for i, layer in self.adapters().items()}
+         for i, layer in self.adapters().items():
+             layer.request = (valid, states.get(i), phase, write_mask)
++            layer.runtime = dict(runtime) if runtime is not None else None
++            if runtime is not None and runtime.get('kind') == 'iv_swap' and self.config.branch == 'memory':
++                layer.runtime['donor'] = runtime['donor'][i]
+         try:
+             position_ids = (attention_mask.cumsum(-1) - 1).clamp_min(0)[:, -input_ids.shape[1]:]
+             output = self.model(input_ids, attention_mask=attention_mask, position_ids=position_ids,
+@@ -320,11 +368,14 @@ class BranchModel(nn.Module):
+             new_states = {i: layer.result[0] for i, layer in self.adapters().items()}
+             counts = {i: {'base': {k: layer.calls[k] - before[i][k] for k in layer.calls},
+                           'side': layer.result[1]} for i, layer in self.adapters().items()}
+-            return BranchOutput(output.logits, BranchCache(new_states, output.past_key_values if use_cache else None, phase), counts)
++            diagnostics = {i: layer.side.diagnostics or {} for i, layer in self.adapters().items()} if runtime is not None else None
++            return BranchOutput(output.logits, BranchCache(new_states, output.past_key_values if use_cache else None, phase), counts, diagnostics)
+         finally:
+             for layer in self.adapters().values():
+                 layer.request = None
+                 layer.result = None
++                layer.runtime = None
++                layer.side.diagnostics = None
+ 
+     def export_adapter(self, directory):
+         directory = Path(directory)
+diff --git a/src/rb0_run.py b/src/rb0_run.py
+new file mode 100644
+index 0000000..12fad11
+--- /dev/null
++++ b/src/rb0_run.py
+@@ -0,0 +1,46 @@
++"""PBS RB0 probe/timing orchestration with an application-level terminal manifest."""
++import argparse
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++
++
++def main():
++    p=argparse.ArgumentParser()
++    p.add_argument('--mode',choices=('probe','timing'),default='probe')
++    p.add_argument('--data-dir',required=True)
++    p.add_argument('--split-manifest',required=True)
++    p.add_argument('--output',type=Path,required=True)
++    args=p.parse_args()
++    out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
++    commands=[]
++    if args.mode=='probe':
++        commands.append(('checks',[sys.executable,'src/rb_check.py','--suite','all','--output',str(out/'checks')]))
++    commands.append(('benchmark',[sys.executable,'src/rb_benchmark.py','--data-dir',args.data_dir,
++        '--split-manifest',args.split_manifest,'--output',str(out/'benchmark')]+(['--probe'] if args.mode=='probe' else [])))
++    metrics={};artifacts=[];passed=False;start=time.monotonic()
++    try:
++        for name,command in commands:
++            result=subprocess.run(command)
++            metrics[name+'.exit_code']=result.returncode
++            child=out/name if name=='checks' else out/'benchmark'
++            path=child/'manifest.json'
++            if path.is_file():
++                value=json.loads(path.read_text())
++                metrics[name]=value['metrics']
++                artifacts.append({'path':str(path),'role':name+'_manifest'})
++            if result.returncode:
++                raise SystemExit(result.returncode)
++        passed=True
++    finally:
++        metrics['elapsed_s']=time.monotonic()-start
++        (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'],'contract':'E-0019@1','mode':args.mode,
++            'source_commit':os.environ['SR_CODE_COMMIT'],'metrics':metrics,'artifacts':artifacts,
++            'validator':{'name':'rb0_application','passed':passed}},indent=2)+'\n')
++
++
++if __name__=='__main__':main()
+diff --git a/src/rb5_cost.py b/src/rb5_cost.py
+new file mode 100644
+index 0000000..844b078
+--- /dev/null
++++ b/src/rb5_cost.py
+@@ -0,0 +1,101 @@
++"""RB0-only timing proxies for RB5 layouts absent from the RB1 arm matrix.
++
++No RB5 performance experiment or confirmation access. Every case uses the same
++R1 data-order/initialization seed as the main RB0 benchmark for comparable shape
++costs. Future formal RB5 initialization and controls belong to its later contract.
++"""
++import argparse
++from dataclasses import replace
++import gc
++import json
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from bypass_model import BranchModel
++from calibrate import MODEL,REVISION,load_base
++from mig_profile_guard import main as profile_guard
++from rb_data import BASE_SEED,STUDY,plan_batches
++from rb_train import adapter_config,load_data,train
++from v1_data import derive_seed
++from v1_lora import LoRAConfig,LoRAModel
++from v1_run import evaluate
++from v5_train import plan_metadata,write_json
++
++
++def cases():
++    residual=adapter_config('RB1-02')
++    definitions={}
++    for fusion,code,parameters in (('C_dual','Cdual',1318912),('C_up','Cup',925696)):
++        definitions[code+'32-S4']=(replace(residual,fusion=fusion,steps=4),parameters)
++    for fusion,code,parameters in (('F_out','R',663552),('C_dual','Cdual',1318912),('C_up','Cup',925696)):
++        definitions['T0-'+code+'32-S4']=(replace(residual,branch='kernel_tokenwise',fusion=fusion,steps=4),parameters)
++    for rank,parameters in ((44,916608),(64,1343488)):
++        for steps in (1,4):
++            definitions[f'R{rank}-S{steps}']=(replace(residual,rank=rank,steps=steps),parameters)
++    for rank,parameters in ((1,630784),(2,1261568)):
++        definitions[f'LoRA28-r{rank}']=(LoRAConfig(layers=tuple(range(28)),rank=rank,alpha=rank),parameters)
++    return definitions
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--data-dir',required=True)
++    parser.add_argument('--split-manifest',required=True)
++    parser.add_argument('--output',type=Path,required=True)
++    args=parser.parse_args()
++    out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
++    if profile_guard(['--output',str(out)]):raise SystemExit(3)
++    torch.backends.cuda.matmul.allow_tf32=False
++    torch.backends.cudnn.allow_tf32=False
++    tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True)
++    tok.pad_token_id=tok.eos_token_id
++    splits,excluded=load_data(args.data_dir,args.split_manifest,tok)
++    omit=[(x['task'],x['id']) for x in excluded]
++    full=plan_batches(splits,tok,'R1',0,omit,2000000)
++    rb5=plan_batches(splits,tok,'RB5',0,omit,None)
++    write_json(out/'schedules.json',{'R1':plan_metadata(full),'RB5':plan_metadata(rb5)})
++    timings={};passed=False
++    try:
++        for label,(config,expected) in cases().items():
++            folder=out/label;folder.mkdir(exist_ok=True)
++            tick=time.monotonic()
++            base=load_base()
++            torch.manual_seed(derive_seed(BASE_SEED,STUDY,'R1','init',0))
++            model=LoRAModel(base,config) if isinstance(config,LoRAConfig) else BranchModel(base,config)
++            torch.cuda.synchronize();loading=time.monotonic()-tick
++            params=list(model.adapter_parameters())
++            assert sum(p.numel() for p in params)==expected
++            assert all(p.requires_grad and p.dtype==torch.float32 for p in params)
++            metrics=train(model,full[:120],tok,.001,folder)
++            assert metrics['params.with_grad']==expected
++            steps=[json.loads(line) for line in (folder/'steps.jsonl').read_text().splitlines()][20:]
++            assert len(steps)==100
++            seconds=sum(x['seconds'] for x in steps)
++            tick=time.monotonic();model.export_adapter(folder/'adapter')
++            saving=time.monotonic()-tick
++            tick=time.monotonic();evaluate(model,splits,tok,limit=32,split_names=('dev',))
++            evaluating=time.monotonic()-tick
++            timings[label]={'diagnostic_only':True,'model_config':vars(config),
++                'warmup_steps':20,'stable_steps':100,'step_seconds':seconds/100,
++                'tokens_per_second':sum(x['input_tokens'] for x in steps)/seconds,
++                'load_seconds':loading,'save_seconds':saving,'sample_eval_seconds':evaluating,
++                'peak_cuda_bytes':metrics['train.peak_cuda_bytes'],
++                'params.stored':sum(p.numel() for p in params),'params.trainable':expected,
++                'params.with_grad':metrics['params.with_grad'],'runtime.accounting':metrics['runtime.accounting']}
++            write_json(out/'timings.json',timings)
++            del model,base,params
++            gc.collect();torch.cuda.empty_cache()
++        passed=True
++    finally:
++        write_json(out/'manifest.json',{'status':'complete' if passed else 'partial','contract':'E-0019@1',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':{'cases.completed':len(timings),
++            'stable_steps_per_case':100,'diagnostic_only':True,'hardware':torch.cuda.get_device_name()},
++            'artifacts':[{'path':str(p),'role':p.name} for p in out.iterdir() if p.is_file() and p.name!='manifest.json'],
++            'validator':{'name':'rb5_layout_cost_only','passed':passed}})
++
++
++if __name__=='__main__':main()
+diff --git a/src/rb_benchmark.py b/src/rb_benchmark.py
+new file mode 100644
+index 0000000..e74ebaf
+--- /dev/null
++++ b/src/rb_benchmark.py
+@@ -0,0 +1,138 @@
++"""RB0: real-stream20+100-step timing, complete dev/save cost and RB budget estimates.
++
++All resulting adapters are diagnostic timing artifacts,never formal checkpoints.
++"""
++import argparse
++import gc
++import json
++import math
++import os
++from pathlib import Path
++import statistics
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from bypass_model import BranchModel
++from calibrate import MODEL,REVISION
++from rb_data import plan_batches
++from rb_train import PARAMETERS,make_model,load_data,train
++from rb_latency import measure as measure_latency
++from v1_run import evaluate
++from v5_latency import merge_lora
++from v5_train import write_json,plan_metadata
++from v1_lora import LoRAModel
++from mig_profile_guard import main as profile_guard
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--data-dir',required=True)
++    parser.add_argument('--split-manifest',type=Path,required=True)
++    parser.add_argument('--output',type=Path,required=True)
++    parser.add_argument('--probe',action='store_true',help='Uniform20+4-step engineering startup only;not a stable timing result')
++    args=parser.parse_args()
++    out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
++    # This job compares time,so the D0019 2g exception applies.
++    if profile_guard(['--output',str(out)]):raise SystemExit(3)
++    torch.backends.cuda.matmul.allow_tf32=False
++    torch.backends.cudnn.allow_tf32=False
++    tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True)
++    tok.pad_token_id=tok.eos_token_id
++    splits,excluded=load_data(args.data_dir,args.split_manifest,tok)
++    exclusions=[(x['task'],x['id']) for x in excluded]
++    plans={name:plan_batches(splits,tok,phase,0,exclusions,budget) for name,phase,budget in
++           [('RBc','V0',200000),('RB1','R1',2000000),('RB5','RB5',None)]}
++    schedule={name:plan_metadata(batches) for name,batches in plans.items()}
++    schedule['excluded']=excluded
++    write_json(out/'schedules.json',schedule)
++    count=24 if args.probe else 120
++    selected=plans['RB1'][:count]
++    timings={};passed=False
++    try:
++        cases=[(arm,'prefix') for arm in PARAMETERS]+[('RB1-02','reference')]
++        for arm,impl in cases:
++            label=arm+('-reference' if impl=='reference' else '')
++            folder=out/label;folder.mkdir(exist_ok=True)
++            tick=time.monotonic()
++            model=make_model(arm,impl=impl)
++            torch.cuda.synchronize();load_seconds=time.monotonic()-tick
++            metrics=train(model,selected,tok,.001,folder)
++            assert metrics['params.with_grad']==PARAMETERS[arm]
++            steps=[json.loads(line) for line in (folder/'steps.jsonl').read_text().splitlines()]
++            stable=steps[20:]
++            assert len(stable)==(4 if args.probe else 100)
++            stable_seconds=sum(x['seconds'] for x in stable)
++            stable_tokens=sum(x['input_tokens'] for x in stable)
++            tick=time.monotonic();model.export_adapter(folder/'adapter')
++            save_seconds=time.monotonic()-tick
++            tick=time.monotonic()
++            # One complete dev measurement;other arms use the same32rows/task
++            # sample,scaled against its measured full/sample ratio.
++            values,pred=evaluate(model,splits,tok,limit=2 if args.probe else 32,split_names=('dev',))
++            sample_eval_seconds=time.monotonic()-tick
++            full_eval_seconds=None
++            if arm=='RB1-02' and impl=='prefix' and not args.probe:
++                tick=time.monotonic();evaluate(model,splits,tok,split_names=('dev',))
++                full_eval_seconds=time.monotonic()-tick
++            result={'arm':arm,'impl':impl,'diagnostic_only':True,'warmup_steps':20,
++                'stable_steps':len(stable),'step_seconds':stable_seconds/len(stable),
++                'tokens_per_second':stable_tokens/stable_seconds,'measured_input_tokens':stable_tokens,
++                'load_seconds':load_seconds,'save_seconds':save_seconds,'sample_eval_seconds':sample_eval_seconds,
++                'full_eval_seconds':full_eval_seconds,'peak_cuda_bytes':metrics['train.peak_cuda_bytes'],
++                'params.stored':sum(p.numel() for p in model.adapter_parameters()),
++                'params.trainable':sum(p.numel() for p in model.parameters() if p.requires_grad),
++                'params.with_grad':metrics['params.with_grad'],'runtime.accounting':metrics['runtime.accounting']}
++            if impl=='prefix' and arm in ('RB1-01','RB1-02','RB1-04','RB1-07','RB1-08') and not args.probe:
++                result['latency']=measure_latency(model)
++                if isinstance(model,LoRAModel):
++                    merged=merge_lora(model)
++                    model._targets.clear()
++                    del model
++                    gc.collect();torch.cuda.empty_cache()
++                    result['latency_merged']=measure_latency(merged)
++                    del merged
++                    model=None
++            timings[label]=result
++            write_json(out/'timings.json',timings)
++            del model
++            gc.collect();torch.cuda.empty_cache()
++        if not args.probe:
++            base=make_model('Base')
++            write_json(out/'latency-base.json',measure_latency(base))
++            del base
++            gc.collect();torch.cuda.empty_cache()
++        estimates={}
++        if not args.probe:
++            anchor=timings['RB1-02']
++            factor=anchor['full_eval_seconds']/anchor['sample_eval_seconds']
++            for arm in PARAMETERS:
++                measured=timings[arm]
++                evaluation=measured['sample_eval_seconds']*factor
++                estimates[arm]={}
++                for stage,evaluations in [('RBc',2),('RB1',5),('RB5',5)]:
++                    # RB1:25/50/75%dev,finaldev,fresh reload. RB5 estimate
++                    # assumes the same monitoring;its later contract can refine.
++                    rows_ratio=(sum(len(splits['splits'][t]['calibration']) for t in ('piqa','boolq'))/
++                                sum(len(splits['splits'][t]['dev']) for t in ('piqa','boolq'))) if stage=='RBc' else 1.
++                    per_pass=evaluation*rows_ratio
++                    seconds=2*measured['load_seconds']+schedule[stage]['plan.steps']*measured['step_seconds']+evaluations*per_pass+measured['save_seconds']
++                    estimates[arm][stage]={'estimated_seconds':seconds,'estimated_node_h':seconds/14400,
++                        'steps':schedule[stage]['plan.steps'],'eval_count':evaluations,
++                        'eval_seconds_per_pass_estimate':per_pass,'eval_row_ratio_to_dev':rows_ratio,
++                        'basis':'direct100-step timing;full/sample dev scaling anchored toR_res S1;RBc additionally scales4096calibration/2000dev rows,not measured calibration lengths;two loads+save;excludes later interventions/bootstrap and queue wait'}
++        write_json(out/'cost-estimates.json',{'schedules':schedule,'arms':estimates,
++            'RB1_training_monitor_reload_node_h':sum(v['RB1']['estimated_node_h'] for v in estimates.values()),
++            'needs_profile':any(v['step_seconds']>.4 for v in timings.values() if v['impl']=='prefix' and v['arm']!='RB1-07'),
++            'note':'All estimates are predictions,not billed use. Later intervention/analysis costs must be added before release.'})
++        passed=True
++    finally:
++        write_json(out/'manifest.json',{'status':'complete' if passed else 'partial','contract':'E-0019@1',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':{'cases.completed':len(timings),'stable_steps_per_case':4 if args.probe else 100,
++                'diagnostic_only':True,'hardware':torch.cuda.get_device_name()},
++            'artifacts':[{'path':str(p),'role':p.name} for p in out.iterdir() if p.is_file() and p.name!='manifest.json'],
++            'validator':{'name':'rb0_training_timing','passed':passed}})
++
++
++if __name__=='__main__':main()
+diff --git a/src/rb_check.py b/src/rb_check.py
+new file mode 100644
+index 0000000..e7b032e
+--- /dev/null
++++ b/src/rb_check.py
+@@ -0,0 +1,59 @@
++"""RB0 PBS validation driver, JUnit error summary and optional IDs-only split creation."""
++import argparse
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--suite',choices=('core','model','all'),default='core')
++    parser.add_argument('--data-dir')
++    parser.add_argument('--output',type=Path,required=True)
++    args=parser.parse_args()
++    out=args.output.resolve()
++    out.mkdir(parents=True,exist_ok=True)
++    core=['src/test_core.py','src/test_rb_core.py','src/test_rb_data.py','src/test_rb_train.py','src/test_v1_data.py']
++    model=['src/test_model.py','src/test_rb_model.py','src/test_v1_lora.py','src/test_v5_train.py','src/test_v2_memory.py']
++    files=core if args.suite=='core' else model if args.suite=='model' else core+model
++    start=time.monotonic()
++    with (out/'checks.log').open('w') as log:
++        result=subprocess.run([sys.executable,'-m','pytest',*files,'-q','-p','no:cacheprovider','-o','junit_family=legacy','--junitxml='+str(out/'checks.xml')],stdout=log,stderr=subprocess.STDOUT)
++    metrics={'checks.exit_code':result.returncode,'elapsed_s':time.monotonic()-start}
++    artifacts=[{'path':str(out/name),'role':name} for name in ('checks.log','checks.xml') if (out/name).is_file()]
++    if (out/'checks.xml').is_file():
++        root=ET.parse(out/'checks.xml').getroot()
++        cases=list(root.iter('testcase'))
++        metrics.update({'checks.cases':len(cases),
++            'checks.failed':sum(c.find('failure') is not None or c.find('error') is not None for c in cases),
++            'checks.skipped':sum(c.find('skipped') is not None for c in cases)})
++        errors={}
++        for prop in root.iter('property'):
++            name,value=prop.get('name'),prop.get('value')
++            if name.endswith(('.max_abs','.relative_inf','.max_abs_err','.max_ulp_bf16_Y','.within_locked_bf16','.state_clear_rejected')):
++                errors[name]=max(errors.get(name,0),float(value))
++        metrics['errors']=errors
++    if result.returncode==0 and args.data_dir:
++        from rb_data import confirmation_manifest,apply_confirmation
++        from v1_run import prepare
++        splits=prepare(args.data_dir)
++        split=confirmation_manifest(splits)
++        kept=apply_confirmation(splits,split)
++        (out/'rb-confirmation.json').write_text(json.dumps(split,indent=2)+'\n')
++        artifacts.append({'path':str(out/'rb-confirmation.json'),'role':'sealed_confirmation_ids'})
++        metrics.update({'confirmation.rows':sum(split['counts'].values()),'confirmation.ids_sha256':split['ids_sha256'],
++                        'rb.train_counts':kept['metadata']['rb_train_counts'],'model_evaluated':False})
++    passed=result.returncode==0
++    (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
++        'contract':'E-0019@1','spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':metrics,
++        'artifacts':artifacts,'validator':{'name':'rb0_'+args.suite,'passed':passed}},indent=2)+'\n')
++    print(json.dumps(metrics),flush=True)
++    raise SystemExit(result.returncode)
++
++
++if __name__=='__main__':
++    main()
+diff --git a/src/rb_data.py b/src/rb_data.py
+new file mode 100644
+index 0000000..3f286cc
+--- /dev/null
++++ b/src/rb_data.py
+@@ -0,0 +1,110 @@
++"""RB A2 split and paired training order. No confirmation contents are exported."""
++import argparse
++from copy import deepcopy
++import hashlib
++import json
++from pathlib import Path
++import random
++
++from v1_data import derive_seed, encode_training_example
++
++STUDY = 'residual_la_v21'
++BASE_SEED = 20261101
++V1_MAPPING_SHA256 = '47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7f20ded98571b'
++
++
++def canonical(value):
++    return json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(',',':'),allow_nan=False)
++
++
++def confirmation_manifest(splits):
++    seed = derive_seed(BASE_SEED,STUDY,'RB5','confirmation')
++    identities = {}
++    for task in ('piqa','boolq'):
++        rows = splits['splits'][task]['train']
++        ids = [r['id'] for r in rows]
++        if len(ids) != len(set(ids)) or len(ids) < 1000:
++            raise ValueError('confirmation source needs at least1000 unique train IDs per task')
++        selected = set(random.Random(seed).sample(ids,1000))
++        identities[task] = [i for i in ids if i in selected]
++    return {'schema_version':1,'study_id':STUDY,'decision':'D-0025 A2',
++        'source_split_mapping_sha256':V1_MAPPING_SHA256,'seed':seed,
++        'sampling':'Uniform sample of1000 IDs per task from V1 train;fresh Random(seed) per task;source order in manifest',
++        'ids':identities,'counts':{t:len(ids) for t,ids in identities.items()},
++        'ids_sha256':hashlib.sha256(canonical(identities).encode()).hexdigest(),
++        'sealed':True,'model_evaluated':False}
++
++
++def apply_confirmation(splits, manifest):
++    # Regenerate IDs before any training encoding, rejecting altered/foreign maps.
++    if manifest != confirmation_manifest(splits):
++        raise ValueError('RB confirmation manifest differs from fixed A2 selection')
++    result = {'splits':{},'metadata':deepcopy(splits['metadata'])}
++    for task in ('piqa','boolq'):
++        held = set(manifest['ids'][task])
++        result['splits'][task] = dict(splits['splits'][task])
++        result['splits'][task]['train'] = [r for r in splits['splits'][task]['train'] if r['id'] not in held]
++        assert not held.intersection(r['id'] for r in result['splits'][task]['train'])
++    result['metadata']['rb_confirmation_ids_sha256'] = manifest['ids_sha256']
++    result['metadata']['rb_train_counts'] = {t:len(result['splits'][t]['train']) for t in ('piqa','boolq')}
++    return result
++
++
++def training_stream(splits, phase, seed, epoch, excluded=()):
++    rng = random.Random(derive_seed(BASE_SEED,STUDY,phase,'train',seed)+epoch)
++    excluded = set(excluded)
++    tasks = {}
++    for task in ('piqa','boolq'):
++        rows = list(splits['splits'][task]['train'])
++        rng.shuffle(rows)
++        tasks[task] = [r for r in rows if (task,r['id']) not in excluded]
++    result = []
++    for index in range(max(map(len,tasks.values()),default=0)):
++        for task in tasks:
++            if index < len(tasks[task]):
++                result.append(tasks[task][index])
++    return result
++
++
++def plan_batches(splits, tok, phase, seed, excluded=(), token_budget=2000000, max_epochs=3):
++    if token_budget is not None and token_budget <= 0 or max_epochs != 3:
++        raise ValueError('RB requires positive token budget (or epochs) and3epoch cap')
++    batches, pending, cache, tokens = [],[],{},0
++    for epoch in range(max_epochs):
++        stream = training_stream(splits,phase,seed,epoch,excluded)
++        for index,row in enumerate(stream):
++            key = row['task'],row['id']
++            if key not in cache:
++                cache[key] = encode_training_example(tok,row,max_length=512)
++            pending.append(dict(cache[key],epoch=epoch,epoch_end=index==len(stream)-1))
++            if len(pending) == 2:
++                batches.append(pending)
++                tokens += sum(len(e['input_ids']) for e in pending)
++                pending=[]
++                if token_budget is not None and tokens >= token_budget:
++                    return batches
++    if pending:
++        batches.append(pending)
++    return batches
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('--data-dir',required=True)
++    parser.add_argument('--output',type=Path,required=True)
++    args = parser.parse_args()
++    args.output.mkdir(parents=True,exist_ok=True)
++    from v1_run import prepare
++    import os
++    manifest = confirmation_manifest(prepare(args.data_dir))
++    path = args.output/'rb-confirmation.json'
++    path.write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n')
++    (args.output/'manifest.json').write_text(json.dumps({'status':'complete',
++        'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':{'confirmation.rows':2000,
++        'model_evaluated':False,'ids_sha256':manifest['ids_sha256']},
++        'artifacts':[{'path':str(path.resolve()),'role':'sealed_confirmation_ids'}],
++        'validator':{'name':'rb_A2_ids_only','passed':True}},indent=2)+'\n')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/rb_history.py b/src/rb_history.py
+new file mode 100644
+index 0000000..79a3a4a
+--- /dev/null
++++ b/src/rb_history.py
+@@ -0,0 +1,129 @@
++"""Evaluation-only F-line side-history interventions; backbone KV is untouched."""
++import random
++
++import torch
++
++from bypass_core import (MemoryState, SequenceResult, kernel_prefix_states,
++                         read_kernel_prefix)
++from v1_data import derive_seed
++
++
++KINDS = ("iv_off", "iv_window1", "iv_window8", "iv_window", "iv_strict", "iv_swap", "iv_permute")
++
++
++def donor_indices(rows, phase):
++    """Uniform rejection-sampled derangement separately within each task."""
++    result = list(range(len(rows)))
++    for task in sorted({row['task'] for row in rows}):
++        positions = [i for i, row in enumerate(rows) if row['task'] == task]
++        if len(positions) < 2:
++            raise ValueError('iv_swap needs at least two examples per task')
++        donors = positions.copy()
++        rng = random.Random(derive_seed(20261101, 'residual_la_v21', phase, 'iv_swap'))
++        while True:
++            rng.shuffle(donors)
++            if all(a != b for a, b in zip(positions, donors)):
++                break
++        for recipient, donor in zip(positions, donors):
++            result[recipient] = donor
++    return result
++
++
++def run_history(q, k, v, reader, valid, config, options):
++    """Full-sequence diagnostic path. Interventions never accept cached state.
++
++    The donor contains projected positive keys and raw values from a normal
++    forward of that donor, at this same adapter layer. Histories use physical
++    sequence positions; invalid writes contribute zero.
++    """
++    kind = options.get('kind')
++    if kind is not None and kind not in KINDS:
++        raise ValueError('unknown F-line history intervention')
++    keys, values, matrices, masses, counts, final = kernel_prefix_states(k, v, reader, valid)
++    normal_m, normal_c, normal_n = matrices, masses, counts
++    zero_m = torch.zeros_like(matrices[:, :1])
++    zero_c = torch.zeros_like(masses[:, :1])
++    zero_n = torch.zeros_like(counts[:, :1])
++    prior_m = torch.cat((zero_m, matrices[:, :-1]), 1)
++    prior_c = torch.cat((zero_c, masses[:, :-1]), 1)
++    prior_n = torch.cat((zero_n, counts[:, :-1]), 1)
++    current_m = keys[..., :, None] * values[..., None, :]
++    if kind and kind.startswith('iv_window'):
++        window = options.get('window') if kind == 'iv_window' else int(kind[9:])
++        if type(window) is not int or window < 1:
++            raise ValueError('history window must be a positive integer')
++        if window < q.shape[1]:
++            matrices = matrices - torch.cat((torch.zeros_like(matrices[:, :window]), matrices[:, :-window]), 1)
++            masses = masses - torch.cat((torch.zeros_like(masses[:, :window]), masses[:, :-window]), 1)
++            counts = counts - torch.cat((torch.zeros_like(counts[:, :window]), counts[:, :-window]), 1)
++    elif kind == 'iv_swap':
++        donor = options.get('donor')
++        if not isinstance(donor, dict) or set(donor) != {'keys', 'values', 'valid'}:
++            raise ValueError('iv_swap requires a normal donor history for this layer')
++        dk, dv, dm = donor['keys'], donor['values'], donor['valid']
++        if dk.ndim != 3 or dk.shape != dv.shape or dk.shape[0] != q.shape[0] or dk.shape[2] != q.shape[2] or dm.shape != dk.shape[:2]:
++            raise ValueError('donor history shape mismatch')
++        dm = dm.to(q.device)
++        dk = torch.where(dm[..., None], dk.to(q.device), torch.zeros_like(dk, device=q.device))
++        dv = torch.where(dm[..., None], dv.to(q.device), torch.zeros_like(dv, device=q.device))
++        index = torch.arange(q.shape[1], device=q.device).clamp_max(dk.shape[1])
++        matrices = torch.cat((zero_m, (dk[..., :, None]*dv[..., None, :]).cumsum(1)), 1).index_select(1, index) + current_m
++        masses = torch.cat((zero_c, dk.cumsum(1)), 1).index_select(1, index) + keys
++        counts = torch.cat((zero_n, dm.to(q.device).long().cumsum(1)), 1).index_select(1, index) + valid.long()
++    elif kind == 'iv_permute':
++        identities = options.get('example_ids')
++        phase = options.get('phase')
++        if not isinstance(identities, (tuple, list)) or len(identities) != q.shape[0] or not isinstance(phase, str):
++            raise ValueError('iv_permute requires phase and one example_id per row')
++        # Keep keys and c fixed; only valid past values are reassigned. The
++        # current token is never included in the permutation.
++        rows = []
++        for b in range(q.shape[0]):
++            positions = []
++            for t in range(q.shape[1]):
++                past = torch.nonzero(valid[b, :t], as_tuple=False).flatten()
++                indices = list(range(past.numel()))
++                if not options.get('identity_permutation', False):
++                    random.Random(derive_seed(20261101, 'residual_la_v21', phase,
++                        'iv_permute', identities[b], t)).shuffle(indices)
++                perm = torch.tensor(indices, dtype=torch.long, device=q.device)
++                paired = values[b].index_select(0, past.index_select(0, perm))
++                old_keys = keys[b].index_select(0, past)
++                positions.append(old_keys.transpose(0, 1) @ paired + current_m[b, t])
++            rows.append(torch.stack(positions))
++        matrices = torch.stack(rows)
++    if kind == 'iv_strict' or (config.mode == 'strict' and kind is None):
++        matrices, masses, counts = prior_m, prior_c, prior_n
++    elif config.mode != 'inclusive':
++        raise ValueError('history interventions other than strict require an inclusive model')
++    outputs, weights = read_kernel_prefix(q, reader, matrices, masses, counts, valid,
++        steps=config.steps, update=config.update, readout=config.readout,
++        fixed_query=config.fixed_query, current_keys=keys if options.get('trace_reads') else None)
++    if kind == 'iv_off':
++        outputs = torch.zeros_like(outputs)
++    diagnostics = {}
++    if options.get('capture_history'):
++        diagnostics['history'] = {'keys': keys.detach().clone(), 'values': values.detach().clone(),
++                                  'valid': valid.detach().clone()}
++    if weights is not None:
++        diagnostics['current_weight'] = weights
++    return SequenceResult(outputs, final,
++        {'valid_tokens': valid.sum().detach(), 'writes': valid.sum().detach(),
++         'reads': valid.sum().detach()*config.steps, 'reader_steps': config.steps}, diagnostics)
++
++
++def summarize_current_weights(diagnostics, valid):
++    """Report per-layer/per-step means and quantiles, excluding padding rows."""
++    result = {}
++    for layer, values in diagnostics.items():
++        weights = values.get('current_weight')
++        if weights is None:
++            continue
++        result[layer] = []
++        for step in range(weights.shape[-1]):
++            active = weights[..., step][valid].float()
++            result[layer].append({'step': step+1, 'count': active.numel(),
++                'mean': active.mean().item() if active.numel() else None,
++                'quantiles': torch.quantile(active, torch.tensor([0., .25, .5, .75, 1.], device=active.device)).tolist()
++                             if active.numel() else []})
++    return result
+diff --git a/src/rb_latency.py b/src/rb_latency.py
+new file mode 100644
+index 0000000..339db6d
+--- /dev/null
++++ b/src/rb_latency.py
+@@ -0,0 +1,110 @@
++"""RB prefill/decode timing on synthetic token IDs. No task/confirmation scoring."""
++import argparse
++import gc
++import json
++import math
++import os
++from pathlib import Path
++import statistics
++import time
++
++import torch
++
++from bypass_model import BranchModel,BranchCache
++from mig_profile_guard import main as profile_guard
++from rb_train import make_model,PARAMETERS
++from v1_lora import LoRAModel
++from v5_latency import merge_lora
++from v5_train import write_json
++
++
++def forward(model,ids,mask,cache=None):
++    if isinstance(model,BranchModel):
++        output=model(ids,attention_mask=mask,cache=cache,use_cache=True)
++        return output.logits,output.cache
++    pos=(mask.cumsum(-1)-1).clamp_min(0)[:,-ids.shape[1]:]
++    output=model(ids,attention_mask=mask,position_ids=pos,past_key_values=cache,use_cache=True)
++    return output.logits,output.past_key_values
++
++
++def state_bytes(cache):
++    if not isinstance(cache,BranchCache):
++        return {'M_c_bytes':0,'counts_bytes':0}
++    return {'M_c_bytes':sum((s.M.numel()+s.c.numel())*4 for s in cache.memory.values() if s is not None),
++            'counts_bytes':sum(s.counts.numel()*s.counts.element_size() for s in cache.memory.values() if s is not None)}
++
++
++@torch.no_grad()
++def measure(model,prefill_length=512,decode_tokens=128):
++    model.eval()
++    ids=(torch.arange(prefill_length,device='cuda')[None]%997)+50
++    mask=torch.ones_like(ids)
++    torch.cuda.reset_peak_memory_stats()
++    for _ in range(4):
++        logits,cache=forward(model,ids,mask)
++        del logits,cache
++    prefill=[]
++    for _ in range(5):
++        torch.cuda.synchronize();start=time.perf_counter()
++        logits,cache=forward(model,ids,mask)
++        torch.cuda.synchronize();prefill.append(time.perf_counter()-start)
++        del logits,cache
++    # Decode warmup uses its own fresh prefill and is discarded.
++    logits,cache=forward(model,ids,mask)
++    next_token=logits[:,-1].argmax(-1,keepdim=True)
++    for t in range(8):
++        complete=torch.ones(1,prefill_length+t+1,device='cuda',dtype=torch.long)
++        logits,cache=forward(model,next_token,complete,cache)
++        next_token=logits[:,-1].argmax(-1,keepdim=True)
++    del logits,cache,next_token
++    logits,cache=forward(model,ids,mask)
++    next_token=logits[:,-1].argmax(-1,keepdim=True)
++    del logits
++    samples=[]
++    for t in range(decode_tokens):
++        complete=torch.ones(1,prefill_length+t+1,device='cuda',dtype=torch.long)
++        torch.cuda.synchronize();start=time.perf_counter()
++        logits,cache=forward(model,next_token,complete,cache)
++        torch.cuda.synchronize();samples.append((time.perf_counter()-start)*1000)
++        next_token=logits[:,-1].argmax(-1,keepdim=True)
++        del logits
++    ordered=sorted(samples)
++    assert len(samples)==128 and all(math.isfinite(x) and x>0 for x in samples)
++    return {'batch':1,'prefill_length':prefill_length,'prefill_passes':5,
++        'prefill_tokens_per_second':prefill_length/statistics.mean(prefill),
++        'prefill_seconds':prefill,'decode_tokens':decode_tokens,
++        'decode_p50_ms':statistics.median(samples),'decode_p95_ms':ordered[int(.95*(len(ordered)-1))],
++        'decode_samples_ms':samples,'peak_cuda_bytes':torch.cuda.max_memory_allocated(),
++        'adapter_persistent_state':state_bytes(cache),
++        'state_note':'FP32 adapter M+c;counts separately;backbone KV is excluded'}
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--arm',choices=('Base',*PARAMETERS),required=True)
++    parser.add_argument('--checkpoint',type=Path)
++    parser.add_argument('--output',type=Path,required=True)
++    args=parser.parse_args()
++    out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
++    if profile_guard(['--output',str(out)]):
++        raise SystemExit(3)
++    if args.arm!='Base':
++        if args.checkpoint is None or not all((args.checkpoint/name).is_file() for name in ('config.json','adapter.pt')):
++            raise ValueError('non-Base timing requires an exported checkpoint')
++    model=make_model(args.arm,checkpoint=args.checkpoint)
++    values={args.arm:measure(model)}
++    if isinstance(model,LoRAModel):
++        merged=merge_lora(model)
++        model._targets.clear()
++        del model
++        gc.collect();torch.cuda.empty_cache()
++        values[args.arm+'-merged']=measure(merged)
++    write_json(out/'latency.json',values)
++    write_json(out/'manifest.json',{'status':'complete','contract':'E-0019@1',
++        'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':{'arm':args.arm,'hardware':torch.cuda.get_device_name(),
++        'decode_tokens':128},'artifacts':[{'path':str(out/'latency.json'),'role':'latency'}],
++        'validator':{'name':'rb_prefill_decode','passed':True}})
++
++
++if __name__=='__main__':
++    main()
+diff --git a/src/rb_report.py b/src/rb_report.py
+new file mode 100644
+index 0000000..e2605b2
+--- /dev/null
++++ b/src/rb_report.py
+@@ -0,0 +1,203 @@
++"""Validate RB0 timing artifacts and combine diagnostic cost tables;PBS only."""
++import argparse
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import statistics
++
++
++MAIN_PARAMS={**{f'RB1-{i:02}':663552 for i in range(1,7)},'RB1-07':630784,
++             'RB1-08':1318912,'RB1-09':925696,'RB1-02-reference':663552}
++EXTRA_PARAMS={'Cdual32-S4':1318912,'Cup32-S4':925696,'T0-R32-S4':663552,
++    'T0-Cdual32-S4':1318912,'T0-Cup32-S4':925696,'R44-S1':916608,'R44-S4':916608,
++    'R64-S1':1343488,'R64-S4':1343488,'LoRA28-r1':630784,'LoRA28-r2':1261568}
++
++
++def reference(path):
++    path=Path(path).resolve();data=path.read_bytes()
++    assert data
++    return {'path':str(path),'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)}
++
++
++def read(path):return json.loads(Path(path).read_text())
++
++
++def write(path,value):
++    Path(path).write_text(json.dumps(value,indent=2,allow_nan=False)+'\n')
++
++
++def positive(value):
++    assert type(value) in (int,float) and math.isfinite(value) and value>0,value
++
++
++def verified_timings(root,values,parameters):
++    assert set(values)==set(parameters)
++    token_sequences=[]
++    for label,row in values.items():
++        assert row['diagnostic_only'] is True and row['warmup_steps']==20 and row['stable_steps']==100
++        assert row['params.stored']==row['params.trainable']==row['params.with_grad']==parameters[label]
++        for key in ('step_seconds','tokens_per_second','load_seconds','save_seconds','sample_eval_seconds','peak_cuda_bytes'):
++            positive(row[key])
++        steps=[json.loads(line) for line in (root/label/'steps.jsonl').read_text().splitlines()]
++        assert len(steps)==120 and [s['step'] for s in steps]==list(range(1,121))
++        assert all(math.isfinite(s['seconds']) and s['seconds']>0 for s in steps)
++        seconds=sum(s['seconds'] for s in steps[20:])
++        assert math.isclose(seconds/100,row['step_seconds'],rel_tol=1e-12)
++        assert math.isclose(sum(s['input_tokens'] for s in steps[20:])/seconds,row['tokens_per_second'],rel_tol=1e-12)
++        tokens=[s['input_tokens'] for s in steps]
++        token_sequences.append(tokens)
++        accounting=row['runtime.accounting']
++        for counts in accounting['layers'].values():
++            assert counts['attention']==counts['ffn']==240
++            assert counts['valid_tokens']==sum(tokens)
++            if label.startswith('T0-') or label=='RB1-01':
++                assert counts['writes']==counts['reads']==0
++            else:
++                depth=row.get('model_config',{}).get('steps',
++                    2 if label=='RB1-03' else 4 if label in ('RB1-04','RB1-05','RB1-06') else 1)
++                assert counts['writes']==sum(tokens) and counts['reads']==sum(tokens)*depth
++    assert all(t==token_sequences[0] for t in token_sequences)
++    return token_sequences[0]
++
++
++def verified_latency(row):
++    assert row['batch']==1 and row['prefill_length']==512 and row['prefill_passes']==5
++    assert row['decode_tokens']==128 and len(row['decode_samples_ms'])==128
++    assert len(row['prefill_seconds'])==5
++    for value in row['decode_samples_ms']+row['prefill_seconds']:positive(value)
++    ordered=sorted(row['decode_samples_ms'])
++    assert row['decode_p50_ms']==statistics.median(ordered)
++    assert row['decode_p95_ms']==ordered[int(.95*(len(ordered)-1))]
++    assert math.isclose(row['prefill_tokens_per_second'],512/statistics.mean(row['prefill_seconds']),rel_tol=1e-12)
++    assert row['adapter_persistent_state']['M_c_bytes'] in (0,16896)
++    return {k:v for k,v in row.items() if k not in ('decode_samples_ms','prefill_seconds')}
++
++
++def main():
++    p=argparse.ArgumentParser()
++    p.add_argument('--jobs',type=Path,required=True)
++    p.add_argument('--probe',type=Path,required=True)
++    p.add_argument('--output',type=Path,required=True)
++    args=p.parse_args();out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
++    passed=False;metrics={};artifacts=[]
++    try:
++        jobs=read(args.jobs);assert len(jobs['runs'])==2
++        locations={r['attempt']:r for r in jobs['runs']}
++        roots={a:Path(r['output']) for a,r in locations.items()}
++        for attempt,root in roots.items():
++            manifest=read(root/'manifest.json')
++            assert manifest['status']=='complete' and manifest['validator']['passed'] is True
++            assert manifest['spec_digest']==locations[attempt]['spec_digest']
++            guard=read(root/'mig-profile.json')
++            assert guard['passed'] is True and guard['profile']=='2g.24gb'
++            assert guard['uuid'] and guard['uuid']==guard['cuda_visible_devices']
++            allocation=read(root/'allocation.json')
++            assert allocation['ok'] is True and allocation['context']['runtime_execution_allowed'] is True
++            assert allocation['context']['pbs_job_id']==guard['pbs_job_id']==locations[attempt]['job_id']
++        main_root=roots['ATT-0189-1']/'benchmark';extra_root=roots['ATT-0191-1']
++        primary,extra=read(main_root/'timings.json'),read(extra_root/'timings.json')
++        assert verified_timings(main_root,primary,MAIN_PARAMS)==verified_timings(extra_root,extra,EXTRA_PARAMS)
++        schedule=read(main_root/'schedules.json');other=read(extra_root/'schedules.json')
++        assert schedule['RB1']==other['R1'] and schedule['RB5']==other['RB5']
++        assert schedule['RB1']['plan.steps']==13115 and schedule['RB5']['plan.steps']==26165
++        probe=read(args.probe/'manifest.json')
++        assert probe['status']=='complete' and probe['metrics']['checks']['checks.cases']==397
++        assert probe['metrics']['checks']['checks.failed']==0
++        # Timing and test snapshots must have identical numerical/training code.
++        snapshots=Path('/work/xg24i002/x10041/bypass-lora/snapshots')
++        tested=snapshots/'70a49714777960922fee7d03410faeaffe7acabf'
++        numerical=('src/bypass_core.py','src/bypass_model.py','src/rb_train.py','src/rb_data.py',
++                   'src/rb_history.py','src/v1_run.py','src/v1_data.py','src/v1_lora.py',
++                   'src/calibrate.py','src/tolerances.json','pyproject.toml','uv.lock')
++        source_hashes={name:reference(tested/name)['sha256'] for name in numerical}
++        for run in locations.values():
++            for name,digest in source_hashes.items():
++                assert reference(snapshots/run['code_commit']/name)['sha256']==digest
++        anchor=primary['RB1-02'];positive(anchor['full_eval_seconds'])
++        scale=anchor['full_eval_seconds']/anchor['sample_eval_seconds']
++        rows=[]
++        for label,value in {**primary,**extra}.items():
++            job='ATT-0189-1' if label in primary else 'ATT-0191-1'
++            evaluation=value['sample_eval_seconds']*scale
++            estimates={}
++            for stage,passes in (('RBc',2),('RB1',5),('RB5',5)):
++                per_pass=evaluation*(2.048 if stage=='RBc' else 1)
++                seconds=2*value['load_seconds']+schedule[stage]['plan.steps']*value['step_seconds']+passes*per_pass+value['save_seconds']
++                estimates[stage]={'seconds':seconds,'node_h':seconds/14400,'eval_passes':passes,
++                                  'estimated_eval_seconds_per_pass':per_pass}
++            rows.append({'case':label,'attempt':job,'step_seconds':value['step_seconds'],
++                'tokens_per_second':value['tokens_per_second'],'peak_cuda_bytes':value['peak_cuda_bytes'],
++                'parameters':value['params.trainable'],'load_seconds':value['load_seconds'],
++                'save_seconds':value['save_seconds'],'sample_eval_seconds':value['sample_eval_seconds'],
++                'adapter_state_M_c_bytes':value['runtime.accounting']['state_M_c_bytes'],
++                'estimates':estimates})
++        row_map={r['case']:r for r in rows}
++        rb1=sum(row_map[f'RB1-{i:02}']['estimates']['RB1']['node_h'] for i in range(1,10))
++        original=read(main_root/'cost-estimates.json')
++        assert math.isclose(rb1,original['RB1_training_monitor_reload_node_h'],rel_tol=1e-12)
++        latency={'Base':verified_latency(read(main_root/'latency-base.json'))}
++        for label,row in primary.items():
++            if 'latency' in row:latency[label]=verified_latency(row['latency'])
++            if 'latency_merged' in row:latency[label+'-merged']=verified_latency(row['latency_merged'])
++        assert len(latency)==7
++        for label,row in latency.items():
++            expected=16896 if label in ('RB1-02','RB1-04','RB1-08') else 0
++            assert row['adapter_persistent_state']['M_c_bytes']==expected
++        prefix_max=max(r['step_seconds'] for r in rows if r['case'] not in ('RB1-02-reference','RB1-07') and not r['case'].startswith('LoRA28-'))
++        family_cases={'RBc-L':'RB1-07','RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-C':'RB1-08'}
++        family_costs={f:row_map[c]['estimates']['RBc']['node_h'] for f,c in family_cases.items()}
++        sources=[reference(root/name) for root in roots.values() for name in ('manifest.json','allocation.json','mig-profile.json')]+[
++            reference(main_root/'timings.json'),reference(extra_root/'timings.json'),
++            reference(main_root/'cost-estimates.json'),reference(main_root/'schedules.json'),
++            reference(main_root/'latency-base.json'),reference(args.probe/'checks'/'checks.xml')]
++        summary={'experiment':'E-0019@1','scope':'RB0 engineering/cost diagnostics only',
++            'sources':sources,'source_hashes_unchanged_since397check_snapshot':source_hashes,
++            'schedules':schedule,'cases':rows,'latency':latency,'full_dev_seconds':anchor['full_eval_seconds'],
++            'RB1_training_monitor_reload_node_h':rb1,'max_nonreference_RB1_or_side_proxy_step_seconds':prefix_max,
++            'profile_required':prefix_max>.4,'RB1_core_estimate_exceeds4':rb1>4,
++            'RBc_family_node_h_per_candidate':family_costs,'RBc_12candidate_node_h':sum(family_costs.values())*3,
++            'RBc_16candidate_node_h':sum(family_costs.values())*4,
++            'actual_T0022_through_timing_MIG_seconds':1755,'actual_T0022_through_timing_node_h':1755/14400,
++            'timing_sample_rule':'20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches',
++            'estimate_rule':'two loads+plannedsteps*measuredstep+evalpasses*scaleddev+save;RBc2passes4096calibration/2000dev;RB1/RB5fivepasses',
++            'limits':['Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.',
++                'Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.',
++                'RB5 matrix/monitoring remains conditional;S2 unmeasured layouts need labeled interpolation;S1concatT0 and mixed-rankLoRA are not measured here.',
++                'Latency uses synthetic512tokens and128fixed decoder steps;mergedLoRA timing only,unmerged adapters for task scoring.',
++                'D0026/D0027 preserve0.50002;reference-matched BF16shape-change exceedances remain diagnostics,decisiveFP32 and same-shapeBF16 gates pass.'],
++            'formal_RB_training_started':False,'confirmation_evaluated':False}
++        write(out/'cost-summary.json',summary)
++        lines=['# RB0 measured timing and conditional costs','',
++            'Reference scan is a diagnostic comparator and is excluded from the RB1 sum. Node_h uses measured/predicted one-MIG seconds divided by14400.','',
++            '| Case | Trainable/stored/with-grad | Step s | Tokens/s | Peak CUDA GiB | RB5 3epochs node_h |',
++            '| --- | ---: | ---: | ---: | ---: | ---: |']
++        for r in rows:
++            lines.append(f'| {r["case"]} | {r["parameters"]} | {r["step_seconds"]:.6f} | {r["tokens_per_second"]:.1f} | {r["peak_cuda_bytes"]/2**30:.3f} | {r["estimates"]["RB5"]["node_h"]:.6f} |')
++        lines+=['','RB1 arms:training,three intermediate dev passes,final dev and fresh reload evaluation.','',
++                '| Arm | Estimated node_h |','| --- | ---: |']
++        for i in range(1,10):
++            label=f'RB1-{i:02}';lines.append(f'| {label} | {row_map[label]["estimates"]["RB1"]["node_h"]:.6f} |')
++        lines += ['',f'RB1 core total: {rb1:.6f} node_h. Frozen interventions,analysis and planning overhead are additional.',
++            '', '| RBc family | Estimated node_h/candidate |','| --- | ---: |']
++        for family,cost in family_costs.items():lines.append(f'| {family} | {cost:.6f} |')
++        lines += ['',f'RBc12-16candidate estimate: {sum(family_costs.values())*3:.6f}-{sum(family_costs.values())*4:.6f} node_h.',
++            '', '| Latency case | Prefill tok/s | Decode p50 ms | Decode p95 ms | Peak CUDA GiB | Persistent adapter M+c bytes |',
++            '| --- | ---: | ---: | ---: | ---: | ---: |']
++        for label,r in latency.items():
++            lines.append(f'| {label} | {r["prefill_tokens_per_second"]:.1f} | {r["decode_p50_ms"]:.3f} | {r["decode_p95_ms"]:.3f} | {r["peak_cuda_bytes"]/2**30:.3f} | {r["adapter_persistent_state"]["M_c_bytes"]} |')
++        lines += ['',f'Complete R_resS1 dev pass: {anchor["full_eval_seconds"]:.3f}s. All21training cases have100stable steps;all7latency cases have512token prefill and128decode samples.',
++            f'Measured T0022 usage through timing:1755MIGseconds={1755/14400:.6f}node_h. This tabulation job is additional until its scheduler end.','',*summary['limits'],'']
++        (out/'cost-tables.md').write_text('\n'.join(lines))
++        metrics={'training_cases':21,'stable_steps_per_case':100,'latency_cases':7,'decode_samples':896,
++                 'RB1_core_node_h':rb1,'max_side_step_seconds':prefix_max,'profile_required':prefix_max>.4}
++        artifacts=[{'path':str(out/name),'role':name} for name in ('cost-summary.json','cost-tables.md')]
++        passed=True
++    finally:
++        write(out/'manifest.json',{'status':'complete' if passed else 'partial','contract':'E-0019@1',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':metrics,'artifacts':artifacts,
++            'validator':{'name':'rb0_cost_integrity','passed':passed}})
++
++
++if __name__=='__main__':main()
+diff --git a/src/rb_train.py b/src/rb_train.py
+new file mode 100644
+index 0000000..3a3578d
+--- /dev/null
++++ b/src/rb_train.py
+@@ -0,0 +1,308 @@
++"""RB training entry: locked A2 split, V1 objective/scoring, paired initialization.
++
++RB0 executes only smoke/timing. RBc/RB1 release belongs to the coordinator.
++This module never reads an official validation or RB confirmation example.
++"""
++import argparse
++from dataclasses import replace
++import gc
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from bypass_model import AdapterConfig, BranchModel
++from calibrate import MODEL,REVISION,load_base
++from rb_data import BASE_SEED,STUDY,apply_confirmation,plan_batches
++from v1_data import derive_seed,audit_training_exclusions
++from v1_lora import LoRAConfig,LoRAModel
++from v1_run import (prepare,evaluate,train as v1_train,TrainingDiverged,EvaluationNonfinite,
++                    preserved_evaluation_state)
++from v5_train import file_sha256,write_json,plan_metadata
++
++LAYERS=(6,13,20,27)
++PARAMETERS={**{f'RB1-{i:02}':663552 for i in range(1,7)},
++            'RB1-07':630784,'RB1-08':1318912,'RB1-09':925696}
++FAMILIES={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T',
++          'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C'}
++REPRESENTATIVES={'RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-L':'RB1-07','RBc-C':'RB1-08'}
++GRIDS={'RBc-T':(1e-4,3e-4,1e-3),'RBc-L':(1e-4,3e-4,1e-3),
++       'RBc-R':(3e-4,1e-3,3e-3),'RBc-C':(3e-4,1e-3,3e-3)}
++EXTENSIONS={'RBc-T':(3e-5,3e-3),'RBc-L':(3e-5,3e-3),
++            'RBc-R':(1e-4,1e-2),'RBc-C':(1e-4,1e-2)}
++
++
++def adapter_config(arm,impl='prefix'):
++    if arm not in PARAMETERS or arm=='RB1-07':
++        raise ValueError('not an RB side-branch arm')
++    return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm=='RB1-01' else 'memory',
++        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' else 'F_out',rank=32,
++        steps=2 if arm=='RB1-03' else 4 if arm in ('RB1-04','RB1-05','RB1-06') else 1,
++        fixed_query=arm=='RB1-05',eta=.0625 if arm=='RB1-06' else .25,impl=impl)
++
++
++def make_model(arm,phase='R1',seed=0,checkpoint=None,impl='prefix'):
++    if arm not in ('Base',*PARAMETERS):
++        raise ValueError('unknown RB arm')
++    base=load_base()
++    torch.manual_seed(derive_seed(BASE_SEED,STUDY,phase,'init',seed))
++    if arm=='Base':
++        return base
++    if arm=='RB1-07':
++        config=LoRAConfig(layers=LAYERS,rank=7,alpha=7)
++        model=LoRAModel.load_adapter(base,checkpoint) if checkpoint else LoRAModel(base,config)
++    else:
++        config=adapter_config(arm,impl)
++        model=BranchModel.load_adapter(base,checkpoint) if checkpoint else BranchModel(base,config)
++    if model.config!=config:
++        raise ValueError('checkpoint differs from registered RB arm')
++    params=list(model.adapter_parameters())
++    assert sum(p.numel() for p in params)==PARAMETERS[arm]
++    assert all(p.requires_grad and p.dtype==torch.float32 for p in params)
++    assert sum(p.numel() for p in model.parameters() if p.requires_grad)==PARAMETERS[arm]
++    return model
++
++
++class TrainingAccounting:
++    """Accumulate side counts on device; serialize only after the training loop."""
++    def __init__(self,model):
++        self.counts={}
++        self.states={}
++        self.handle=model.register_forward_hook(self.observe) if isinstance(model,BranchModel) else None
++
++    def observe(self,model,inputs,output):
++        if not model.training:
++            return
++        for index,counts in output.accounting.items():
++            current=self.counts.setdefault(index,{'attention':0,'ffn':0,'writes':0,'reads':0,'valid_tokens':0})
++            for name,value in counts['base'].items():
++                current[name]+=value
++            for name in ('writes','reads','valid_tokens'):
++                value=counts['side'][name]
++                current[name]+=value.detach() if torch.is_tensor(value) else value
++            state=output.cache.memory[index]
++            if state is not None:
++                self.states[index]={'M.shape':list(state.M.shape),'c.shape':list(state.c.shape),
++                    'dtype':str(state.M.dtype),'M_c_bytes':(state.M.numel()+state.c.numel())*4,
++                    'counts_bytes':state.counts.numel()*state.counts.element_size()}
++
++    def finish(self):
++        if self.handle:
++            self.handle.remove()
++        return {'layers':{str(i):{k:int(v) for k,v in values.items()} for i,values in self.counts.items()},
++                'states':self.states,'state_M_c_bytes':sum(x['M_c_bytes'] for x in self.states.values())}
++
++
++def load_data(data_dir,split_manifest,tok):
++    original=prepare(data_dir)
++    split=json.loads(Path(split_manifest).read_text())
++    splits=apply_confirmation(original,split)
++    excluded=audit_training_exclusions(splits,tok)
++    return splits,excluded
++
++
++def train(model,batches,tok,lr,output,monitor=None):
++    output=Path(output)
++    output.mkdir(parents=True,exist_ok=True)
++    torch.cuda.reset_peak_memory_stats()
++    accounting=TrainingAccounting(model)
++    try:
++        metrics=v1_train(model,batches,tok,lr,output,intermediate=monitor)
++    finally:
++        counts=accounting.finish()
++        write_json(output/'accounting.json',counts)
++    if isinstance(model,BranchModel):
++        valid=metrics['train.input_tokens']
++        for values in counts['layers'].values():
++            assert values['valid_tokens']==valid
++            expected=0 if model.config.branch=='kernel_tokenwise' else valid
++            assert values['writes']==expected
++            assert values['reads']==expected*model.config.steps
++            assert values['attention']==values['ffn']==metrics['train.examples']
++    return {**metrics,'runtime.accounting':counts}
++
++
++def extension_lr(family,candidates):
++    grid=GRIDS[family]
++    if set(candidates)!=set(grid):
++        raise ValueError('extension requires exactly the initial family grid')
++    finite=[(lr,nll) for lr,nll in candidates.items() if nll is not None and math.isfinite(nll)]
++    if not finite:
++        raise ValueError('family has no finite calibration candidate')
++    best=min(finite,key=lambda p:(p[1],p[0]))[0]
++    return EXTENSIONS[family][0] if best==grid[0] else EXTENSIONS[family][1] if best==grid[-1] else None
++
++
++def lock_lrs(manifests):
++    families={f:{} for f in GRIDS}
++    inputs=[]
++    split_hash=None
++    order_hash=None
++    for path in manifests:
++        path=Path(path).resolve()
++        value=json.loads(path.read_text())
++        m=value.get('metrics',{})
++        family=value.get('family')
++        if family not in GRIDS or value.get('stage')!='calibration' or value.get('phase')!='V0' or value.get('seed')!=0 or value.get('arm')!=REPRESENTATIVES[family]:
++            raise ValueError('unexpected calibration family/arm/phase/seed')
++        if value.get('status')!='complete' or value.get('validator',{}).get('passed') is not True:
++            raise ValueError('incomplete calibration manifest')
++        lr=m.get('learning_rate')
++        if type(lr) not in (int,float) or lr<=0 or not math.isfinite(lr) or lr in families[family]:
++            raise ValueError('invalid or duplicate family LR')
++        if split_hash is not None and split_hash!=m.get('split_manifest.sha256'):
++            raise ValueError('calibration split mismatch')
++        split_hash=m.get('split_manifest.sha256')
++        if not isinstance(split_hash,str) or len(split_hash)!=64:
++            raise ValueError('calibration split hash missing')
++        order=m.get('plan.order_sha256')
++        if not isinstance(order,str) or len(order)!=64 or order_hash is not None and order_hash!=order:
++            raise ValueError('calibration sample order mismatch')
++        order_hash=order
++        failed=m.get('failed',False)
++        nll=m.get('calibration.nll')
++        if not failed:
++            if type(nll) not in (int,float) or not math.isfinite(nll) or nll<=0:
++                raise ValueError('nonfailed calibration requires finite positive NLL')
++            if m.get('train.input_tokens',0)<200000 or m.get('train.steps')!=m.get('plan.steps'):
++                raise ValueError('incomplete calibration budget')
++        families[family][float(lr)]=None if failed else float(nll)
++        inputs.append({'path':str(path),'sha256':file_sha256(path),'bytes':path.stat().st_size})
++    choices,boundaries={},{}
++    for family,candidates in families.items():
++        initial={lr:candidates[lr] for lr in GRIDS[family] if lr in candidates}
++        extension=extension_lr(family,initial)
++        expected=set(GRIDS[family])|({extension} if extension is not None else set())
++        if set(candidates)!=expected:
++            raise ValueError('missing/unregistered endpoint extension')
++        finite={lr:nll for lr,nll in candidates.items() if nll is not None}
++        minimum=min(finite.values())
++        choices[family]=min(lr for lr,nll in finite.items() if (nll-minimum)/minimum<=.01)
++        boundaries[family]=extension is not None and finite.get(extension)==minimum
++    return {'experiment':'E-0020@1','study_id':STUDY,'split_manifest_sha256':split_hash,
++            'locked_lrs':choices,'boundary_minimum':boundaries,'inputs':inputs}
++
++
++def run(args):
++    out=args.output.resolve()
++    out.mkdir(parents=True,exist_ok=True)
++    metrics,passed={},False
++    phase='V0' if args.stage=='calibration' else args.phase
++    start=time.monotonic()
++    try:
++        if not math.isfinite(args.lr) or args.lr<=0:
++            raise ValueError('learning rate must be finite and positive')
++        if args.stage=='calibration' and args.seed!=0:
++            raise ValueError('RBc uses seed0 only')
++        if args.stage=='train' and (args.phase!='R1' or args.three_epochs):
++            raise ValueError('RB1 formal budget is2M/3epochs;RB5 needs its own later release/contract')
++        if args.stage=='calibration' and args.arm not in REPRESENTATIVES.values():
++            raise ValueError('calibration requires family representative')
++        if args.stage!='smoke' and (args.eval_limit is not None or args.smoke_steps is not None):
++            raise ValueError('partial budgets/evaluation allowed only in smoke')
++        if args.stage=='calibration' and args.three_epochs:
++            raise ValueError('calibration has a fixed200k token budget')
++        if args.stage=='train':
++            lock=json.loads(Path(args.lr_lock).read_text()) if args.lr_lock else {}
++            if lock.get('experiment')!='E-0020@1' or lock.get('locked_lrs',{}).get(FAMILIES[args.arm])!=args.lr:
++                raise ValueError('formal training requires the committed family LR lock')
++            if lock.get('split_manifest_sha256')!=file_sha256(args.split_manifest):
++                raise ValueError('formal training split differs from calibration lock')
++            metrics['lr_lock.sha256']=file_sha256(args.lr_lock)
++        tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True)
++        tok.pad_token_id=tok.eos_token_id
++        splits,excluded=load_data(args.data_dir,args.split_manifest,tok)
++        write_json(out/'excluded-train.json',excluded)
++        write_json(out/'config.json',vars(args))
++        budget=200000 if args.stage=='calibration' else None if args.three_epochs else 2000000
++        batches=plan_batches(splits,tok,phase,args.seed,[(x['task'],x['id']) for x in excluded],budget)
++        metrics.update(plan_metadata(batches))
++        metrics['split_manifest.sha256']=file_sha256(args.split_manifest)
++        metrics['learning_rate']=args.lr
++        metrics.update({'model_revision':REVISION,'tokenizer_revision':REVISION,
++            'source.commit':os.environ.get('SR_CODE_COMMIT','unknown'),
++            'environment.lock_sha256':file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
++            'torch':torch.__version__,'cuda':torch.version.cuda})
++        if args.stage=='smoke':
++            batches=batches[:args.smoke_steps or 4]
++        tick=time.monotonic()
++        model=make_model(args.arm,phase,args.seed)
++        metrics['load.seconds']=time.monotonic()-tick
++        metrics['hardware']=torch.cuda.get_device_name()
++        metrics['params.stored']=sum(p.numel() for p in model.adapter_parameters())
++        metrics['params.trainable']=sum(p.numel() for p in model.parameters() if p.requires_grad)
++        def monitor(step,current):
++            values,preds=evaluate(current,splits,tok,args.eval_limit,split_names=('dev',))
++            write_json(out/f'dev-step-{step}.json',{'step':step,'metrics':values,'predictions':preds})
++        metrics.update(train(model,batches,tok,args.lr,out,monitor if args.stage!='calibration' else None))
++        assert metrics['params.with_grad']==PARAMETERS[args.arm]
++        tick=time.monotonic()
++        model.export_adapter(out/'adapter')
++        metrics['save.seconds']=time.monotonic()-tick
++        split_names=('calibration',) if args.stage=='calibration' else ('dev',)
++        tick=time.monotonic()
++        values,preds=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
++        metrics.update(values)
++        metrics['eval.seconds']=time.monotonic()-tick
++        write_json(out/'predictions.json',preds)
++        del model
++        gc.collect()
++        torch.cuda.empty_cache()
++        model=make_model(args.arm,phase,args.seed,out/'adapter')
++        values,reloaded=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
++        metrics['reload.identical']=preds==reloaded
++        assert metrics['reload.identical'] and all(metrics[k]==v for k,v in values.items())
++        write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
++            'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
++            for name in ('config.json','adapter.pt')})
++        passed=True
++    except (TrainingDiverged,EvaluationNonfinite) as exc:
++        if isinstance(exc,TrainingDiverged):
++            metrics.update(exc.metrics)
++        metrics.update(failed=True,failure_reason=str(exc))
++        if args.stage!='calibration':
++            raise
++        metrics['calibration.nll']=None
++        passed=True
++    finally:
++        metrics['elapsed_s']=time.monotonic()-start
++        write_json(out/'manifest.json',{'status':'complete' if passed else 'partial',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'],'contract':'E-0019@1' if args.stage=='smoke' else 'E-0020@1' if args.stage=='calibration' else 'E-0021@1',
++            'arm':args.arm,'family':FAMILIES[args.arm],'seed':args.seed,'phase':phase,'stage':args.stage,
++            'metrics':metrics,'artifacts':[{'path':str(p),'role':p.name} for p in out.iterdir() if p.is_file() and p.name!='manifest.json'],
++            'validator':{'name':'rb_training_runtime','passed':passed}})
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    sub=parser.add_subparsers(dest='command',required=True)
++    p=sub.add_parser('run')
++    p.add_argument('--arm',choices=PARAMETERS,required=True)
++    p.add_argument('--stage',choices=('smoke','calibration','train'),default='smoke')
++    p.add_argument('--phase',choices=('R1','RB5'),default='R1')
++    p.add_argument('--seed',type=int,default=0)
++    p.add_argument('--lr',type=float,required=True)
++    p.add_argument('--lr-lock',type=Path)
++    p.add_argument('--split-manifest',type=Path,required=True)
++    p.add_argument('--data-dir',required=True)
++    p.add_argument('--three-epochs',action='store_true')
++    p.add_argument('--eval-limit',type=int)
++    p.add_argument('--smoke-steps',type=int)
++    p.add_argument('--output',type=Path,required=True)
++    p=sub.add_parser('lock')
++    p.add_argument('--manifests',type=Path,nargs='+',required=True)
++    p.add_argument('--output',type=Path,required=True)
++    args=parser.parse_args()
++    if args.command=='lock':
++        write_json(args.output,lock_lrs(args.manifests))
++    else:
++        run(args)
++
++
++if __name__=='__main__':
++    main()
+diff --git a/src/test_rb_core.py b/src/test_rb_core.py
+new file mode 100644
+index 0000000..81df9c8
+--- /dev/null
++++ b/src/test_rb_core.py
+@@ -0,0 +1,193 @@
++"""RB0 FP32 thresholds fixed before execution (coordinator MSG-0543).
++
++Per tensor: ||actual-reference||inf <= 1e-5 + 1e-4*||reference||inf.
++Both the absolute infinity norm and normalized relative error are reported.
++No componentwise ratio or post-result tolerance change is used.
++"""
++from dataclasses import replace
++from unittest.mock import patch
++
++import pytest
++import torch
++
++from bypass_core import (LatentReader, MemoryState, elu_plus_one, rmsnorm_no_affine,
++                         process_sequence, process_prefix, process_kernel_tokenwise)
++from bypass_model import AdapterConfig
++from rb_history import run_history, donor_indices
++
++ATOL, RTOL = 1e-5, 1e-4
++
++
++def close(actual, reference, record_property=None, name='error'):
++    absolute = (actual-reference).abs().max().item() if actual.numel() else 0.
++    scale = reference.abs().max().item() if reference.numel() else 0.
++    relative = absolute/max(scale, 1e-8)
++    if record_property:
++        record_property(name+'.max_abs', absolute)
++        record_property(name+'.relative_inf', relative)
++    assert absolute <= ATOL+RTOL*scale, (name, absolute, relative, scale)
++
++
++@pytest.mark.parametrize('length', [17, 64])
++@pytest.mark.parametrize('rank', [8, 32])
++@pytest.mark.parametrize('mode', ['inclusive', 'strict'])
++@pytest.mark.parametrize('steps', [1, 2, 4])
++@pytest.mark.parametrize('fixed_query', [False, True])
++@pytest.mark.parametrize('update', ['accumulate', 'anchored'])
++@pytest.mark.parametrize('readout', ['increment', 'full'])
++def test_prefix_reference_slot_outputs_and_all_gradients(length, rank, mode, steps,
++        fixed_query, update, readout, record_property):
++    torch.manual_seed(19000+length+rank)
++    torch.backends.cuda.matmul.allow_tf32 = False
++    torch.backends.cudnn.allow_tf32 = False
++    originals = [torch.randn(3, length, rank) for _ in range(3)]
++    probe = torch.randn_like(originals[0])
++    valid = torch.ones(3, length, dtype=torch.bool)
++    valid[0, :3], valid[1, -5:], valid[2] = False, False, False
++    write, read = valid.clone(), valid.clone()
++    write[0, 7], read[1, 8] = False, False
++    prior_k, prior_v = torch.rand(3, rank), torch.randn(3, rank)
++    template = LatentReader(rank)
++    with torch.no_grad():
++        template.Rq.add_(torch.randn_like(template.Rq)*.1)
++        template.Ro.add_(torch.randn_like(template.Ro)*.1)
++    results, gradients = [], []
++    for implementation, backend in [('reference','kernel_matrix'), ('prefix','kernel_matrix'),
++                                     ('reference','kernel_slot_reference')]:
++        reader = LatentReader(rank)
++        reader.load_state_dict(template.state_dict())
++        q, k, v = [x.clone().requires_grad_() for x in originals]
++        state = MemoryState.empty(3, rank, backend).write(prior_k, prior_v, torch.tensor([True, True, False]))
++        result = process_sequence(q, k, v, reader, state=state, valid=valid, write=write,
++            read=read, mode=mode, steps=steps, fixed_query=fixed_query, update=update,
++            readout=readout, backend=backend, impl=implementation)
++        grad = torch.autograd.grad((result.outputs*probe).sum(), (q,k,v,reader.Rq,reader.Ro))
++        results.append(result)
++        gradients.append(grad)
++        assert result.accounting['writes'] == write.sum()
++        assert result.accounting['reads'] == read.sum()*steps
++        assert torch.equal(result.outputs[~read], torch.zeros_like(result.outputs[~read]))
++    for index, label in [(1,'prefix'), (2,'slots')]:
++        close(results[index].outputs, results[0].outputs, record_property, label+'.output')
++        close(results[index].state.M, results[0].state.M, record_property, label+'.M')
++        close(results[index].state.c, results[0].state.c, record_property, label+'.c')
++        assert torch.equal(results[index].state.counts, results[0].state.counts)
++        for name, actual, reference in zip(('q','k','v','Rq','Ro'), gradients[index], gradients[0]):
++            close(actual, reference, record_property, label+'.grad.'+name)
++
++
++@pytest.mark.parametrize('mode', ['inclusive','strict'])
++def test_prefix_chunks_reordering_reset_and_no_host_scalars(mode):
++    torch.manual_seed(191)
++    q,k,v = [torch.randn(3,17,8) for _ in range(3)]
++    valid = torch.ones(3,17,dtype=torch.bool)
++    valid[1,-4:], valid[2] = False, False
++    reader = LatentReader(8)
++    whole = process_prefix(q,k,v,reader,valid=valid,steps=4,mode=mode)
++    state, pieces = None, []
++    for a,b in [(0,7),(7,12),(12,17)]:
++        result = process_prefix(q[:,a:b],k[:,a:b],v[:,a:b],reader,state=state,
++                                valid=valid[:,a:b],steps=4,mode=mode)
++        state = result.state
++        pieces.append(result.outputs)
++    close(torch.cat(pieces,1),whole.outputs)
++    close(state.M,whole.state.M)
++    order = torch.tensor([1,0,0,2])
++    reordered = process_prefix(q.index_select(0,order),k.index_select(0,order),
++        v.index_select(0,order),reader,valid=valid.index_select(0,order),steps=4,mode=mode)
++    close(reordered.outputs,whole.outputs.index_select(0,order))
++    assert reordered.state.M.data_ptr() != whole.state.M.data_ptr()
++    with pytest.raises(ValueError,match='reset'):
++        process_prefix(q,k,v,reader,valid=valid,reset=torch.zeros_like(valid))
++    with patch.object(torch.Tensor,'item',side_effect=AssertionError('host scalar')):
++        process_prefix(q,k,v,reader,valid=valid,steps=4,mode=mode)
++
++
++def test_t0_definition_and_history_independence():
++    torch.manual_seed(192)
++    q,k,v = [torch.randn(2,7,8) for _ in range(3)]
++    valid = torch.ones(2,7,dtype=torch.bool)
++    valid[1, -2:] = False
++    reader = LatentReader(8)
++    z = q
++    for _ in range(4):
++        a = torch.nn.functional.silu(rmsnorm_no_affine(z)@reader.Rq+rmsnorm_no_affine(k))*v
++        z = z + reader.eta*(a@reader.Ro)
++    actual = process_kernel_tokenwise(q,k,v,reader,valid,4)
++    close(actual,(z-q)*valid[...,None])
++    changed = [x.clone() for x in (q,k,v)]
++    for x in changed:
++        x[:,:5] += 123
++    close(process_kernel_tokenwise(*changed,reader,valid,4)[:,5:], actual[:,5:])
++
++
++def history_inputs():
++    torch.manual_seed(193)
++    q,k,v = [torch.randn(2,17,8) for _ in range(3)]
++    valid = torch.ones(2,17,dtype=torch.bool)
++    valid[0,:2], valid[1,-3:] = False, False
++    return q,k,v,valid,LatentReader(8)
++
++
++def test_history_identities_strict_and_current_weights():
++    q,k,v,valid,reader = history_inputs()
++    cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fixed_query=True,steps=4,fusion='F_out')
++    normal = run_history(q,k,v,reader,valid,cfg,{'capture_history':True,'trace_reads':True})
++    for options in ({'kind':'iv_window','window':64},
++                    {'kind':'iv_swap','donor':normal.diagnostics['history']},
++                    {'kind':'iv_permute','phase':'R1','example_ids':['a','b'],'identity_permutation':True}):
++        close(run_history(q,k,v,reader,valid,cfg,options).outputs,normal.outputs)
++    off = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_off'})
++    assert torch.count_nonzero(off.outputs) == 0
++    strict = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_strict'})
++    assert torch.count_nonzero(strict.outputs[0,:3]) == 0
++    assert torch.count_nonzero(strict.outputs[1,0]) == 0
++    weights = normal.diagnostics['current_weight']
++    assert weights.shape == (2,17,4)
++    close(weights[...,1:], weights[...,:1].expand_as(weights[...,1:]))
++    assert ((weights >= 0)&(weights <= 1)).all()
++    assert torch.count_nonzero(weights[~valid]) == 0
++    one = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_window1'})
++    # One inclusive write reduces the normalized kernel read to v (epsilon retained).
++    tiny = process_prefix(q[:,5:6],k[:,5:6],v[:,5:6],reader,valid=valid[:,5:6],steps=4,fixed_query=True)
++    close(one.outputs[:,5:6],tiny.outputs)
++
++
++@pytest.mark.parametrize('kind',['iv_window1','iv_window8','iv_strict','iv_swap','iv_permute','iv_off'])
++def test_every_intervention_causal_at_feature_boundary(kind):
++    q,k,v,valid,reader = history_inputs()
++    cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out',steps=4)
++    donor = run_history(q.flip(0),k.flip(0),v.flip(0),reader,valid.flip(0),cfg,{'capture_history':True})
++    options = {'kind':kind,'phase':'R1','example_ids':['a','b'],'donor':donor.diagnostics['history']}
++    actual = run_history(q,k,v,reader,valid,cfg,options).outputs
++    changed = [x.clone() for x in (q,k,v)]
++    for x in changed:
++        x[:,10:] += 99
++    rerun = run_history(*changed,reader,valid,cfg,options).outputs
++    close(rerun[:,:10],actual[:,:10])
++
++
++def test_wrong_implementations_are_rejected():
++    q,k,v,valid,reader = history_inputs()
++    normal = process_prefix(q,k,v,reader,valid=valid)
++    # Full-sequence K^T V leaks a changed future into earlier positions.
++    from bypass_core import kernel_prefix_states,read_kernel_prefix
++    keys,values,matrices,masses,counts,_ = kernel_prefix_states(k,v,reader,valid)
++    bad,_ = read_kernel_prefix(q,reader,matrices[:,-1:].expand_as(matrices),
++        masses[:,-1:].expand_as(masses),counts[:,-1:].expand_as(counts),valid)
++    with pytest.raises(AssertionError):
++        close(bad[:,:8],normal.outputs[:,:8])
++    duplicate = replace(normal,accounting={**normal.accounting,'writes':valid.sum()*2})
++    with pytest.raises(AssertionError):
++        assert duplicate.accounting['writes'] == valid.sum()
++    padded = process_prefix(q,k,v,reader,valid=torch.ones_like(valid))
++    with pytest.raises(AssertionError):
++        assert torch.equal(padded.state.counts,valid.sum(1))
++
++
++def test_donor_mapping_is_within_task_derangement():
++    rows = [{'task':t,'id':i} for t in ('piqa','boolq') for i in range(7)]
++    indices = donor_indices(rows,'R1')
++    assert indices == donor_indices(rows,'R1')
++    assert sorted(indices) == list(range(14))
++    assert all(i != d and rows[i]['task'] == rows[d]['task'] for i,d in enumerate(indices))
+diff --git a/src/test_rb_data.py b/src/test_rb_data.py
+new file mode 100644
+index 0000000..8067fce
+--- /dev/null
++++ b/src/test_rb_data.py
+@@ -0,0 +1,58 @@
++import copy
++
++import pytest
++
++from rb_data import (confirmation_manifest,apply_confirmation,training_stream,plan_batches)
++
++
++def rows():
++    return {'splits':{task:{'train':[{'task':task,'id':i} for i in range(1009)],
++                           'dev':[{'task':task,'id':'dev'}],
++                           'calibration':[{'task':task,'id':'calibration'}]}
++                     for task in ('piqa','boolq')},'metadata':{}}
++
++
++def test_A2_confirmation_selection_and_train_exclusion():
++    original=rows()
++    manifest=confirmation_manifest(original)
++    assert manifest==confirmation_manifest(original)
++    assert manifest['counts']=={'piqa':1000,'boolq':1000}
++    kept=apply_confirmation(original,manifest)
++    for task in ('piqa','boolq'):
++        assert len(kept['splits'][task]['train'])==9
++        assert not set(manifest['ids'][task]).intersection(r['id'] for r in kept['splits'][task]['train'])
++        assert kept['splits'][task]['dev']==original['splits'][task]['dev']
++        assert kept['splits'][task]['calibration']==original['splits'][task]['calibration']
++    altered=copy.deepcopy(manifest)
++    altered['ids']['piqa'][0]='foreign'
++    with pytest.raises(ValueError):
++        apply_confirmation(original,altered)
++
++
++def test_RB_order_seed_epoch_and_exclusions():
++    original=rows()
++    kept=apply_confirmation(original,confirmation_manifest(original))
++    first=training_stream(kept,'R1',0,0)
++    assert first==training_stream(kept,'R1',0,0)
++    assert first!=training_stream(kept,'V0',0,0)
++    assert first!=training_stream(kept,'R1',0,1)
++    assert [r['task'] for r in first[:6]]==['piqa','boolq']*3
++    excluded=[(first[0]['task'],first[0]['id'])]
++    filtered=training_stream(kept,'R1',0,0,excluded)
++    assert len(filtered)==len(first)-1 and first[0] not in filtered
++
++
++def test_planning_full_steps_epoch_carry_and_no_confirmation_encoding(monkeypatch):
++    original=rows()
++    kept=apply_confirmation(original,confirmation_manifest(original))
++    ids={task:{r['id'] for r in kept['splits'][task]['train']} for task in ('piqa','boolq')}
++    def encode(tok,row,max_length):
++        assert row['id'] in ids[row['task']]
++        return {'task':row['task'],'id':row['id'],'input_ids':[1]*7,'labels':[-100]*6+[2]}
++    monkeypatch.setattr('rb_data.encode_training_example',encode)
++    batches=plan_batches(kept,None,'R1',0,token_budget=31)
++    assert len(batches)==3 and sum(len(e['input_ids']) for b in batches for e in b)==42
++    batches=plan_batches(kept,None,'R1',0,token_budget=None)
++    assert sum(len(b) for b in batches)==54
++    assert len(batches)==27 and all(len(b)==2 for b in batches)
++    assert sorted(e['epoch'] for b in batches for e in b)==[0]*18+[1]*18+[2]*18
+diff --git a/src/test_rb_model.py b/src/test_rb_model.py
+new file mode 100644
+index 0000000..3356798
+--- /dev/null
++++ b/src/test_rb_model.py
+@@ -0,0 +1,361 @@
++"""Real four-layer RB0 checks; GPU BF16 bounds remain E0001/E0004 tolerances."""
++from contextlib import contextmanager
++from dataclasses import replace
++import importlib.util
++import json
++import os
++from pathlib import Path
++import sys
++from unittest.mock import patch
++
++import pytest
++import torch
++import torch.nn.functional as F
++
++from bypass_core import process_prefix
++from bypass_model import AdapterConfig,BranchModel,BranchCache
++from calibrate import fixture,load_base
++from rb_train import adapter_config,make_model,PARAMETERS
++from test_model import base,adapted,measure,nonzero_exits,chunked,TOL
++from test_rb_core import close
++
++
++@contextmanager
++def attached(base,config,model_class=BranchModel):
++    torch.manual_seed(184)
++    wrapped=model_class(base,config)
++    try:
++        yield wrapped
++    finally:
++        for i,layer in wrapped.adapters().items():
++            for handle in layer.handles:
++                handle.remove()
++            base.model.layers[i]=layer.original
++        base.zero_grad(set_to_none=True)
++
++
++@pytest.mark.parametrize('branch,impl',[('memory','prefix'),('memory','reference'),('kernel_tokenwise','prefix')])
++@pytest.mark.parametrize('fusion',['F_out','C_dual','C_up'])
++def test_four_layer_zero_exit_and_one_original_call(base,branch,impl,fusion,record_property):
++    ids=fixture()
++    with torch.no_grad():
++        reference=base(ids,use_cache=False).logits
++    config=AdapterConfig(branch=branch,impl=impl,fusion=fusion)
++    with attached(base,config) as model,torch.no_grad():
++        calls={i:{'attention':0,'ffn':0} for i in range(28)}
++        handles=[]
++        def counter(i,name):
++            def hook(*args):
++                calls[i][name]+=1
++            return hook
++        for i,layer in enumerate(base.model.layers):
++            layer=getattr(layer,'original',layer)
++            handles.extend([layer.self_attn.register_forward_hook(counter(i,'attention')),
++                            layer.mlp.register_forward_hook(counter(i,'ffn'))])
++        try:
++            actual=model(ids)
++        finally:
++            for h in handles:
++                h.remove()
++        measure(actual.logits,reference,record_property,'four_layer_zero',atol=2e-5)
++        assert all(v=={'attention':1,'ffn':1} for v in calls.values())
++
++
++def test_residual_topology_uses_unchanged_first_FFN_input(base,record_property):
++    ids=fixture()
++    reference_u=[]
++    handle=base.model.layers[6].mlp.register_forward_pre_hook(lambda m,a:reference_u.append(a[0].clone()))
++    with torch.no_grad():
++        base(ids,use_cache=False)
++    handle.remove()
++    with attached(base,adapter_config('RB1-02')) as model,torch.no_grad():
++        nonzero_exits(model)
++        records={i:{} for i in model.config.layers}
++        handles=[]
++        for i,layer in model.adapters().items():
++            r=records[i]
++            def save_input(m,a,r=r): r['X']=a[0].clone()
++            def save_attn(m,a,o,r=r): r['o']=o[0].clone()
++            def save_mlp(m,a,o,r=r): r['U']=a[0].clone();r['F']=o.clone()
++            def save_side(m,a,o,r=r): r['Z']=o[0].clone()
++            def save_output(m,a,o,r=r): r['Y']=o.clone()
++            handles.extend([layer.register_forward_pre_hook(save_input),
++                layer.original.self_attn.register_forward_hook(save_attn),
++                layer.original.mlp.register_forward_hook(save_mlp),
++                layer.side.register_forward_hook(save_side),layer.register_forward_hook(save_output)])
++        try:
++            output=model(ids)
++        finally:
++            for h in handles: h.remove()
++        assert torch.equal(records[6]['U'],reference_u[0])
++        for i,r in records.items():
++            h=r['X']+r['o']
++            original=h+r['F']
++            delta=(r['Z']@model.adapters()[i].side.fusion.P).to(h.dtype)
++            assert torch.equal(r['Y'],original+delta)
++            assert torch.equal(r['U'],model.adapters()[i].original.post_attention_layernorm(h))
++            # D0026:subtracting the rounded BF16 sum cannot recover an addend
++            # smaller than half an ulp. The gate above is exact,with zero tolerance.
++            error=(r['Y'].float()-original.float()-delta.float()).abs()
++            _,exponent=torch.frexp(r['Y'].float().abs())
++            ulp=torch.ldexp(torch.ones_like(error),exponent-8).clamp_min(2.**-133)
++            ulp=torch.where(r['Y']==0,torch.full_like(ulp,2.**-133),ulp)
++            record_property(f'layer{i}.residual_subtraction.max_abs',error.max().item())
++            record_property(f'layer{i}.residual_subtraction.max_ulp_bf16_Y',(error/ulp).max().item())
++            assert output.accounting[i]['base']=={'attention':1,'ffn':1}
++
++
++@pytest.mark.parametrize('arm',['RB1-02','RB1-04','RB1-08'])
++def test_four_layer_two_step_gradient_and_frozen_Jacobian(base,arm,record_property):
++    ids=fixture()
++    with attached(base,adapter_config(arm)) as model:
++        originals={n:p for n,p in base.named_parameters() if '.side.' not in n}
++        before={n:p.detach().clone() for n,p in originals.items()}
++        optimizer=torch.optim.SGD(model.adapter_parameters(),lr=.1)
++        for step in (1,2):
++            model.zero_grad(set_to_none=True)
++            logits=model(ids).logits.float()
++            F.cross_entropy(logits[:,:-1].reshape(-1,logits.shape[-1]),ids[:,1:].reshape(-1)).backward()
++            for i,layer in model.adapters().items():
++                for name,p in layer.side.named_parameters():
++                    assert p.grad is not None and torch.isfinite(p.grad).all()
++                    norm=p.grad.norm().item()
++                    record_property(f'grad.layer{i}.step{step}.{name}',norm)
++                    assert norm>0 if step==2 or name.startswith('fusion.') else norm==0,(i,step,name,norm)
++            assert all(p.grad is None for p in originals.values())
++            optimizer.step()
++        assert max((p-before[n]).abs().max().item() for n,p in originals.items())==0
++
++
++def test_parameter_counts_all_arms_widths_and_initialization_pairing(base,record_property):
++    initial=None
++    for number in range(1,10):
++        arm=f'RB1-{number:02}'
++        if arm=='RB1-07':
++            continue
++        with patch('rb_train.load_base',return_value=base):
++            model=make_model(arm)
++        try:
++            params=list(model.adapter_parameters())
++            assert sum(p.numel() for p in params)==PARAMETERS[arm]
++            assert all(p.requires_grad and p.dtype==torch.float32 for p in params)
++            record_property(arm+'.parameters',sum(p.numel() for p in params))
++            if number<=6:
++                values={str(i)+'.'+n:p.detach().cpu().clone() for i,l in model.adapters().items() for n,p in l.side.named_parameters()}
++                if initial is None: initial=values
++                assert set(values)==set(initial)
++                assert all(torch.equal(values[n],initial[n]) for n in initial)
++            nonzero_exits(model)
++            model(fixture()).logits.float().square().mean().backward()
++            assert sum(p.numel() for p in params if p.grad is not None)==PARAMETERS[arm]
++            assert all(p.grad is not None and torch.isfinite(p.grad).all() and p.grad.norm()>0 for p in params)
++        finally:
++            for i,layer in model.adapters().items():
++                for h in layer.handles:h.remove()
++                base.model.layers[i]=layer.original
++    for rank,expected in ((44,916608),(64,1343488)):
++        with attached(base,replace(adapter_config('RB1-02'),rank=rank)) as model:
++            assert sum(p.numel() for p in model.adapter_parameters())==expected
++            nonzero_exits(model)
++            loss=model(fixture()).logits.float().square().mean()
++            loss.backward()
++            assert sum(p.numel() for p in model.adapter_parameters() if p.grad is not None)==expected
++    from test_v1_lora import adapted as lora_attached
++    from v1_lora import LoRAConfig
++    for layers,rank,expected in (((6,13,20,27),7,630784),(tuple(range(28)),1,630784),(tuple(range(28)),2,1261568)):
++        with lora_attached(base,LoRAConfig(layers=layers,rank=rank)) as model:
++            params=list(model.adapter_parameters())
++            assert sum(p.numel() for p in params)==expected
++            with torch.no_grad():
++                for target in model._targets.values():target.B.normal_(std=.01)
++            model(fixture()).logits.float().square().mean().backward()
++            assert sum(p.numel() for p in params if p.grad is not None)==expected
++
++
++def test_fixed_query_wiring_has_linear_S4_increment(base):
++    with attached(base,adapter_config('RB1-05')) as model,torch.no_grad():
++        nonzero_exits(model)
++        handles=[]
++        def check(side,inputs,output):
++            u,features,state,valid,phase,*_=inputs
++            q,k,v=side.projection(features['q'],features['k'],features['v'])
++            one=process_prefix(q,k,v,side.reader,valid=valid,steps=1,fixed_query=True)
++            close(output[0],4*one.outputs)
++        for layer in model.adapters().values():handles.append(layer.side.register_forward_hook(check))
++        try:model(fixture())
++        finally:
++            for h in handles:h.remove()
++
++
++@pytest.mark.parametrize('impl',['prefix','reference'])
++def test_four_layer_cache_causality_padding_and_ownership(base,impl,record_property):
++    ids=fixture();mask=torch.ones_like(ids)
++    mask[0,:2]=0;mask[1,-2:]=0
++    with attached(base,adapter_config('RB1-04',impl)) as model,torch.no_grad():
++        nonzero_exits(model)
++        full=model(ids,attention_mask=mask)
++        for chunk in (3,1):
++            values,cache=chunked(model,ids,mask,chunk)
++            if chunk==3:
++                measure(values[mask.bool()],full.logits[mask.bool()],record_property,f'{impl}.chunk{chunk}')
++            else:
++                # D0026:retain the locked BF16 comparison as a reported
++                # diagnostic. FP32 continuation below is the decisive carry gate.
++                delta=(values[mask.bool()].float()-full.logits[mask.bool()].float()).abs().max().item()
++                record_property(f'{impl}.chunk1.max_abs_err',delta)
++                record_property(f'{impl}.chunk1.within_locked_bf16',int(delta<=TOL['bf16_atol']))
++            for state in cache.memory.values():assert torch.equal(state.counts,mask.sum(-1))
++        changed=ids.clone();changed[:,5:]=330
++        other=model(changed,attention_mask=mask)
++        measure(other.logits[:,:5][mask[:,:5].bool()],full.logits[:,:5][mask[:,:5].bool()],record_property,'causal',atol=2e-5)
++        permutation=torch.tensor([1,0],device=ids.device)
++        permuted=model(ids.index_select(0,permutation),attention_mask=mask.index_select(0,permutation))
++        measure(permuted.logits[mask.index_select(0,permutation).bool()],
++                full.logits.index_select(0,permutation)[mask.index_select(0,permutation).bool()],
++                record_property,'same_batch_permutation')
++        order=torch.tensor([1,0,0],device=ids.device)
++        moved=model(ids.index_select(0,order),attention_mask=mask.index_select(0,order))
++        expected=full.logits.index_select(0,order)
++        # D0027:record the unchanged0.50002 comparison across B2->B3 as a
++        # diagnostic. Same-B permutation above and FP32 expansion below gate.
++        delta=(moved.logits[mask.index_select(0,order).bool()].float()-
++               expected[mask.index_select(0,order).bool()].float()).abs().max().item()
++        record_property(f'D0027.{impl}.batch_expansion.max_abs_err',delta)
++        record_property(f'D0027.{impl}.batch_expansion.within_locked_bf16',int(delta<=TOL['bf16_atol']))
++        prefix=model(ids[:,:3],attention_mask=mask[:,:3],use_cache=True)
++        source={i:s.M.clone() for i,s in prefix.cache.memory.items()}
++        owner=prefix.cache.reorder(order)
++        model(ids[:,3:4].index_select(0,order),attention_mask=mask[:,:4].index_select(0,order),cache=owner,use_cache=True)
++        assert all(torch.equal(s.M,source[i]) for i,s in prefix.cache.memory.items())
++        for counts in full.accounting.values():
++            assert counts['side']['writes']==mask.sum() and counts['side']['reads']==mask.sum()*4
++
++
++def test_BF16_token_decode_prefix_reference_agreement(base,record_property):
++    ids=fixture();mask=torch.ones_like(ids)
++    mask[0,:2]=0;mask[1,-2:]=0
++    outputs=[];expanded=[]
++    for impl in ('reference','prefix'):
++        with attached(base,adapter_config('RB1-04',impl)) as model,torch.no_grad():
++            nonzero_exits(model)
++            values,_=chunked(model,ids,mask,1)
++            outputs.append(values)
++            order=torch.tensor([1,0,0],device=ids.device)
++            expanded.append(model(ids.index_select(0,order),attention_mask=mask.index_select(0,order)).logits)
++    measure(outputs[1][mask.bool()],outputs[0][mask.bool()],record_property,'BF16.token.prefix_reference')
++    moved_mask=mask.index_select(0,order).bool()
++    measure(expanded[1][moved_mask],expanded[0][moved_mask],record_property,'D0027.BF16.batch_expansion.prefix_reference')
++
++
++@pytest.mark.parametrize('impl',['prefix','reference'])
++def test_FP32_four_layer_cache_and_state_clear_negative_control(impl,record_property):
++    # D0026:fresh FP32 backbone;do not recast the BF16 fixture or rotary buffers.
++    torch.backends.cuda.matmul.allow_tf32=False
++    torch.backends.cudnn.allow_tf32=False
++    fresh=load_base().float()
++    ids=fixture();mask=torch.ones_like(ids)
++    mask[0,:2]=0;mask[1,-2:]=0
++    with attached(fresh,adapter_config('RB1-04',impl)) as model,torch.no_grad():
++        nonzero_exits(model)
++        whole=model(ids,attention_mask=mask)
++        outputs={8:whole.logits}
++        for chunk in (3,1):
++            values,cache=chunked(model,ids,mask,chunk)
++            outputs[chunk]=values
++            for i,state in cache.memory.items():
++                close(state.M,whole.cache.memory[i].M,record_property,f'{impl}.FP32.chunk{chunk}.layer{i}.M')
++                close(state.c,whole.cache.memory[i].c,record_property,f'{impl}.FP32.chunk{chunk}.layer{i}.c')
++                assert torch.equal(state.counts,whole.cache.memory[i].counts)
++        for a,b in ((3,8),(1,8),(1,3)):
++            close(outputs[a][mask.bool()],outputs[b][mask.bool()],record_property,f'{impl}.FP32.logits.{a}_{b}')
++        for order in (torch.tensor([1,0],device=ids.device),torch.tensor([1,0,0],device=ids.device)):
++            moved_mask=mask.index_select(0,order)
++            moved=model(ids.index_select(0,order),attention_mask=moved_mask)
++            close(moved.logits[moved_mask.bool()],whole.logits.index_select(0,order)[moved_mask.bool()],
++                  record_property,f'{impl}.FP32.batch{order.numel()}.logits')
++        # Duplicated beam rows own separate side and backbone state storage.
++        first=model(ids[:,:3],attention_mask=mask[:,:3],use_cache=True)
++        source={i:s.M.clone() for i,s in first.cache.memory.items()}
++        order=torch.tensor([1,0,0],device=ids.device)
++        fork=first.cache.reorder(order)
++        model(ids[:,3:4].index_select(0,order),attention_mask=mask[:,:4].index_select(0,order),cache=fork,use_cache=True)
++        assert all(torch.equal(s.M,source[i]) for i,s in first.cache.memory.items())
++        # Keep backbone KV,deliberately erase only side M,c,n at each boundary.
++        pieces=[];cache=None
++        for start in range(ids.shape[1]):
++            if cache is not None:
++                cache=BranchCache({i:s.reset() for i,s in cache.memory.items()},cache.backbone,cache.phase)
++            result=model(ids[:,start:start+1],attention_mask=mask[:,:start+1],cache=cache,use_cache=True)
++            cache=result.cache;pieces.append(result.logits)
++        bad=torch.cat(pieces,1)
++        with pytest.raises(AssertionError):
++            close(bad[mask.bool()],whole.logits[mask.bool()])
++        record_property(impl+'.FP32.state_clear_rejected',1)
++
++
++@pytest.mark.parametrize('arm',['RB1-01','RB1-02','RB1-05','RB1-06','RB1-08','RB1-09','RB1-07'])
++def test_every_checkpoint_class_fresh_base_reload(arm,tmp_path,record_property):
++    model=make_model(arm)
++    model.eval()
++    with torch.no_grad():
++        if isinstance(model,BranchModel):nonzero_exits(model)
++        else:
++            for target in model._targets.values():target.B.normal_(std=.01)
++        expected=model(fixture(),use_cache=False).logits
++    model.export_adapter(tmp_path/arm)
++    del model
++    torch.cuda.empty_cache()
++    model=make_model(arm,checkpoint=tmp_path/arm).eval()
++    with torch.no_grad():actual=model(fixture(),use_cache=False).logits
++    measure(actual,expected,record_property,arm+'.reload',atol=0)
++    assert torch.equal(actual.argmax(-1),expected.argmax(-1))
++
++
++@pytest.mark.parametrize('arm',['RB1-01','RB1-04','RB1-08','RB1-09'])
++def test_history_interventions_model_identities_and_causality(base,arm,record_property):
++    ids=fixture();mask=torch.ones_like(ids)
++    with torch.no_grad():reference=base(ids,use_cache=False).logits
++    with attached(base,adapter_config(arm)) as model,torch.no_grad():
++        model.eval();nonzero_exits(model)
++        normal=model(ids,capture_history=True,trace_reads=True)
++        donor={i:record['history'] for i,record in normal.diagnostics.items()} if arm!='RB1-01' else {}
++        identities=[{'kind':'iv_window','window':64},{'kind':'iv_swap','donor':donor},
++            {'kind':'iv_permute','identity_permutation':True,'phase':'R1','example_ids':['a','b']}]
++        for options in identities:
++            value=model(ids,intervention=options)
++            measure(value.logits,normal.logits,record_property,arm+'.identity')
++        off=model(ids,intervention={'kind':'iv_off'})
++        measure(off.logits,reference,record_property,'iv_off',atol=2e-5)
++        for kind in ('iv_window1','iv_window8','iv_strict','iv_swap','iv_permute'):
++            options={'kind':kind,'donor':donor,'phase':'R1','example_ids':['a','b']}
++            value=model(ids,intervention=options)
++            changed=ids.clone();changed[:,5:]=330
++            other=model(changed,intervention=options)
++            measure(other.logits[:,:5],value.logits[:,:5],record_property,kind+'.causal',atol=2e-5)
++            if arm=='RB1-01':assert torch.equal(value.logits,normal.logits)
++
++
++def test_default_paths_bitwise_match_task_master(base):
++    root=Path('/work/xg24i002/x10041/bypass-lora/snapshots/de9da72acc1c9f9e0903ff1e144a87cc4ba4c615/src')
++    def module(name,path):
++        spec=importlib.util.spec_from_file_location(name,path)
++        value=importlib.util.module_from_spec(spec)
++        sys.modules[name]=value
++        spec.loader.exec_module(value)
++        return value
++    old_core=module('_rb_baseline_core',root/'bypass_core.py')
++    with patch.dict(sys.modules,{'bypass_core':old_core}):
++        old_model=module('_rb_baseline_model',root/'bypass_model.py')
++    ids=fixture();mask=torch.ones_like(ids)
++    for kwargs in ({'branch':'tokenwise_silu','fusion':'C_up'},
++                   {'branch':'memory','fusion':'F_out','steps':4},
++                   {'branch':'memory','fusion':'C_dual','layers':(14,),'steps':2}):
++        outputs=[];parameters=[]
++        for cls,cfg_cls in ((old_model.BranchModel,old_model.AdapterConfig),(BranchModel,AdapterConfig)):
++            with attached(base,cfg_cls(**kwargs),cls) as model,torch.no_grad():
++                parameters.append([p.detach().clone() for p in model.adapter_parameters()])
++                for layer in model.adapters().values():
++                    for p in layer.side.fusion.parameters():p.normal_(std=.01)
++                outputs.append(model(ids,attention_mask=mask).logits)
++        assert all(torch.equal(a,b) for a,b in zip(*parameters))
++        assert torch.equal(*outputs)
+diff --git a/src/test_rb_train.py b/src/test_rb_train.py
+new file mode 100644
+index 0000000..cbc6c5f
+--- /dev/null
++++ b/src/test_rb_train.py
+@@ -0,0 +1,66 @@
++import json
++from pathlib import Path
++
++import pytest
++
++from rb_train import GRIDS,EXTENSIONS,REPRESENTATIVES,extension_lr,lock_lrs,adapter_config
++
++
++@pytest.mark.parametrize('family',list(GRIDS))
++def test_family_extension_uses_raw_minimum_not_one_percent_tie(family):
++    grid=GRIDS[family]
++    assert extension_lr(family,dict(zip(grid,[1.009,1.005,1.])))==EXTENSIONS[family][1]
++    assert extension_lr(family,dict(zip(grid,[1.,1.005,1.009])))==EXTENSIONS[family][0]
++    assert extension_lr(family,dict(zip(grid,[1.1,1.,1.2]))) is None
++
++
++def calibration_inputs(tmp_path):
++    paths=[]
++    for family,grid in GRIDS.items():
++        for lr,nll in zip(grid,[1.1,1.,1.2]):
++            value={'stage':'calibration','phase':'V0','seed':0,'arm':REPRESENTATIVES[family],
++                'family':family,'status':'complete','validator':{'passed':True},
++                'metrics':{'learning_rate':lr,'calibration.nll':nll,'split_manifest.sha256':'a'*64,
++                    'plan.order_sha256':'b'*64,'plan.steps':1234,'train.steps':1234,'train.input_tokens':200100}}
++            path=tmp_path/(family+'-'+str(lr)+'.json')
++            path.write_text(json.dumps(value));paths.append(path)
++    return paths
++
++
++def test_lock_family_mapping_and_nonfailed_null_rejected(tmp_path):
++    paths=calibration_inputs(tmp_path)
++    result=lock_lrs(paths)
++    assert result['locked_lrs']=={f:grid[1] for f,grid in GRIDS.items()}
++    assert len(result['inputs'])==12
++    value=json.loads(paths[0].read_text())
++    value['metrics']['calibration.nll']=None
++    paths[0].write_text(json.dumps(value))
++    with pytest.raises(ValueError,match='finite positive NLL'):lock_lrs(paths)
++
++
++def test_lock_refuses_changed_order_and_missing_extension(tmp_path):
++    paths=calibration_inputs(tmp_path)
++    value=json.loads(paths[0].read_text())
++    value['metrics']['plan.order_sha256']='c'*64
++    paths[0].write_text(json.dumps(value))
++    with pytest.raises(ValueError,match='order'):lock_lrs(paths)
++    value['metrics']['plan.order_sha256']='b'*64
++    value['metrics']['calibration.nll']=.8
++    paths[0].write_text(json.dumps(value))
++    with pytest.raises(ValueError,match='endpoint'):lock_lrs(paths)
++
++
++def test_registered_loop_controls_are_explicit_and_defaults_unchanged():
++    assert adapter_config('RB1-02').steps==1
++    assert adapter_config('RB1-03').steps==2
++    assert adapter_config('RB1-04').steps==4
++    assert adapter_config('RB1-05').fixed_query is True
++    assert adapter_config('RB1-06').eta==.0625
++    assert adapter_config('RB1-08').fusion=='C_dual'
++    assert adapter_config('RB1-09').fusion=='C_up'
++
++
++def test_T0_rejects_backend_that_would_create_an_unused_temperature():
++    from bypass_model import AdapterConfig
++    with pytest.raises(ValueError,match='parameter family'):
++        AdapterConfig(branch='kernel_tokenwise',backend='centered_cos_slot')

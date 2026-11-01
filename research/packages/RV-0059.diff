@@ -1,0 +1,565 @@
+diff --git a/research/notes/T-0023-implementation.md b/research/notes/T-0023-implementation.md
+index bee4dcf..7dea294 100644
+--- a/research/notes/T-0023-implementation.md
++++ b/research/notes/T-0023-implementation.md
+@@ -50,6 +50,7 @@ MAC(r, S) = 4096r + S(2r² + 2nr)
+ - r128/S4: 524,288 + 4 · 36,864 = 671,744.
+ - r'/S1: 4128r' + 2r'² = 671,744 gives r' = 151.6, so r' = 152: 673,664 (+0.29%). A test checks that 152 is the nearest integer.
+ - Support-side projection cost per support token is 3·1024r, which grows by 152/128 = +18.75%. This is reported separately.
++- Reported MACs are executed per question token (`macs_per_question_token`, RV-0058). The fixed-query arm computes N(z⁰)Rq once, giving 4096r + r² + S(r² + 2nr) = 622,592 for V3-05. The tokenwise kernel is 4096r + 2Sr² = 655,360 for V3-06. The other arms follow 4096r + S(2r² + 2nr).
+ - No latency-matching claim: the 2g step time is dominated by the token loop. The measured stable step time of V3-07 is recorded (`train.stable_step_seconds`).
+ 
+ Why exact initial identity is impossible:
+@@ -72,7 +73,7 @@ Initialization (`widen`):
+ - It uses the native forward at S_eval through the scoped `eval_steps`, and the reviewed control memories (`v3_loop._snapshots`: normal, zero, shuffled with the global (i−1) donor, permuted) in batches of 16.
+ - Asserted: memory unchanged, writes = 0, reads = S × valid question tokens (0 for V3-06).
+ - An explicit replay (`replay`) gives the per-step diagnostics and must reproduce the native output within ‖ΔZ‖/‖Z‖ ≤ 1e-3 per valid position (`v3_loop.RECONSTRUCTION_TOLERANCE`). The replay's slot read uses `read_vectors`' expressions.
+-- Recorded per step: state norm, read norm, query cosine to step 1 (for V3-06 the query is the pre-activation N(z)Rq), weight on the path's j-th hop fact (all positions and last), n_eff, and last argmax. Path weights are None for shuffled and V3-06.
++- Recorded per step: state norm, read norm, the adjacent-step query cosine `query_cosine_prev_*` (query(s) against query(s−1); None at step 1, as RV-0058 requested), the cosine to step 1 `query_cosine_*`, weight on the path's j-th hop fact (all positions and last), n_eff, and last argmax. For V3-06 the query is the pre-activation N(z)Rq. `_all` is the mean over valid question positions, token-weighted in summaries; `_last` is the last valid position. Path weights are None for shuffled and V3-06.
+ - Main evaluation is at S_eval = S_train with four controls. The scan adds the normal control at S ∈ {1, 2, 4, 8}, or {1, 2, 4} for V3-08.
+ - S1 arms (V3-01, V3-07): the S=1 records must equal the reviewed E-0016 evaluator example by example (`compare_to_reviewed`), as in E-0018.
+ - Reload: export, `load_arm`, re-evaluate at S_train with four controls. The full records must be identical.
+@@ -87,7 +88,21 @@ On the normal memory, z^(s) for 1 ≤ s < S is replaced at every valid question
+ Results are EM and NLL by hop. Following plan §9.4, decoding an entity is not evidence of a causal hop-by-hop chain.
+ 
+ ## Analysis (`v3_train.py analyze`, written and reviewed before any ten-arm dev result is read)
+-- Inputs: ten completed formal arm runs, one per arm. Their main normal records must cover the same episodes in the same order.
++- Inputs (RV-0058): the passed formal common start (`--start-run`, `--start-sha256`, `start_provenance`) and ten arm runs, one per arm. `validate_arm_run` checks each run against `analysis_reference()`, which is built from the released T2 data:
++  - metadata, train and dev digests;
++  - the shared `train` schedule's order digest and token count, recomputed;
++  - the ordered dev identities (episode, hop, answer token).
++- Each arm run must also satisfy:
++  - completed, validator passed, formal, not smoke, command `arm`, contract E-0022@2;
++  - `metrics.json` and the main `dev.normal.jsonl` equal to the producer manifest's sha256 and size;
++  - config and variant equal to the arm definition;
++  - the same start run, adapter digest and checkpoint files, with `formal_start`;
++  - 6,000 scheduled and executed steps on the reference order and token count, with no smoke trim;
++  - the reference data digests and dev row count;
++  - reload identical at S_train;
++  - records exactly the released dev identities in order, each with `correct == (prediction == target)`;
++  - stored per-hop count, correct_count and EM equal to those recomputed from the records.
++- `decide` and the bootstrap use counts rebuilt from the validated records, not the stored summaries. Tests reject each corruption: denominator (the RV-0058 counterexample), correct count, stored EM, start digest, non-formal start, order, steps, smoke trim, dev digest, config, reload, identity, hop, target, correctness flag, truncation, an unrecorded file edit, and matrices that agree with each other on a truncated or wrong dev set.
+ - `decide` applies rules 2–8 on exact fractions (pp, thresholds inclusive):
+   - primary = (EM_hop2 + EM_hop3)/2;
+   - S_M* = V3-03 if V3-03 − V3-02 ≥ 0.5 pp, else V3-02;
+@@ -118,3 +133,4 @@ Results are EM and NLL by hop. Following plan §9.4, decoding an entity is not e
+   | V3-08 | 0.29 | 655,360 |
+   - Maximum replay ratio 2.8e-5. V3-06's replay is exact.
+   - V3-07 step-0 gap (smoke start): max|Δlogit| 0.41.
++- ATT-0195-1 (e1f3000, PBS 3768662, the RV-0058 fixes) passes 89 tests. These include the 17 analysis-corruption cases, the truncated and wrong dev matrices, adjacent cosine with padding and a fixed query, the executed MACs, and the real analysis reference: 1000 dev rows at 334/333/333 and the same train order digest as the arm schedule. All smokes complete.
+diff --git a/src/test_v3_train.py b/src/test_v3_train.py
+index ef8cfc8..285fcae 100644
+--- a/src/test_v3_train.py
++++ b/src/test_v3_train.py
+@@ -3,6 +3,7 @@
+ Core tests run anywhere; model tests need a GPU allocation and use the D5 seed-0 adapter as a
+ stand-in common start. The released-data tests read T2 train/dev only.
+ """
++from collections import Counter
+ from dataclasses import asdict, replace
+ from fractions import Fraction
+ import json
+@@ -77,6 +78,12 @@ def test_v3_07_width_is_mac_matched_to_v3_03():
+     assert v3.macs_per_question_token('V3-07')['question_token'] == 673664
+     assert v3.macs_per_question_token('V3-07')['support_projection_per_token'] / \
+         v3.macs_per_question_token('V3-03')['support_projection_per_token'] == pytest.approx(1.1875)
++    # Executed counts: the fixed query projects once (RV-0058); the tokenwise kernel has no slot terms.
++    assert v3.macs_per_question_token('V3-05')['question_token'] == 4096*128 + 128**2 + 4*(128**2 + 2*16*128) == 622592
++    assert v3.macs_per_question_token('V3-06')['question_token'] == 4096*128 + 4*2*128**2
++    for arm in ('V3-01', 'V3-02', 'V3-04', 'V3-08', 'V3-09', 'V3-10'):
++        r, steps = 128, v3.ARMS[arm]['steps']
++        assert v3.macs_per_question_token(arm)['question_token'] == 4096*r + steps*(2*r*r + 32*r)
+     # 152 is the nearest integer width to the S4 MAC (151.6).
+     target = 671744
+     assert min(range(128, 200), key=lambda r: abs(4096*r + 2*r*r + 32*r - target)) == 152
+@@ -391,6 +398,9 @@ def test_every_arm_trains_evaluates_and_reloads(base, tok, dev, arm, tmp_path):
+         print(arm, 'reconstruction', reconstruction)
+         for r in records['normal']:
+             assert len(r['state_norm_last']) == steps and r['query_cosine_last'][0] == pytest.approx(1., abs=1e-6)
++            assert r['query_cosine_prev_all'][0] is None and len(r['query_cosine_prev_last']) == steps
++            if arm == 'V3-05':  # the fixed query does not move
++                assert all(c == pytest.approx(1., abs=1e-6) for c in r['query_cosine_prev_last'][1:])
+         if arm == 'V3-06':
+             # No memory is read: every control gives the normal predictions.
+             for m in records:
+@@ -492,6 +502,10 @@ def test_t2_hop1_training_rows_and_schedules(tok):
+           'tokens/step', start['tokens']/6000, train['tokens']/6000)
+     assert len(rows) == 18432 and all(hop1[i]['axes']['hop'] == 1 for b in start['batches'] for i in b)
+     assert start['steps'] == train['steps'] == 6000 and start['warmup_steps'] == train['warmup_steps'] == 300
++    # The analysis reference is the same released data and the same shared schedule.
++    reference = v3.analysis_reference()
++    assert reference['order_sha256'] == train['order_sha256'] and reference['tokens'] == train['tokens']
++    assert len(reference['dev']) == 1000 and [sum(h == x for _, h, _ in reference['dev']) for x in (1, 2, 3)] == [334, 333, 333]
+ 
+ 
+ def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
+@@ -502,33 +516,162 @@ def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
+     assert v3.start_provenance(smoke, sha, smoke=True)['formal_start'] is False
+ 
+ 
+-def synthetic_arm(directory, arm, hop_correct, n=4):
+-    """A completed formal arm run with n rows per hop; hop_correct[h] rows of hop h correct."""
+-    steps = str(v3.ARMS[arm]['steps'])
++SYN_START = {'expected_adapter_sha256': 'a'*64, 'formal_start': True, 'run': '/synthetic/start',
++             'checkpoint_files': {'adapter.pt': {'sha256': 'a'*64, 'bytes': 1}}}
++
++
++def synthetic_reference(n=4):
++    return {'metadata_sha256': 'm'*64, 'train_sha256': 't'*64, 'dev_sha256': 'd'*64, 'order_sha256': 'o'*64,
++            'tokens': 4800000, 'order_seed': 1,
++            'dev': [(f'h{h}-{i}', h, 100+i) for h in (1, 2, 3) for i in range(n)]}
++
++
++def refresh_manifest(run):
++    from v2r16_train import file_record
++    manifest = json.loads((run/'manifest.json').read_text())
++    manifest['artifacts'] = [{'path': str(p.resolve()), 'role': str(p.relative_to(run)), **file_record(p)}
++                             for p in sorted(run.rglob('*')) if p.is_file() and p.name != 'manifest.json']
++    (run/'manifest.json').write_text(json.dumps(manifest))
++
++
++def synthetic_arm(directory, arm, hop_correct, reference):
++    """A complete formal arm run on the reference dev set; the first hop_correct[h-1] rows of hop h are correct."""
++    from v2_memory import config
++    steps = v3.ARMS[arm]['steps']
+     (directory/f'eval-s{steps}').mkdir(parents=True)
+-    records = [{'episode_id': f'h{h}-{i}', 'hop': h, 'correct': i < hop_correct[h-1]} for h in (1, 2, 3) for i in range(n)]
++    records, seen = [], Counter()
++    for episode, hop, target in reference['dev']:
++        right = seen[hop] < hop_correct[hop-1]
++        seen[hop] += 1
++        prediction = target if right else target+1000
++        records.append({'episode_id': episode, 'hop': hop, 'target': target, 'prediction': prediction,
++                        'correct': prediction == target, 'steps': steps, 'nll': 1.})
+     (directory/f'eval-s{steps}'/'dev.normal.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records))
+-    hops = {f'hop{h}': {'count': n, 'correct_count': hop_correct[h-1], 'em': hop_correct[h-1]/n, 'nll': 1., 'prior_em': 0.}
+-            for h in (1, 2, 3)}
+-    (directory/'metrics.json').write_text(json.dumps({
+-        'evaluation': {steps: {'normal': hops, 'zero': hops}}, 'node_hours': .1, 'macs': v3.macs_per_question_token(arm),
+-        'reads_per_question_token': int(steps), 'train': {'stored_parameters': 1, 'stable_step_seconds': .2}}))
+-    (directory/'manifest.json').write_text(json.dumps({'status': 'complete', 'eligible_as_evidence': True,
+-                                                       'contract': v3.CONTRACT, 'arm': arm}))
++    hops = {}
++    for h in (1, 2, 3):
++        group = [r for r in records if r['hop'] == h]
++        hops[f'hop{h}'] = {'count': len(group), 'correct_count': sum(r['correct'] for r in group),
++                           'em': sum(r['correct'] for r in group)/len(group), 'nll': 1., 'prior_em': 0.}
++    metrics = {
++        'config': asdict(v3.arm_config(config('direct_hidden', 'soft_slot', 'F_out'), arm)),
++        'variant': asdict(v3.arm_variant(arm)), 'start': dict(SYN_START),
++        'schedule': {'steps': 6000, 'stage': 'train', 'order_sha256': reference['order_sha256'], 'tokens': reference['tokens']},
++        'train': {'steps': 6000, 'tokens': reference['tokens'], 'stored_parameters': 1, 'stable_step_seconds': .2},
++        'data': {'metadata_sha256': reference['metadata_sha256'], 'dev_sha256': reference['dev_sha256'],
++                 'train_sha256': reference['train_sha256'], 'dev_rows': len(reference['dev'])},
++        'checkpoint_reload': {'full_records_identical': True, 'steps': steps},
++        'evaluation': {str(steps): {'normal': hops, 'zero': hops}}, 'node_hours': .1,
++        'macs': v3.macs_per_question_token(arm), 'reads_per_question_token': steps}
++    (directory/'metrics.json').write_text(json.dumps(metrics))
++    (directory/'manifest.json').write_text(json.dumps({
++        'status': 'complete', 'validator': {'passed': True}, 'eligible_as_evidence': True, 'smoke_only': False,
++        'smoke_steps': 0, 'eval_limit': 0, 'contract': v3.CONTRACT, 'command': 'arm', 'arm': arm}))
++    refresh_manifest(directory)
+     return directory
+ 
+ 
+-def test_analyze_reads_ten_arms_and_applies_the_rules(tmp_path):
+-    from types import SimpleNamespace
+-    runs = [synthetic_arm(tmp_path/arm, arm, (2, 1, 1) if arm != 'V3-03' else (2, 3, 3)) for arm in v3.ARMS]
+-    result = {}
+-    v3.run_analyze(SimpleNamespace(arm_runs=runs), tmp_path, result)
++def synthetic_matrix(tmp_path, reference, star=(2, 3, 3)):
++    return [synthetic_arm(tmp_path/arm, arm, star if arm == 'V3-03' else (2, 1, 1), reference) for arm in v3.ARMS]
++
++
++def test_analyze_validated_records_apply_the_rules(tmp_path):
++    reference = synthetic_reference()
++    result = v3.analyze_runs(synthetic_matrix(tmp_path, reference), reference, SYN_START)
+     assert result['decision']['S_M*'] == 'V3-03' and result['decision']['GL_M'] is True
+     assert result['decision']['primary_pp']['V3-03'] == 75. and result['decision']['primary_pp']['V3-01'] == 25.
+     assert 'V3-03 - V3-01' in result['bootstrap']['intervals_pp'] and set(result['arms']) == set(v3.ARMS)
++    runs = synthetic_matrix(tmp_path/'again', reference)
++    with pytest.raises(ValueError):
++        v3.analyze_runs(runs[:9], reference, SYN_START)
++    with pytest.raises(ValueError):
++        v3.analyze_runs(runs + runs[:1], reference, SYN_START)
++
++
++def corrupt_metrics(run, change):
++    metrics = json.loads((run/'metrics.json').read_text())
++    change(metrics)
++    (run/'metrics.json').write_text(json.dumps(metrics))
++    refresh_manifest(run)
++
++
++def corrupt_records(run, change):
++    path = next(run.glob('eval-s*'))/'dev.normal.jsonl'
++    records = [json.loads(line) for line in path.open()]
++    records = change(records)
++    path.write_text(''.join(json.dumps(r)+'\n' for r in records))
++    refresh_manifest(run)
++
++
++def hop(metrics, h):
++    return next(iter(metrics['evaluation'].values()))['normal'][f'hop{h}']
++
++
++CORRUPTIONS = {
++    # RV-0058 counterexample: only the stored denominators change.
++    'denominator': lambda r: corrupt_metrics(r, lambda m: [hop(m, h).update(count=3) for h in (2, 3)]),
++    'correct_count': lambda r: corrupt_metrics(r, lambda m: hop(m, 2).update(correct_count=4)),
++    'stored_em': lambda r: corrupt_metrics(r, lambda m: hop(m, 3).update(em=1.)),
++    'start_digest': lambda r: corrupt_metrics(r, lambda m: m['start'].update(expected_adapter_sha256='b'*64)),
++    'nonformal_start': lambda r: corrupt_metrics(r, lambda m: m['start'].update(formal_start=False)),
++    'order': lambda r: corrupt_metrics(r, lambda m: m['schedule'].update(order_sha256='x'*64)),
++    'steps': lambda r: corrupt_metrics(r, lambda m: m['train'].update(steps=5999)),
++    'smoke_schedule': lambda r: corrupt_metrics(r, lambda m: m['schedule'].update(smoke_steps=3)),
++    'dev_digest': lambda r: corrupt_metrics(r, lambda m: m['data'].update(dev_sha256='y'*64)),
++    'config': lambda r: corrupt_metrics(r, lambda m: m['config'].update(eta=.5)),
++    'reload': lambda r: corrupt_metrics(r, lambda m: m['checkpoint_reload'].update(full_records_identical=False)),
++    'identity': lambda r: corrupt_records(r, lambda rs: [dict(rs[0], episode_id='other'), *rs[1:]]),
++    'hop': lambda r: corrupt_records(r, lambda rs: [dict(rs[0], hop=2), *rs[1:]]),
++    'target': lambda r: corrupt_records(r, lambda rs: [dict(rs[0], target=rs[0]['target']+1), *rs[1:]]),
++    'correct_flag': lambda r: corrupt_records(r, lambda rs: rs[:-1] + [dict(rs[-1], correct=True)]),
++    'truncated': lambda r: corrupt_records(r, lambda rs: rs[:-1]),
++    'unrecorded_edit': lambda r: (r/'metrics.json').write_text((r/'metrics.json').read_text() + ' '),
++}
++
++
++@pytest.mark.parametrize('name', sorted(CORRUPTIONS))
++def test_analyze_rejects_each_corruption(tmp_path, name):
++    reference = synthetic_reference()
++    runs = synthetic_matrix(tmp_path, reference)
++    CORRUPTIONS[name](runs[2])  # V3-03
++    with pytest.raises(ValueError):
++        v3.analyze_runs(runs, reference, SYN_START)
++
++
++def test_analyze_rejects_runs_consistent_with_each_other_but_not_the_released_dev(tmp_path):
++    reference = synthetic_reference()
++    short = dict(reference, dev=reference['dev'][:-1])
++    runs = synthetic_matrix(tmp_path, short)  # every arm agrees on a truncated dev set
+     with pytest.raises(ValueError):
+-        v3.run_analyze(SimpleNamespace(arm_runs=runs[:9]), tmp_path, {})
+-    bad = json.loads((runs[0]/'manifest.json').read_text()) | {'eligible_as_evidence': False}
+-    (runs[0]/'manifest.json').write_text(json.dumps(bad))
++        v3.analyze_runs(runs, reference, SYN_START)
++    wrong = dict(reference, dev=[(e, h, t+1) for e, h, t in reference['dev']])
+     with pytest.raises(ValueError):
+-        v3.run_analyze(SimpleNamespace(arm_runs=runs), tmp_path, {})
++        v3.analyze_runs(synthetic_matrix(tmp_path/'wrong', wrong), reference, SYN_START)
++
++
++def test_query_cosines_first_and_adjacent():
++    q1 = torch.tensor([[[1., 0.], [1., 0.], [0., 1.]]])
++    q2 = torch.tensor([[[1., 1.], [0., 1.], [1., 0.]]])
++    q3 = torch.tensor([[[0., 1.], [-1., 1.], [1., 0.]]])
++    mask = torch.tensor([[True, True, False]])  # the third position is padding
++    result = v3.query_cosines([q1, q2, q3], mask)
++    assert result[0]['query_cosine_prev_all'] is None and result[0]['query_cosine_prev_last'] is None
++    assert result[0]['query_cosine_all'].item() == pytest.approx(1.)
++    c = 2 ** -.5
++    assert result[2]['query_cosine_all'].item() == pytest.approx((0. + -c)/2)   # q3 vs q1
++    assert result[2]['query_cosine_prev_all'].item() == pytest.approx((c + c)/2)  # q3 vs q2
++    assert result[2]['query_cosine_prev_last'].item() == pytest.approx(c) and result[2]['query_cosine_last'].item() == pytest.approx(-c)
++    fixed = v3.query_cosines([q1, q1, q1], mask)
++    assert all(e['query_cosine_prev_all'].item() == pytest.approx(1.) for e in fixed[1:])
++
++
++def test_summary_weights_adjacent_cosine_by_question_tokens():
++    def record(tokens, prev):
++        return {'episode_id': str(tokens), 'hop': 1, 'support_order': 'natural', 'target': 1, 'prediction': 1,
++                'correct': True, 'nll': 0., 'question_tokens': tokens, 'steps': 2, 'output_norm_last': 1.,
++                'query_cosine_all': [1., .5], 'query_cosine_last': [1., .5], 'query_cosine_prev_all': [None, prev],
++                'query_cosine_prev_last': [None, prev], 'state_norm_all': [1., 1.], 'state_norm_last': [1., 1.],
++                'read_norm_all': [1., 1.], 'read_norm_last': [1., 1.], 'n_eff_all': None, 'n_eff_last': None,
++                'argmax_last': None, 'path_weight_all': None, 'path_weight_last': None}
++    summary = v3.summarize_arm([record(1, 0.), record(3, 1.)])['all']['per_step']
++    assert summary[0]['query_cosine_prev_all'] is None
++    assert summary[1]['query_cosine_prev_all'] == pytest.approx(.75) and summary[1]['query_cosine_prev_last'] == pytest.approx(.5)
+diff --git a/src/v3_train.py b/src/v3_train.py
+index 687aada..3aa2069 100644
+--- a/src/v3_train.py
++++ b/src/v3_train.py
+@@ -251,12 +251,19 @@ def widen(weights, rank, dims, seed_parts=WIDEN_SEED):
+ 
+ 
+ def macs_per_question_token(arm, d=1024, n=MAC_SLOTS):
+-    """E-0022@2: 4096r + S(2r^2 + 2nr) for the memory loop; the tokenwise kernel has no slot terms."""
++    """Executed multiply-accumulates per question token (E-0022@2): projections 3dr, exit P dr, and per
++    step Rq r^2 (once in total for a fixed query, which LatentReader computes outside the loop), the
++    slot scores and weighted values 2nr (none for the tokenwise kernel) and Ro r^2. Memory loop:
++    4096r + S(2r^2 + 2nr); fixed query: 4096r + r^2 + S(r^2 + 2nr); tokenwise: 4096r + 2Sr^2."""
+     spec = ARMS[arm]
+     r, steps = spec.get('rank', 128), spec['steps']
+-    per_step = 2*r*r + (0 if spec.get('kernel') == 'tokenwise' else 2*n*r)
+-    return {'question_token': 4*d*r + steps*per_step, 'support_projection_per_token': 3*d*r,
+-            'formula': '4096r + S(2r^2 + 2nr), n=16' + ('; tokenwise: 4096r + S*2r^2' if spec.get('kernel') else '')}
++    fixed, tokenwise = spec.get('fixed_query', False), spec.get('kernel') == 'tokenwise'
++    query_projection = r*r if fixed else steps*r*r
++    slots = 0 if tokenwise else steps*2*n*r
++    return {'question_token': 4*d*r + query_projection + slots + steps*r*r,
++            'support_projection_per_token': 3*d*r,
++            'formula': ('4096r + r^2 + S(r^2 + 2nr)' if fixed else '4096r + 2Sr^2' if tokenwise
++                        else '4096r + S(2r^2 + 2nr)') + ', n=16, executed'}
+ 
+ 
+ # ---- model construction ------------------------------------------------------------------------
+@@ -394,6 +401,27 @@ def replay(side, qbar, kbar, vbar, snapshot, steps, replace_state=None, stop=Non
+     return (z - z0 if cfg.readout == 'increment' else z), trajectory
+ 
+ 
++def query_cosines(queries, mask):
++    """Per step s (0-based): cosine of query(s) with query(0) (query_cosine_*) and with query(s-1)
++    (query_cosine_prev_*, the adjacent-step cosine of E-0022@2; None at the first step), each as the
++    mean over valid question positions (_all) and at the last valid position (_last)."""
++    row = torch.arange(len(mask), device=mask.device)
++    last = mask.long().sum(-1)-1
++    count = mask.sum(-1)
++    result = []
++    for s, query in enumerate(queries):
++        entry = {}
++        for name, other in (('query_cosine', queries[0]), ('query_cosine_prev', queries[s-1] if s else None)):
++            if other is None:
++                entry[f'{name}_all'] = entry[f'{name}_last'] = None
++                continue
++            cosine = F.cosine_similarity(query, other, dim=-1, eps=1e-6)
++            entry[f'{name}_all'] = (cosine*mask).sum(-1)/count
++            entry[f'{name}_last'] = cosine[row, last]
++        result.append(entry)
++    return result
++
++
+ def _capture(model, batch, snapshot):
+     """Native question forward on a snapshot; returns logits, projections, native Z, state, counts."""
+     from v2_memory import answer_logits, capture_projection
+@@ -472,13 +500,12 @@ def evaluate_arm_batch(model, batch, mode, donor_batch, steps):
+     count = mask.sum(-1)
+     has_slots = snapshot.valid.any(-1)
+     paths = path_matrix(batch.rows, mask.device)
+-    first_query = trajectory[0]['query']
++    cosines = query_cosines([step['query'] for step in trajectory], mask)
+     target_available = mode != 'shuffled' and variant.kernel != 'tokenwise'
+     per_step = []
+-    for step in trajectory:
+-        cosine = F.cosine_similarity(step['query'], first_query, dim=-1, eps=1e-6)
++    for step, cosine in zip(trajectory, cosines):
+         state_norm, read_norm = step['state'].norm(dim=-1), step['read'].norm(dim=-1)
+-        values = {'query_cosine_all': (cosine*mask).sum(-1)/count, 'query_cosine_last': cosine[row, last],
++        values = {**cosine,
+                   'state_norm_all': (state_norm*mask).sum(-1)/count, 'state_norm_last': state_norm[row, last],
+                   'read_norm_all': (read_norm*mask).sum(-1)/count, 'read_norm_last': read_norm[row, last]}
+         weights = step['weights']
+@@ -493,7 +520,8 @@ def evaluate_arm_batch(model, batch, mode, donor_batch, steps):
+             values.update({'path_weight_all': torch.stack(path_all, -1), 'path_weight_last': torch.stack(path_last, -1),
+                            'n_eff_all': (neff*mask).sum(-1)/count, 'n_eff_last': neff[row, last],
+                            'argmax_last': torch.where(has_slots, weights[row, last].argmax(-1), -1)})
+-        per_step.append({key: value.tolist() for key, value in values.items()})
++        per_step.append({key: [None]*len(batch.rows) if value is None else value.tolist()
++                         for key, value in values.items()})
+     out_norm = native.norm(dim=-1)
+     predictions, labels, losses = logits.argmax(-1).tolist(), batch.labels.tolist(), losses.tolist()
+     records = []
+@@ -505,7 +533,8 @@ def evaluate_arm_batch(model, batch, mode, donor_batch, steps):
+                   'question_tokens': int(count[i]), 'steps': steps,
+                   'output_norm_last': out_norm[row, last][i].item(),
+                   'output_norm_all': ((out_norm*mask).sum(-1)/count)[i].item()}
+-        for name in ('query_cosine_all', 'query_cosine_last', 'state_norm_all', 'state_norm_last',
++        for name in ('query_cosine_all', 'query_cosine_last', 'query_cosine_prev_all', 'query_cosine_prev_last',
++                     'state_norm_all', 'state_norm_last',
+                      'read_norm_all', 'read_norm_last', 'n_eff_all', 'n_eff_last', 'argmax_last'):
+             record[name] = [s[name][i] for s in per_step] if name in per_step[0] else None
+         for name in ('path_weight_all', 'path_weight_last'):
+@@ -568,6 +597,9 @@ def summarize_arm(records, prior_token=None):
+                         for field in ('query_cosine', 'state_norm', 'read_norm')}
+                 step.update({f'{field}_last': _mean(r[f'{field}_last'][s] for r in group)
+                              for field in ('query_cosine', 'state_norm', 'read_norm')})
++                step['query_cosine_prev_all'] = None if s == 0 else \
++                    sum(r['query_cosine_prev_all'][s]*r['question_tokens'] for r in group)/tokens
++                step['query_cosine_prev_last'] = None if s == 0 else _mean(r['query_cosine_prev_last'][s] for r in group)
+                 if group[0]['n_eff_all'] is not None:
+                     step['n_eff_all'] = sum(r['n_eff_all'][s]*r['question_tokens'] for r in group)/tokens
+                     step['n_eff_last'] = _mean(r['n_eff_last'][s] for r in group)
+@@ -1033,39 +1065,101 @@ def run_intervene(args, output, result):
+             _write_records(output/f'intervention-s{s}.{name}.jsonl', group)
+ 
+ 
+-def run_analyze(args, output, result):
+-    """Reads the ten arms' completed formal runs (manifests, metrics, main normal records)."""
++def analysis_reference():
++    """The pinned released T2 data the ten arms must have used: digests, the training order and
++    token count of the shared 'train' schedule, and the ordered dev identities (id, hop, target)."""
++    from v3_eval import load_released_data
++    from v3_loop import T2_DATA, T2_METADATA_SHA256
++    metadata, train_rows = load_released_data(T2_DATA, T2_METADATA_SHA256, 'train')
++    _, dev = load_released_data(T2_DATA, T2_METADATA_SHA256, 'dev')
++    schedule = v3_schedule(train_rows, 'train')
++    return {'metadata_sha256': T2_METADATA_SHA256, 'train_sha256': metadata['splits']['train']['sha256'],
++            'dev_sha256': metadata['splits']['dev']['sha256'], 'order_sha256': schedule['order_sha256'],
++            'tokens': schedule['tokens'], 'order_seed': schedule['order_seed'],
++            'dev': [(r['episode_id'], r['axes']['hop'], r['query']['answer_token_id']) for r in dev]}
++
++
++def _verified_artifact(manifest, path):
++    """The file's sha256 and size must equal the producer manifest's artifact record."""
+     from v2r16_train import file_record
+-    runs = {}
+-    for item in args.arm_runs:
+-        run = Path(item)
+-        manifest = json.loads((run/'manifest.json').read_text())
+-        if (manifest.get('status') != 'complete' or manifest.get('eligible_as_evidence') is not True
+-                or manifest.get('contract') != CONTRACT or manifest.get('arm') not in ARMS):
+-            raise ValueError(f'{run} is not a completed formal E-0022@2 arm run')
+-        if manifest['arm'] in runs:
++    entries = [a for a in manifest.get('artifacts', []) if Path(a['path']) == path.resolve()]
++    if len(entries) != 1 or {k: entries[0].get(k) for k in ('sha256', 'bytes')} != file_record(path):
++        raise ValueError(f'{path} differs from its producer manifest')
++
++
++def validate_arm_run(run, reference, start):
++    """One formal arm run of E-0022@2, bound to the passed common start, the shared schedule and the
++    released dev set. Returns (arm, metrics, records) with records re-derived and cross-checked."""
++    from v2_memory import config
++    run = Path(run)
++    manifest = json.loads((run/'manifest.json').read_text())
++    arm = manifest.get('arm')
++    if (manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True
++            or manifest.get('eligible_as_evidence') is not True or manifest.get('smoke_only') is not False
++            or manifest.get('smoke_steps') or manifest.get('eval_limit') or manifest.get('contract') != CONTRACT
++            or manifest.get('command') != 'arm' or arm not in ARMS):
++        raise ValueError(f'{run} is not a completed formal E-0022@2 arm run')
++    _verified_artifact(manifest, run/'metrics.json')
++    metrics = json.loads((run/'metrics.json').read_text())
++    expected_config = asdict(arm_config(config('direct_hidden', 'soft_slot', 'F_out'), arm))
++    if (json.loads(json.dumps(metrics.get('config'))) != json.loads(json.dumps(expected_config))
++            or metrics.get('variant') != asdict(arm_variant(arm))):
++        raise ValueError(f'{arm}: configuration or variant differs from the arm definition')
++    started = metrics.get('start', {})
++    if (started.get('expected_adapter_sha256') != start['expected_adapter_sha256']
++            or started.get('formal_start') is not True or started.get('run') != start['run']
++            or started.get('checkpoint_files') != start['checkpoint_files']):
++        raise ValueError(f'{arm}: not trained from the passed common start')
++    schedule, train = metrics.get('schedule', {}), metrics.get('train', {})
++    if (schedule.get('steps') != STEPS or 'smoke_steps' in schedule or schedule.get('stage') != 'train'
++            or schedule.get('order_sha256') != reference['order_sha256'] or schedule.get('tokens') != reference['tokens']
++            or train.get('steps') != STEPS or train.get('tokens') != reference['tokens']):
++        raise ValueError(f'{arm}: not the shared 6000-step training schedule')
++    data = metrics.get('data', {})
++    if (data.get('metadata_sha256') != reference['metadata_sha256'] or data.get('dev_sha256') != reference['dev_sha256']
++            or data.get('train_sha256') != reference['train_sha256'] or data.get('dev_rows') != len(reference['dev'])):
++        raise ValueError(f'{arm}: not the pinned released T2 data')
++    reload = metrics.get('checkpoint_reload', {})
++    steps = ARMS[arm]['steps']
++    if reload.get('full_records_identical') is not True or reload.get('steps') != steps:
++        raise ValueError(f'{arm}: reload check missing')
++    path = run/f'eval-s{steps}'/'dev.normal.jsonl'
++    _verified_artifact(manifest, path)
++    records = [json.loads(line) for line in path.open()]
++    if [(r['episode_id'], r['hop'], r['target']) for r in records] != reference['dev']:
++        raise ValueError(f'{arm}: main records are not the released dev episodes in order')
++    if any(type(r['prediction']) is not int or r['correct'] is not (r['prediction'] == r['target'])
++           or r['steps'] != steps for r in records):
++        raise ValueError(f'{arm}: inconsistent per-example correctness')
++    summary = metrics['evaluation'][str(steps)]['normal']
++    for hop in range(1, MAX_HOP+1):
++        group = [r for r in records if r['hop'] == hop]
++        derived = {'count': len(group), 'correct_count': sum(r['correct'] for r in group),
++                   'em': sum(r['correct'] for r in group)/len(group)}
++        if {k: summary[f'hop{hop}'][k] for k in derived} != derived:
++            raise ValueError(f'{arm}: stored hop{hop} summary disagrees with its records')
++    return arm, metrics, records
++
++
++def analyze_runs(runs, reference, start):
++    """Rules and bootstrap from the validated records of exactly one run per arm."""
++    validated = {}
++    for run in runs:
++        arm, metrics, records = validate_arm_run(run, reference, start)
++        if arm in validated:
+             raise ValueError('one run per arm')
+-        runs[manifest['arm']] = run
+-    if set(runs) != set(ARMS):
++        validated[arm] = (Path(run), metrics, records)
++    if set(validated) != set(ARMS):
+         raise ValueError('all ten arms are required')
+-    main, correct, order, table = {}, {}, None, {}
+-    for arm, run in sorted(runs.items()):
+-        metrics = json.loads((run/'metrics.json').read_text())
+-        steps = str(ARMS[arm]['steps'])
+-        evaluation = metrics['evaluation'][steps]
+-        main[arm] = {f'hop{h}': evaluation['normal'][f'hop{h}'] for h in (1, 2, 3)}
+-        records = [json.loads(line) for line in (run/f'eval-s{steps}'/'dev.normal.jsonl').open()]
+-        ids = [r['episode_id'] for r in records]
+-        if order is None:
+-            order = ids
+-        elif ids != order:
+-            raise ValueError('arms evaluated different dev episodes or orders')
+-        for h in (1, 2, 3):
+-            group = [r for r in records if r['hop'] == h]
+-            if sum(r['correct'] for r in group) != main[arm][f'hop{h}']['correct_count']:
+-                raise AssertionError('records and summary disagree')
++    main, correct, table = {}, {}, {}
++    for arm, (run, metrics, records) in sorted(validated.items()):
++        main[arm] = {f'hop{h}': {'count': sum(r['hop'] == h for r in records),
++                                 'correct_count': sum(r['correct'] for r in records if r['hop'] == h)}
++                     for h in (1, 2, 3)}
+         correct[arm] = {h: [int(r['correct']) for r in records if r['hop'] == h] for h in (1, 2, 3)}
++        evaluation = metrics['evaluation'][str(ARMS[arm]['steps'])]
+         table[arm] = {
++            'run': str(run.resolve()),
+             'main': {mode: {f'hop{x}': {k: evaluation[mode][f'hop{x}'][k] for k in ('em', 'nll', 'count', 'prior_em')}
+                             for x in (1, 2, 3)} for mode in evaluation},
+             'scan': {s: {f'hop{x}': metrics['evaluation'][s]['normal'][f'hop{x}']['em'] for x in (1, 2, 3)}
+@@ -1073,16 +1167,26 @@ def run_analyze(args, output, result):
+             'stored_parameters': metrics['train']['stored_parameters'],
+             'stable_step_seconds': metrics['train']['stable_step_seconds'],
+             'node_hours': metrics['node_hours'], 'macs': metrics['macs'],
+-            'reads_per_question_token': metrics['reads_per_question_token'],
+-            'source_metrics': file_record(run/'metrics.json')}
+-    result['decision'] = decide(main)
+-    star = result['decision']['S_M*']
++            'reads_per_question_token': metrics['reads_per_question_token']}
++    decision = decide(main)
++    star = decision['S_M*']
+     pairs = [(star, other) for other in ('V3-01', 'V3-05', 'V3-06', 'V3-07', 'V3-04', 'V3-08', 'V3-09', 'V3-10')
+              if other != star] + [('V3-03', 'V3-05'), ('V3-02', 'V3-01'), ('V3-03', 'V3-01')]
+     pairs = list(dict.fromkeys(pairs))
+-    result['bootstrap'] = {'resamples': BOOTSTRAP_RESAMPLES, 'seed': SEED, 'stratified_by': 'hop', 'paired': True,
+-                           'intervals_pp': bootstrap(correct, pairs), 'descriptive_only': True}
+-    result['arms'] = table
++    return {'decision': decision, 'arms': table,
++            'bootstrap': {'resamples': BOOTSTRAP_RESAMPLES, 'seed': SEED, 'stratified_by': 'hop', 'paired': True,
++                          'intervals_pp': bootstrap(correct, pairs), 'descriptive_only': True},
++            'inputs': {'start': start, 'reference': {k: v for k, v in reference.items() if k != 'dev'},
++                       'dev_rows': len(reference['dev'])}}
++
++
++def run_analyze(args, output, result):
++    """Validates the ten formal arm runs against the passed common start and the released data,
++    then applies the rules and the bootstrap to their records."""
++    start = start_provenance(args.start_run, args.start_sha256)
++    if start['formal_start'] is not True:
++        raise ValueError('analysis needs the formal common start')
++    result.update(analyze_runs(args.arm_runs, analysis_reference(), start))
+ 
+ 
+ def _write_records(path, records):
+@@ -1096,8 +1200,8 @@ def main():
+     parser.add_argument('command', choices=('start', 'arm', 'intervene', 'analyze'))
+     parser.add_argument('--output', type=Path, required=True)
+     parser.add_argument('--arm', choices=tuple(ARMS))
+-    parser.add_argument('--start-run', type=Path, help='the V3-S0 run directory (arm)')
+-    parser.add_argument('--start-sha256', help='pinned adapter.pt digest of the common start (arm)')
++    parser.add_argument('--start-run', type=Path, help='the V3-S0 run directory (arm, analyze)')
++    parser.add_argument('--start-sha256', help='pinned adapter.pt digest of the common start (arm, analyze)')
+     parser.add_argument('--arm-run', type=Path, help='the S_M* arm run directory (intervene)')
+     parser.add_argument('--arm-sha256', help='pinned adapter.pt digest of the S_M* arm (intervene)')
+     parser.add_argument('--arm-runs', type=Path, nargs='*', default=(), help='the ten arm run directories (analyze)')
+@@ -1106,6 +1210,8 @@ def main():
+     args = parser.parse_args()
+     if args.command == 'arm' and (args.arm is None or args.start_run is None or args.start_sha256 is None):
+         parser.error('arm needs --arm, --start-run and --start-sha256')
++    if args.command == 'analyze' and (args.start_run is None or args.start_sha256 is None or len(args.arm_runs) != len(ARMS)):
++        parser.error('analyze needs --start-run, --start-sha256 and the ten --arm-runs')
+     if args.command == 'intervene' and (args.arm_run is None or args.arm_sha256 is None):
+         parser.error('intervene needs --arm-run and --arm-sha256')
+     if args.command != 'arm' and args.arm:

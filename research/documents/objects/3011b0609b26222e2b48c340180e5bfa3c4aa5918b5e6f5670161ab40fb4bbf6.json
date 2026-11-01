@@ -1,0 +1,618 @@
+{
+  "accuracy_fractions": {
+    "V5-C": {
+      "boolq": {
+        "1": {
+          "denominator": 1635,
+          "numerator": 1354
+        },
+        "2": {
+          "denominator": 1090,
+          "numerator": 907
+        },
+        "3": {
+          "denominator": 654,
+          "numerator": 541
+        }
+      },
+      "piqa": {
+        "1": {
+          "denominator": 1838,
+          "numerator": 1323
+        },
+        "2": {
+          "denominator": 1838,
+          "numerator": 1335
+        },
+        "3": {
+          "denominator": 1838,
+          "numerator": 1315
+        }
+      }
+    },
+    "V5-F": {
+      "boolq": {
+        "1": {
+          "denominator": 3270,
+          "numerator": 2701
+        },
+        "2": {
+          "denominator": 1090,
+          "numerator": 903
+        },
+        "3": {
+          "denominator": 3270,
+          "numerator": 2687
+        }
+      },
+      "piqa": {
+        "1": {
+          "denominator": 919,
+          "numerator": 666
+        },
+        "2": {
+          "denominator": 1838,
+          "numerator": 1313
+        },
+        "3": {
+          "denominator": 1838,
+          "numerator": 1323
+        }
+      }
+    },
+    "V5-L": {
+      "boolq": {
+        "1": {
+          "denominator": 327,
+          "numerator": 271
+        },
+        "2": {
+          "denominator": 3270,
+          "numerator": 2717
+        },
+        "3": {
+          "denominator": 1635,
+          "numerator": 1358
+        }
+      },
+      "piqa": {
+        "1": {
+          "denominator": 919,
+          "numerator": 666
+        },
+        "2": {
+          "denominator": 919,
+          "numerator": 676
+        },
+        "3": {
+          "denominator": 919,
+          "numerator": 665
+        }
+      }
+    }
+  },
+  "arms": {
+    "V5-C": {
+      "seeds": {
+        "1": {
+          "boolq": {
+            "accuracy": 0.8281345565749235,
+            "correct": 2708,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2288.083284290682,
+            "n": 3270,
+            "nll": 0.6997196588044899
+          },
+          "macro_accuracy": 0.7739693457520973,
+          "macro_nll": 1.62496568941164,
+          "piqa": {
+            "accuracy": 0.719804134929271,
+            "correct": 1323,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 106417.78486466408,
+            "n": 1838,
+            "nll": 2.55021172001879
+          }
+        },
+        "2": {
+          "boolq": {
+            "accuracy": 0.8321100917431192,
+            "correct": 2721,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2331.5107723244764,
+            "n": 3270,
+            "nll": 0.7130002361848552
+          },
+          "macro_accuracy": 0.7792215311816793,
+          "macro_nll": 1.6347811528098608,
+          "piqa": {
+            "accuracy": 0.7263329706202394,
+            "correct": 1335,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 106682.77859544754,
+            "n": 1838,
+            "nll": 2.5565620694348663
+          }
+        },
+        "3": {
+          "boolq": {
+            "accuracy": 0.827217125382263,
+            "correct": 2705,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2325.3011486656615,
+            "n": 3270,
+            "nll": 0.7111012687050953
+          },
+          "macro_accuracy": 0.7713343515921108,
+          "macro_nll": 1.6314106023947237,
+          "piqa": {
+            "accuracy": 0.7154515778019587,
+            "correct": 1315,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 106480.72121286392,
+            "n": 1838,
+            "nll": 2.551719936084352
+          }
+        }
+      },
+      "summary": {
+        "boolq": {
+          "accuracy": {
+            "seed_mean": 0.8291539245667686,
+            "seed_sample_sd": 0.002600887017772273
+          },
+          "nll": {
+            "seed_mean": 0.7079403878981468,
+            "seed_sample_sd": 0.007182395804727605
+          }
+        },
+        "macro_accuracy": {
+          "seed_mean": 0.7748417428419625,
+          "seed_sample_sd": 0.004015309201211042
+        },
+        "macro_nll": {
+          "seed_mean": 1.630385814872075,
+          "seed_sample_sd": 0.004987331203197329
+        },
+        "piqa": {
+          "accuracy": {
+            "seed_mean": 0.7205295611171563,
+            "seed_sample_sd": 0.0054768476135442345
+          },
+          "nll": {
+            "seed_mean": 2.5528312418460026,
+            "seed_sample_sd": 0.0033178283256482506
+          }
+        }
+      }
+    },
+    "V5-F": {
+      "seeds": {
+        "1": {
+          "boolq": {
+            "accuracy": 0.825993883792049,
+            "correct": 2701,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2185.803305568523,
+            "n": 3270,
+            "nll": 0.6684413778497011
+          },
+          "macro_accuracy": 0.7753473227447731,
+          "macro_nll": 1.6098997753118782,
+          "piqa": {
+            "accuracy": 0.7247007616974973,
+            "correct": 1332,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 106465.62519168854,
+            "n": 1838,
+            "nll": 2.551358172774055
+          }
+        },
+        "2": {
+          "boolq": {
+            "accuracy": 0.828440366972477,
+            "correct": 2709,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2178.3096383956436,
+            "n": 3270,
+            "nll": 0.6661497365124293
+          },
+          "macro_accuracy": 0.7714019027463038,
+          "macro_nll": 1.6078273756364831,
+          "piqa": {
+            "accuracy": 0.7143634385201306,
+            "correct": 1313,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 106388.29476094246,
+            "n": 1838,
+            "nll": 2.549505014760537
+          }
+        },
+        "3": {
+          "boolq": {
+            "accuracy": 0.8217125382262997,
+            "correct": 2687,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2338.197877623752,
+            "n": 3270,
+            "nll": 0.7150452225149089
+          },
+          "macro_accuracy": 0.7707583365777854,
+          "macro_nll": 1.63402522613818,
+          "piqa": {
+            "accuracy": 0.719804134929271,
+            "correct": 1323,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 106534.3552327156,
+            "n": 1838,
+            "nll": 2.5530052297614514
+          }
+        }
+      },
+      "summary": {
+        "boolq": {
+          "accuracy": {
+            "seed_mean": 0.8253822629969418,
+            "seed_sample_sd": 0.0034053604665626614
+          },
+          "nll": {
+            "seed_mean": 0.6832121122923466,
+            "seed_sample_sd": 0.027592083734941635
+          }
+        },
+        "macro_accuracy": {
+          "seed_mean": 0.7725025206896209,
+          "seed_sample_sd": 0.0024845962253583
+        },
+        "macro_nll": {
+          "seed_mean": 1.6172507923621804,
+          "seed_sample_sd": 0.014563994351917693
+        },
+        "piqa": {
+          "accuracy": {
+            "seed_mean": 0.7196227783822996,
+            "seed_sample_sd": 0.005171047308445132
+          },
+          "nll": {
+            "seed_mean": 2.5512894724320145,
+            "seed_sample_sd": 0.0017511185185199879
+          }
+        }
+      }
+    },
+    "V5-L": {
+      "seeds": {
+        "1": {
+          "boolq": {
+            "accuracy": 0.8287461773700305,
+            "correct": 2710,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2215.6993062924885,
+            "n": 3270,
+            "nll": 0.6775838857163573
+          },
+          "macro_accuracy": 0.7767234695337639,
+          "macro_nll": 1.6273535832369492,
+          "piqa": {
+            "accuracy": 0.7247007616974973,
+            "correct": 1332,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 107540.77738273144,
+            "n": 1838,
+            "nll": 2.577123280757541
+          }
+        },
+        "2": {
+          "boolq": {
+            "accuracy": 0.8308868501529052,
+            "correct": 2717,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2309.7989499730465,
+            "n": 3270,
+            "nll": 0.7063605351599531
+          },
+          "macro_accuracy": 0.7832345023343417,
+          "macro_nll": 1.6378684224701452,
+          "piqa": {
+            "accuracy": 0.735582154515778,
+            "correct": 1352,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 107217.50403082371,
+            "n": 1838,
+            "nll": 2.5693763097803375
+          }
+        },
+        "3": {
+          "boolq": {
+            "accuracy": 0.8305810397553517,
+            "correct": 2716,
+            "gold_loss_tokens": 3270,
+            "gold_nll_sum": 2334.0669247994374,
+            "n": 3270,
+            "nll": 0.7137819341894304
+          },
+          "macro_accuracy": 0.7770968310855104,
+          "macro_nll": 1.645315845780531,
+          "piqa": {
+            "accuracy": 0.7236126224156693,
+            "correct": 1330,
+            "gold_loss_tokens": 41729,
+            "gold_nll_sum": 107529.36352536082,
+            "n": 1838,
+            "nll": 2.576849757371632
+          }
+        }
+      },
+      "summary": {
+        "boolq": {
+          "accuracy": {
+            "seed_mean": 0.8300713557594293,
+            "seed_sample_sd": 0.0011577794792661394
+          },
+          "nll": {
+            "seed_mean": 0.6992421183552469,
+            "seed_sample_sd": 0.019120109091448182
+          }
+        },
+        "macro_accuracy": {
+          "seed_mean": 0.7790182676512053,
+          "seed_sample_sd": 0.003656135376260282
+        },
+        "macro_nll": {
+          "seed_mean": 1.636845950495875,
+          "seed_sample_sd": 0.009024677591181092
+        },
+        "piqa": {
+          "accuracy": {
+            "seed_mean": 0.7279651795429816,
+            "seed_sample_sd": 0.006618892851249398
+          },
+          "nll": {
+            "seed_mean": 2.574449782636503,
+            "seed_sample_sd": 0.004395884311188067
+          }
+        }
+      }
+    }
+  },
+  "base": {
+    "boolq": {
+      "accuracy": 0.6666666666666666,
+      "correct": 2180,
+      "gold_loss_tokens": 3270,
+      "gold_nll_sum": 5962.124205723405,
+      "n": 3270,
+      "nll": 1.8232795736157201
+    },
+    "piqa": {
+      "accuracy": 0.7132752992383025,
+      "correct": 1311,
+      "gold_loss_tokens": 41729,
+      "gold_nll_sum": 116037.26085758209,
+      "n": 1838,
+      "nll": 2.780734282095955
+    }
+  },
+  "bootstrap": {
+    "method": "paired task-stratified row bootstrap",
+    "repetitions": 10000,
+    "rng": "numpy.random.default_rng",
+    "seed": 20261029,
+    "seed_resampling": false,
+    "shared_indices_across_arms_and_seeds": true
+  },
+  "contract": "E-0013@3",
+  "counts_by_task": {
+    "boolq": 3270,
+    "piqa": 1838
+  },
+  "delta_fractions": {
+    "S1": {
+      "denominator": 9015390,
+      "numerator": 21089
+    },
+    "S2": {
+      "denominator": 4507695,
+      "numerator": -29371
+    },
+    "primary": {
+      "denominator": 3005130,
+      "numerator": -12551
+    }
+  },
+  "evidence_status": "validation analysis; exact seeds required",
+  "holm": {
+    "adjusted_p": {
+      "S1": 0.3356,
+      "S2": 0.0692
+    },
+    "alpha": 0.05,
+    "order": [
+      "S2",
+      "S1"
+    ],
+    "reject": {
+      "S1": false,
+      "S2": false
+    }
+  },
+  "interpretation": {
+    "S1": "V5-C minus V5-F is a budget comparison, not an isolated fusion-location intervention.",
+    "intervals": "Bootstrap intervals reflect data uncertainty conditional on these three trained seeds; seeds are fixed and not resampled.",
+    "secondary_intervals": "Secondary confidence intervals are raw, not Holm-adjusted simultaneous intervals.",
+    "thresholds": "+1 pp and per-task -1 pp are point-estimate gates. Supported does not guarantee a 95% interval of at least +1 pp or taskwise noninferiority; challenged is not an equivalence finding."
+  },
+  "primary": {
+    "by_seed": {
+      "1": -0.0027541237816666175,
+      "2": -0.0040129711526624146,
+      "3": -0.005762479493399586
+    },
+    "ci95": [
+      -0.01020108808382111,
+      0.0019706205166942306
+    ],
+    "contrast": "V5-C - V5-L",
+    "decision": "challenged",
+    "delta": -0.004176524809242872,
+    "delta_seed_mean": -0.004176524809242872,
+    "delta_seed_sample_sd": 0.0015108320128375367,
+    "task_deltas": {
+      "boolq": {
+        "by_seed": {
+          "1": -0.0006116207951070152,
+          "2": 0.0012232415902140303,
+          "3": -0.0033639143730886945
+        },
+        "seed_mean": -0.0009174311926605597
+      },
+      "piqa": {
+        "by_seed": {
+          "1": -0.004896626768226331,
+          "2": -0.009249183895538637,
+          "3": -0.008161044613710589
+        },
+        "seed_mean": -0.007435618425825186
+      }
+    }
+  },
+  "procedural_exclusions": "Validation requires identical explicit exclusion audits and complete raw counts; any mismatch in paired IDs is rejected.",
+  "procedural_seed_note": "Duplicated seed data used for rehearsal is procedural only, not evidence.",
+  "secondary": {
+    "S1": {
+      "by_seed": {
+        "1": -0.0013779769926758334,
+        "2": 0.007819628435375425,
+        "3": 0.0005760150143254705
+      },
+      "ci95": [
+        -0.0023929996372869054,
+        0.007087359781440399
+      ],
+      "contrast": "V5-C - V5-F",
+      "holm_adjusted_p": 0.3356,
+      "holm_reject_at_0_05": false,
+      "seed_mean_difference": 0.0023392221523416876,
+      "task_ci95": {
+        "boolq": [
+          -0.002956167176350662,
+          0.010295616717635068
+        ],
+        "piqa": [
+          -0.005984766050054406,
+          0.007798331519767863
+        ]
+      },
+      "task_deltas": {
+        "boolq": {
+          "by_seed": {
+            "1": 0.002140672782874553,
+            "2": 0.003669724770642202,
+            "3": 0.0055045871559632475
+          },
+          "seed_mean": 0.0037716615698266676
+        },
+        "piqa": {
+          "by_seed": {
+            "1": -0.004896626768226331,
+            "2": 0.01196953210010876,
+            "3": -0.0043525571273123065
+          },
+          "seed_mean": 0.0009067827348567074
+        }
+      },
+      "two_sided_empirical_p": 0.3356
+    },
+    "S2": {
+      "by_seed": {
+        "1": -0.0013761467889907841,
+        "2": -0.01183259958803784,
+        "3": -0.0063384945077250565
+      },
+      "ci95": [
+        -0.012521363468468915,
+        -0.0003785984300180036
+      ],
+      "contrast": "V5-F - V5-L",
+      "holm_adjusted_p": 0.0692,
+      "holm_reject_at_0_05": false,
+      "seed_mean_difference": -0.0065157469615845605,
+      "task_ci95": {
+        "boolq": [
+          -0.01202854230377166,
+          0.0027522935779816515
+        ],
+        "piqa": [
+          -0.018140188610808846,
+          0.0016322089227421106
+        ]
+      },
+      "task_deltas": {
+        "boolq": {
+          "by_seed": {
+            "1": -0.0027522935779815683,
+            "2": -0.0024464831804281717,
+            "3": -0.008868501529051942
+          },
+          "seed_mean": -0.004689092762487228
+        },
+        "piqa": {
+          "by_seed": {
+            "1": 0.0,
+            "2": -0.021218715995647397,
+            "3": -0.003808487486398282
+          },
+          "seed_mean": -0.008342401160681892
+        }
+      },
+      "two_sided_empirical_p": 0.0346
+    }
+  },
+  "split": "validation",
+  "validation_audit": {
+    "boolq": {
+      "examples": 3270,
+      "excluded_ids": [],
+      "protocol_deviation": false,
+      "raw_examples": 3270
+    },
+    "piqa": {
+      "examples": 1838,
+      "excluded_ids": [],
+      "protocol_deviation": false,
+      "raw_examples": 1838
+    }
+  },
+  "wikitext": {
+    "base_nll": 2.647376056184969,
+    "delta_nll_vs_base": {
+      "V5-C": {
+        "by_seed": {
+          "1": 0.17786870428527957,
+          "2": 0.23637387034421797,
+          "3": 0.18612347486778358
+        },
+        "seed_mean": 0.2001220164990937,
+        "seed_sample_sd": 0.03166516997820526
+      },
+      "V5-F": {
+        "by_seed": {
+          "1": 0.25791339350113995,
+          "2": 0.22277388520814823,
+          "3": 0.23336343269793813
+        },
+        "seed_mean": 0.23801690380240878,
+        "seed_sample_sd": 0.01802601885493344
+      },
+      "V5-L": {
+        "by_seed": {
+          "1": 0.3197492794577128,
+          "2": 0.3504908634861854,
+          "3": 0.3392741342021295
+        },
+        "seed_mean": 0.3365047590486759,
+        "seed_sample_sd": 0.01555677750050874
+      }
+    }
+  }
+}
