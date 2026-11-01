@@ -28,7 +28,7 @@ def score_logits(logits, targets):
 
 
 def prompt_tokens(tok, row, line, split='dev'):
-    if split not in ('dev', 'calibration') or row['identity']['split'] != split or row['identity']['layout']['name_pool'] != 'seen':
+    if split not in ('dev', 'calibration', 'train') or row['identity']['split'] != split or row['identity']['layout']['name_pool'] != 'seen':
         raise ValueError('Base evaluation is restricted to the explicitly selected released split')
     if line not in ('M', 'F'):
         raise ValueError('unknown line')
