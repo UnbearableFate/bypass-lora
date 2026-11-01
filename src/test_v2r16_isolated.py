@@ -101,17 +101,19 @@ def test_each_slot_depends_only_on_its_own_fact(base, tok):
 def test_training_gradients_flow_through_isolated_writes(base, tok):
     rows = e0015.rows_with(tok, 4)
     batch = collate(rows, tok.pad_token_id)
+    mask = batch.question_mask
+    last = mask.long().sum(-1) - 1
+    with torch.no_grad():  # Base answer logits, before the adapter is installed (as run_arm)
+        reference = base(batch.question_ids, attention_mask=mask,
+                         position_ids=(mask.long().cumsum(-1) - 1).clamp_min(0), use_cache=False).logits
+        reference = reference[torch.arange(len(last), device=last.device), last].float()
     with adapted(base, cfg=config('direct_hidden', 'soft_slot', 'F_out')) as model:
         side = model.adapters()[14].side
         model.eval()
         with torch.no_grad():
             # Zero-initialized exit: the isolated write leaves the Base answer logits unchanged.
             _, logits, _, _ = isolated_forward(model, batch)
-            mask = batch.question_mask
-            reference = base(batch.question_ids, attention_mask=mask,
-                             position_ids=(mask.long().cumsum(-1) - 1).clamp_min(0), use_cache=False).logits
-            last = mask.long().sum(-1) - 1
-            assert torch.equal(logits, reference[torch.arange(len(last), device=last.device), last].float())
+            assert torch.equal(logits, reference)
         e0015.randomize_exits(model)
         model.train()
         model.model.eval()
