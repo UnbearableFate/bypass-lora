@@ -77,6 +77,9 @@ Daemon running on miyabi-g2. Do not poll;resume when this group reports.
    plus a selection table with all12 NLLs and chosen LRs. Do not start any seed1–3
    until committed. Stage that commit read-only and pass **its snapshot path**
    to --lr-lock in every formal run;never a mutable worktree lock path.
+   research/artifacts is ignored:use git add -f for the specific small lock/
+   selection files only (as done for initial-grid.json),never the whole directory
+   or checkpoints. No ignore-rule change is needed.
 4. Size9 formal jobs from measured steps and dev eval costs,about1.5x expected.
    Exact3epochs=29165steps/58329examples/4173300tokens per run. Use slowest
    measured same-arm calibration/smoke stable step cost and4full-dev evaluations
