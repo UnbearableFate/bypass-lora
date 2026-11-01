@@ -224,24 +224,31 @@ def test_isolated_encoding_matches_e1_format_and_slot_order(base, tok):
         iso = isolated_writes(model, rows, tok.pad_token_id, 'cuda')
         assert torch.equal(iso['valid'], snapshot.valid)
         # Slot j of row i is fact j encoded alone, as an E=1 support row of that fact.
+        # Batched (padded) vs. single-row BF16 forwards differ slightly: compare by the
+        # relative vector error, against the much larger contextual shift.
+        def relative(a, b):
+            return ((a - b).norm(dim=-1) / b.norm(dim=-1)).max().item()
         for i, row in enumerate(rows):
             for j, fact in enumerate(row['facts']):
                 alone = make_row(tok, 99, [fact], 0)
                 assert alone['support_input_ids'] == row['_isolated'][j]['ids']
                 ab = collate([alone], tok.pad_token_id)
                 w = observe_writes(model, ab.support_ids, ab.support_mask, ab.write_mask)
-                torch.testing.assert_close(iso['values'][i, j], w['values'][0, 0], atol=2e-2, rtol=2e-2)
-                torch.testing.assert_close(iso['features'][i, j], w['features'][0, 0], atol=6e-2, rtol=2e-2)
+                assert relative(iso['values'][i, j], w['values'][0, 0]) < .03
+                assert relative(iso['features'][i, j].float(), w['features'][0, 0].float()) < .03
         # Fact 0 has no preceding context: isolated and contextual writes agree.
-        torch.testing.assert_close(iso['values'][:, 0], context['values'][:, 0], atol=2e-2, rtol=2e-2)
-        assert not torch.allclose(iso['values'][:, 1:], context['values'][:, 1:], atol=2e-2, rtol=2e-2)
+        assert relative(iso['values'][:, 0], context['values'][:, 0]) < .03
+        shift = ((iso['values'][:, 1:] - context['values'][:, 1:]).norm(dim=-1)
+                 / context['values'][:, 1:].norm(dim=-1)).min().item()
+        print('isolated-vs-context relative value shift, facts 1..3 (min):', shift)
+        assert shift > .1
         # Reordering the support reorders the isolated slots.
         reordered = [make_row(tok, i, list(reversed([{k: f[k] for k in ('head', 'relation', 'tail')}
                                                      for f in r['facts']])), 3 - r['query']['target_fact_index'])
                      for i, r in enumerate(rows)]
         diag.annotate(tok, reordered, 4)
         flipped = isolated_writes(model, reordered, tok.pad_token_id, 'cuda')
-        torch.testing.assert_close(flipped['values'], iso['values'].flip(1), atol=2e-2, rtol=2e-2)
+        assert relative(flipped['values'], iso['values'].flip(1)) < .03
         # E=1: the isolated encoding is the support itself, so iso controls reproduce the
         # contextual ones (the oracle exactly, the read up to the slot-state rebuild).
         b1 = collate(single, tok.pad_token_id)

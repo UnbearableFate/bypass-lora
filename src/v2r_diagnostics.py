@@ -269,7 +269,7 @@ def run(args):
         base = load_base()
         device = next(base.parameters()).device
         with adapted(base, checkpoint=arm_dir / 'adapter') as model:
-            loaded = asdict(model.config)
+            loaded = json.loads(json.dumps(asdict(model.config)))  # tuples as recorded lists
             if any(loaded.get(k) != v for k, v in recorded_config.items()):
                 raise AssertionError('loaded checkpoint configuration differs from the recorded one')
             model.eval()
