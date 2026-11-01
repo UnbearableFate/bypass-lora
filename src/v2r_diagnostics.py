@@ -388,10 +388,10 @@ RULES = {
     2: 'value 内容丢失：Pv < 50%，而 Pf ≥ 90%（按 checkpoint × split 列出成立处）。',
     3: '非末位混合读取干扰：R2@E=4 或 R5@E=16 上，last_only − normal ≥ 10 pp 或 oracle_last_only − oracle_value ≥ 10 pp，'
        'NLL 同向改善，且 last_only_shuffled 不出现同样的提升（last_only_shuffled − shuffled < 10 pp 或 NLL 不同向改善）。',
-    4: '跨上下文迁移失败：R1 的 oracle_value 在 E=4 与 E=16 上各比 E=1 低 ≥ 30 pp 且 NLL 更高，该 split 的 Pf ≥ 90%。',
+    4: '跨上下文迁移失败：R1 的 oracle_value 在 E=4 与 E=16 上各比 E=1 低 ≥ 30 pp（EM 条件，无 NLL 条件），该 split 的 Pf ≥ 90%。',
     5: '上下文迁移确认：R1@E=16 的 iso_oracle_value 在目标第 0 条与第 ≥1 条都 ≥ 70%；上下文 oracle_value 只在第 0 条高'
        '（第 0 条 ≥ 70%，第 ≥1 条 < 70%）；iso_wrong_oracle 接近先验（EM ≤ 答案先验 EM + 5 pp）。',
-    6: 'R2@E=4 或 R5@E=16 的 iso_v 比其 normal 高 ≥ 10 pp，且 NLL 同向改善。',
+    6: 'R2 或 R5（E=4 与 E=16 各一格）的 iso_v 比其 normal 高 ≥ 10 pp，且 NLL 同向改善。',
     7: '幅度：R2@E=4 或 R5@E=16 上某个 α < 1 使 EM 比同读取方式的 α=1 高 ≥ 10 pp 且 NLL 同向改善，'
        '同时 R1@E=1 在同一 α、同一方式下 EM ≥ 50%。',
     8: '以上都不成立。',
@@ -455,7 +455,9 @@ def analyze(args):
                        'holds': (a['holds'] or b['holds']) and not negative['holds']})
     rules[3] = {'holds': any(v['holds'] for v in values), 'values': values}
     r1 = {s: control('R1', s, 'oracle_value') for s in ('e1', 'e4', 'e16')}
-    drops = {s: gain(r1['e1'], r1[s], .3) for s in ('e4', 'e16')}
+    # Rule 4 is an EM-drop rule (>= 30 pp) with Pf >= 90%; it has no NLL condition.
+    drops = {s: {'em_difference': r1['e1']['em'] - r1[s]['em'], 'nll_difference': r1['e1']['nll'] - r1[s]['nll'],
+                 'holds': r1['e1']['em'] - r1[s]['em'] >= .3} for s in ('e4', 'e16')}
     pf = {s: accuracy('R1', s, 'Pf.context') for s in ('e4', 'e16')}
     rules[4] = {'holds': all(drops[s]['holds'] and pf[s] >= .9 for s in ('e4', 'e16')),
                 'values': {'R1_oracle_value_em': {s: r1[s]['em'] for s in r1}, 'e1_minus_split': drops,
@@ -467,8 +469,9 @@ def analyze(args):
     rules[5] = {'holds': iso['0'] >= .7 and iso['>=1'] >= .7 and ctx['0'] >= .7 and ctx['>=1'] < .7 and near_prior,
                 'values': {'iso_oracle_value': iso, 'oracle_value': ctx, 'iso_wrong_oracle_em': wrong['em'],
                            'answer_prior_em': wrong['prior_em']}}
+    # Rule 6 covers R2 and R5 at both multi-fact splits (E=4 and E=16).
     values = [{'checkpoint': c, 'split': s, **gain(control(c, s, 'iso_v'), control(c, s, 'normal'), .1)}
-              for c, s in TRAINED_SPLIT.items()]
+              for c in ('R2', 'R5') for s in ('e4', 'e16')]
     rules[6] = {'holds': any(v['holds'] for v in values), 'values': values}
     values = []
     for c, s in TRAINED_SPLIT.items():

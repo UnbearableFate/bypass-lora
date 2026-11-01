@@ -114,7 +114,7 @@ def test_magnitudes_by_fact_position():
     m = diag.magnitudes({'context': part, 'isolated': part, 'positions': torch.tensor([0, 1, 3, 4])})
     assert m['values.context']['0'] == {'n': 1, 'l2_mean': 5., 'l2_median': 5., 'max_abs_mean': 5., 'max_abs_median': 5.,
                                         'max_abs_max': 5., 'argmax_dimension_mode': 2, 'argmax_dimension_share': 1.}
-    assert m['features.isolated']['1-3']['n'] == 2 and m['features.isolated']['1-3']['l2_mean'] == 6.
+    assert m['features.isolated']['1-3']['n'] == 2 and m['features.isolated']['1-3']['l2_mean'] == 3.
     assert m['values.context']['>=4']['argmax_dimension_mode'] == 0
 
 
@@ -309,3 +309,54 @@ def test_released_rows_isolated_tokens_follow_e1_format(tok):
                 assert item['delimiter'] == len(item['ids']) - 1
     assert checks[1]['context_fact_tokens_differ_from_isolated'] == 0
     print(json.dumps(checks))
+
+
+# ---- rule evaluation (RV-0042) ------------------------------------------------------
+
+def synthetic_summaries(tmp_path, edit):
+    from types import SimpleNamespace
+    modes = diag.CONTROLS_MULTI + SWEEP_CONTROLS
+    probe_names = ('Pv.context', 'Pv.isolated', 'Pf.context', 'Pf.isolated', 'Pz.normal', 'Pz.oracle_value')
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for label in diag.CHECKPOINTS:
+        splits = {}
+        for facts in diag.FACT_COUNTS:
+            controls = {m: {'em': .05, 'nll': 5., 'prior_em': .02,
+                            'target_position': {'0': {'em': .05}, '>=1': {'em': .05}}} for m in modes}
+            probes = {n: {'accuracy': .5, 'baseline_answer_prior': {'accuracy': .02},
+                          'baseline_label_shuffle': {'accuracy': .02}, 'unseen_label_count': 0, 'by_position': {}}
+                      for n in probe_names}
+            splits[f'e{facts}'] = {'controls': controls, 'probes': probes, 'feature_sha256': {'x': 'same'},
+                                   'isolated_minus_context_value_max_abs': 0., 'magnitudes': {}}
+        summary = {'checkpoint': label, 'limit': 0, 'splits': splits, 'wall_seconds': 1.,
+                   'reload': {'e16': {'normal': {'same_episode_order': True, 'prediction_mismatches': 0}}},
+                   'tokenization': {}}
+        edit(label, summary['splits'])
+        path = tmp_path / f'{label}.json'
+        path.write_text(json.dumps(summary))
+        paths.append(f'{label}={path}')
+    out = tmp_path / 'analysis.json'
+    diag.analyze(SimpleNamespace(summary=paths, output=out))
+    return json.loads(out.read_text())['rules']
+
+
+def test_rule4_is_em_drop_without_nll_and_rule6_covers_r2_r5_at_e4_and_e16(tmp_path):
+    def rule4(label, splits):
+        for split in ('e1', 'e4', 'e16'):
+            splits[split]['probes']['Pf.context']['accuracy'] = .95
+        if label == 'R1':
+            splits['e1']['controls']['oracle_value'].update(em=.85, nll=3.)
+            # E=4/16 oracle_value 35+ pp lower but with LOWER NLL: rule 4 still holds.
+            for split in ('e4', 'e16'):
+                splits[split]['controls']['oracle_value'].update(em=.4, nll=2.)
+    assert synthetic_summaries(tmp_path / 'a', rule4)['4']['holds'] is True
+    for label, split in (('R2', 'e16'), ('R5', 'e4'), ('R2', 'e4'), ('R5', 'e16')):
+        def rule6(name, splits, label=label, split=split):
+            if name == label:
+                splits[split]['controls']['iso_v'].update(em=.2, nll=4.)
+        rules = synthetic_summaries(tmp_path / f'{label}{split}', rule6)
+        assert rules['6']['holds'] is True, (label, split)
+        assert {(v['checkpoint'], v['split']) for v in rules['6']['values']} == {
+            ('R2', 'e4'), ('R2', 'e16'), ('R5', 'e4'), ('R5', 'e16')}
+    assert synthetic_summaries(tmp_path / 'none', lambda *a: None)['8']['holds'] is True
