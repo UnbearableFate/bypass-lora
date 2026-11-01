@@ -14,30 +14,41 @@
 
 ## 规格
 
-以封存的契约 `research/experiments/E-0015.md` 为准，本节只是摘要。
+以封存的契约 `research/experiments/E-0015.md`（E-0015@3）为准，本节只是摘要。修订 2/3 采纳了 AD-0001 的建议（`research/advice/AD-0001.md` 第 2 节），在任何运行之前完成：
+- 诊断改在 calibration 上做；
+- 增加负对照、幅度扫描和探针基线。
 
 - checkpoint（只用最终 checkpoint，按记录的配置加载）：
   - R1：ATT-0122-1
   - R2：ATT-0123-1
   - R5：ATT-0126-1
   - V2-03：ATT-0082-1
-- 加载检查：每个 checkpoint 在其已记录 split 上的 normal 预测，须与记录的预测文件逐例一致；不一致就停下报告。
-- split：E=1、E=4 dev（ATT-0112-1），E=16 dev（ATT-0039-1）。探针在同一 E 的 calibration 上拟合。
+- 加载检查：每个 checkpoint 在其已记录 split（dev）上的 normal 预测，须与记录的预测文件逐例一致；不一致就停下报告。dev 只用于这项检查。
+- 诊断 split：E=1、E=4 calibration（ATT-0112-1），E=16 calibration（ATT-0039-1），各 2,048 条。
+- 探针：在同一 E 的 train 前 4,096 条（文件顺序）上拟合，在 calibration 上测试。
 - 读取替换对照：
   - 已有：normal、zero、shuffled、oracle_value。
-  - 新增：last_only、oracle_last、oracle_last_only、uniform。
+  - 新增：last_only、oracle_last、oracle_last_only、uniform；
+  - 负对照：last_only_shuffled（与 last_only 协议匹配）、wrong_oracle（第 (target+1) mod E 条事实的 value）。
   - 算术与现有 oracle 相同，“最后位置”即 answer_logits 用的位置。
 - 单独编码替换（E=4、E=16）：
   - 每条事实单独编码，格式与 E=1 数据完全相同；在其分隔符处取 key 与 value，按原支持顺序放回同一槽位。
-  - 三个对照：iso_kv、iso_v（上下文 key + 单独编码 value）、iso_oracle_value。
+  - 四个对照：iso_kv、iso_v（上下文 key + 单独编码 value）、iso_oracle_value、iso_wrong_oracle。
+  - 检查单独编码到分隔符为止的 token 与 E=1 格式逐 token 一致。
+- 幅度扫描（只在 R1@E=1、R2@E=4、R5@E=16）：α ∈ {0.1, 0.3}，三种方式：
+  - normal 下全位置缩放；
+  - oracle_value 下全位置缩放；
+  - normal 下只缩放非末位位置。
 - 所有 EM 与 NLL 按目标位置分层：第 0 条、第 1 条及以后，附逐位置计数。
 - 探针：闭式 ridge（λ=1，同 independent_probes），calibration 上拟合，dev 上测试。
   - Pv：训练出的 value，每个写入槽位一个样本。
   - Pf：投影前的冻结特征。
   - Pz：最后位置的融合增量，分 normal 与 oracle_value。
   - Pv 与 Pf 在上下文编码和单独编码上各做一次，并按事实位置分层（0、1–3、≥4）。
-  - dev 中未出现在 calibration 的类别计为错误，并报告数量。
-- 判定规则见合同第 1–7 条。报告时给出 Pv、Pz 与各 oracle 对照的数字，不只给判定。
+  - 测试集中未出现在拟合集的类别计为错误，并报告数量。
+  - 基线：答案先验、标签打乱、随机投影到 128 维的 Pf。
+  - R1 的 Pv 另做四种跨编码测试（拟合编码→测试编码）：单独→单独、单独→上下文、上下文→上下文、上下文→单独。
+- 判定规则见合同第 1–8 条：≥ 10 pp 的比较都要求 NLL 同向改善。报告时给出 Pv、Pz 与各 oracle 对照的数字，不只给判定。
 
 ## 审核
 
@@ -64,7 +75,7 @@ rl review request --target E-0015 ... --author-model <你的模型 id>
 - 交付摘要包括：
   - 各 checkpoint × split × 对照的 EM（分层）；
   - 探针表；
-  - 第 1–7 条规则各自是否成立；
+  - 第 1–8 条规则各自是否成立；
   - ATT/RES/EV 编号、实际 node·h、审核编号与未解决的问题。
 ## 环境
 
