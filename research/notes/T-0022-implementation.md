@@ -98,3 +98,16 @@ dev-based pass estimate by4096calibration/2000dev rows,explicitly an approximati
 that does not measure calibration length differences. No training/loss/model
 path changed after the397passing checks;the new cost branch and Base timing
 are exercised in the full benchmark. The experiment ceiling remains1node_h.
+
+RB5 cost coverage:the RB1 LoRA4r7 proxy cannot stand in for full28-layer LoRA,
+and r44/r64 matching widths or S4concat/T0 layouts have different compute.
+src/rb5_cost.py therefore times11 additional diagnostic layouts(20+100steps,
+same R1 examples/order/initialization seed as the main timing run):C_dual/C_upS4;
+R_res/C_dual/C_upT0S4;r44/r64R_resS1/S4;LoRA28r1/r2. This changes no shared
+model or training code. Actual model configs/counts/grad counts are asserted.
+These are conditional RB5 cost proxies only,not formal models or performance
+comparisons. S2 future-layout costs can be reported as interpolation,explicitly
+estimated. Main RB0 full-dev timing will anchor their32row/task eval estimates.
+Estimated extra runtime about450s/request675s,using startup0.21-0.24s/step,
+historical full-LoRA0.38-0.41s/step and dev sample costs. Expected totalT0022
+remains about0.13node_h versus ceiling1.0;use measured scheduler time for billing.
