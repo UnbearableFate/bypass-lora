@@ -203,9 +203,11 @@ def encode_candidates(tokenizer: Any, example: Mapping[str, Any], max_length: in
         raise ValueError(f"unknown task: {example['task']!r}")
     completion_ids = [_encode(tokenizer, text) for text in completions]
     reserve = max(map(len, completion_ids), default=0)
-    if reserve > max_length:
+    if reserve >= max_length or any(not ids for ids in completion_ids):
         raise ValueError("a complete candidate exceeds max_length")
     prompt = _prompt_tokens(tokenizer, example, max_length - reserve)
+    if not prompt:
+        raise ValueError('completion requires a preceding prompt token')
     result = []
     for text, suffix in zip(completions, completion_ids):
         input_ids = prompt + suffix

@@ -26,7 +26,7 @@ def main():
         for arm in ('lora','F_out','C_dual'):
             arm_out = out/arm
             result = subprocess.run([sys.executable,str(src/'v1_run.py'),'--arm',arm,
-                '--smoke-steps','20','--eval-limit','32','--data-dir',
+                '--smoke-steps','5','--eval-limit','32','--data-dir',
                 '/work/xg24i002/x10041/bypass-lora/data/v1','--output',str(arm_out)])
             manifest = json.loads((arm_out/'manifest.json').read_text())
             metrics.update({arm+'.'+k:v for k,v in manifest['metrics'].items()})
@@ -38,7 +38,7 @@ def main():
         metrics['train.input_tokens'] = sum(metrics.get(a+'.train.input_tokens',0) for a in ('lora','F_out','C_dual'))
         (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
             'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':metrics,
-            'artifacts':[{'path':str(out),'role':'smoke_outputs'}],
+            'artifacts':[{'path':str(out/'checks.xml'),'role':'pytest_results'}],
             'validator':{'name':'v1_smoke','passed':passed}},indent=2)+'\n')
     return 0 if passed else 1
 

@@ -26,12 +26,32 @@ EXPECTED = {'lora': 901120, 'lora28': 1261568, 'F_out': 262144, 'F_pre': 262144,
             'C_gate': 524288, 'C_up': 524288, 'C_dual': 917504, 'linear': 917504}
 
 
+class TrainingDiverged(Exception):
+    """A scientific failed-LR outcome, distinct from an engineering exception."""
+    def __init__(self, reason, metrics):
+        super().__init__(reason)
+        self.metrics = metrics
+
+
+def example_mean_objective(losses, step_examples):
+    return losses.mean() / step_examples
+
+
 def prepare(data_dir):
     p = Path(data_dir)
     files = {'piqa': p/'piqa-train.jsonl', 'piqa_labels': p/'piqa-train-labels.lst',
              'boolq': p/'boolq-train.parquet'}
-    return make_v1_splits(read_piqa_train(files['piqa'], files['piqa_labels']),
+    expected_hashes = {'piqa':'f805f9c96518d7b59f2f870d90f712457cda949979469d9fa3fd706ce22e0a1a',
+                      'piqa_labels':'df8ae080c41f02f88e81f6932d425f4b7ee72f433ad552e6a30d45e358e8f8bb',
+                      'boolq':'4f028e992c0bd4df30b9f056f4946b64f5c23028034ff0ed5ea467d8538cc623'}
+    for key, path in files.items():
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected_hashes[key]:
+            raise ValueError(f'source checksum mismatch: {key}')
+    result = make_v1_splits(read_piqa_train(files['piqa'], files['piqa_labels']),
                           read_boolq_train(files['boolq']), source_files=files, source_metadata=SOURCES)
+    if result['metadata']['split_mapping_sha256'] != '47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7f20ded98571b':
+        raise ValueError('split mapping differs from locked smoke mapping')
+    return result
 
 
 def make_model(arm, checkpoint=None):
@@ -142,14 +162,21 @@ def train(model, batches, tok, lr, output):
             torch.cuda.synchronize()
             tick = time.monotonic()
             optimizer.zero_grad(set_to_none=True)
-            # One example per microbatch; normalize the accumulated sum by the entire step's loss tokens.
-            denominator = sum(sum(t != -100 for t in e['labels'][1:]) for e in examples)
+            # Each example contributes equally, regardless of its completion length.
             summed = 0.
             for e in examples:
                 loss, _ = token_losses(model, batch_tensors([e], tok.pad_token_id))
-                (loss.sum()/denominator).backward()
-                summed += loss.detach().sum().item()
-            norm = torch.nn.utils.clip_grad_norm_(params, 1., error_if_nonfinite=True).item()
+                totals['train.input_tokens'] += len(e['input_ids'])
+                totals['train.loss_tokens'] += loss.numel()
+                totals['train.examples'] += 1
+                (output/'usage.json').write_text(json.dumps(totals)+'\n')
+                if not torch.isfinite(loss).all():
+                    raise TrainingDiverged('nonfinite loss', dict(totals))
+                example_mean_objective(loss, len(examples)).backward()
+                summed += loss.detach().mean().item()
+            norm = torch.nn.utils.clip_grad_norm_(params, 1., error_if_nonfinite=False).item()
+            if not math.isfinite(norm):
+                raise TrainingDiverged('nonfinite gradient norm', dict(totals))
             rate = lr * lr_factor(step, len(batches))
             for group in optimizer.param_groups:
                 group['lr'] = rate
@@ -158,10 +185,7 @@ def train(model, batches, tok, lr, output):
             duration = time.monotonic()-tick
             step_times.append(duration)
             tokens = sum(len(e['input_ids']) for e in examples)
-            totals['train.input_tokens'] += tokens
-            totals['train.loss_tokens'] += denominator
-            totals['train.examples'] += len(examples)
-            log.write(json.dumps({'step':step+1,'nll':summed/denominator,'preclip_norm':norm,
+            log.write(json.dumps({'step':step+1,'example_mean_nll':summed/len(examples),'preclip_norm':norm,
                                   'lr':rate,'seconds':duration,'input_tokens':tokens})+'\n')
             log.flush()
     totals.update({'train.steps':len(batches),'train.seconds':time.monotonic()-start,
@@ -186,6 +210,7 @@ def main():
     out = args.output
     out.mkdir(parents=True, exist_ok=True)
     metrics = {}
+    passed = False
     start = time.monotonic()
     try:
         tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
@@ -198,6 +223,8 @@ def main():
         batches = plan_batches(splits,tok,args.tokens,args.batch)
         metrics['plan.steps'] = len(batches)
         metrics['plan.input_tokens'] = sum(len(e['input_ids']) for batch in batches for e in batch)
+        metrics['plan.token_threshold'] = args.tokens
+        metrics['plan.token_overshoot'] = max(0, metrics['plan.input_tokens']-args.tokens)
         metrics['plan.order_sha256'] = hashlib.sha256(json.dumps([(e['task'],e['id'],e['epoch']) for batch in batches for e in batch]).encode()).hexdigest()
         if args.smoke_steps:
             batches = batches[:args.smoke_steps]
@@ -209,6 +236,7 @@ def main():
         metrics['load.seconds'] = time.monotonic()-tick
         if args.arm != 'base':
             metrics.update(train(model,batches,tok,args.lr,out))
+            metrics['train.token_overshoot'] = max(0, metrics['train.input_tokens']-args.tokens)
             tick = time.monotonic()
             model.export_adapter(out/'adapter')
             metrics['save.seconds'] = time.monotonic()-tick
@@ -228,6 +256,13 @@ def main():
         metrics['reload.identical'] = repeat == predictions and repeat_metrics == eval_metrics
         assert metrics['reload.identical'], 'checkpoint/repeated Base evaluation is not identical'
         passed = True
+    except TrainingDiverged as exc:
+        metrics.update(exc.metrics)
+        metrics['train.diverged'] = True
+        metrics['train.failure_reason'] = str(exc)
+        metrics['train.token_overshoot'] = max(0, metrics['train.input_tokens']-args.tokens)
+        # Record a complete failed-LR result and let a caller continue other arms.
+        passed = True
     except Exception as exc:
         metrics['error'] = repr(exc)
         passed = False
@@ -236,7 +271,7 @@ def main():
         metrics['elapsed_s'] = time.monotonic()-start
         (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
             'spec_digest':os.environ['SR_SPEC_DIGEST'],'metrics':metrics,
-            'artifacts':[{'path':str(out),'role':'run_outputs'}],
+            'artifacts':[{'path':str(p),'role':p.stem} for p in out.glob('*.json') if p.name!='manifest.json'],
             'validator':{'name':'v1_runtime','passed':passed}},indent=2)+'\n')
 
 if __name__ == '__main__':

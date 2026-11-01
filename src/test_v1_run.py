@@ -1,6 +1,9 @@
 """CPU unit tests for the shared V1 training mechanics."""
+import json
+import sys
 from types import SimpleNamespace
 
+import pytest
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -47,7 +50,7 @@ class TinyCausalModel(nn.Module):
         return SimpleNamespace(logits=self.projection(self.embedding(input_ids)))
 
 
-def test_microbatch_accumulation_matches_full_supervised_token_mean():
+def test_microbatch_accumulation_matches_equal_example_mean():
     examples = [
         {'input_ids': [1, 2, 3], 'labels': [-100, -100, 3]},
         {'input_ids': [2, 4, 5, 6, 1], 'labels': [-100, -100, 5, 6, 1]},
@@ -58,17 +61,16 @@ def test_microbatch_accumulation_matches_full_supervised_token_mean():
     torch.manual_seed(seed)
     full = TinyCausalModel()
     full.load_state_dict(micro.state_dict())
-    denominator = 4
     accumulated = 0.
     for example in examples:
         loss, _ = v1_run.token_losses(micro, tensor_batch([example]))
-        accumulated += loss.sum().item()
-        (loss.sum() / denominator).backward()
+        accumulated += loss.mean().item()
+        v1_run.example_mean_objective(loss, len(examples)).backward()
 
     all_loss, valid = v1_run.token_losses(full, tensor_batch(examples))
-    full_mean = all_loss.sum() / valid.sum()
+    full_mean = (all_loss[:1].mean() + all_loss[1:].mean()) / 2
     full_mean.backward()
-    assert abs(accumulated / denominator - full_mean.item()) < 1e-7
+    assert abs(accumulated / 2 - full_mean.item()) < 1e-7
     for micro_param, full_param in zip(micro.parameters(), full.parameters()):
         torch.testing.assert_close(micro_param.grad, full_param.grad, rtol=1e-6, atol=1e-7)
 
@@ -97,3 +99,80 @@ def test_plan_batches_preserves_order_across_epochs_and_stops_at_full_batch(monk
     batches = v1_run.plan_batches({}, tok=None, budget=4, batch_size=2, max_epochs=3)
     assert [[(e['id'], e['epoch']) for e in batch] for batch in batches] == [
         [('a', 0), ('b', 0)], [('c', 0), ('a', 1)]]
+
+
+class NonfiniteCausalModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.weight = nn.Parameter(torch.tensor(1.))
+
+    def forward(self, input_ids, attention_mask=None, use_cache=False):
+        logits = self.weight * torch.full((*input_ids.shape, 7), float('nan'))
+        return SimpleNamespace(logits=logits)
+
+
+def test_train_records_consumption_and_skips_optimizer_step_on_nonfinite_loss(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    monkeypatch.setattr(v1_run, 'batch_tensors', lambda encoded, pad_id: tensor_batch(encoded))
+    optimizer_steps = []
+    original_step = torch.optim.AdamW.step
+
+    def count_steps(optimizer, *args, **kwargs):
+        optimizer_steps.append(True)
+        return original_step(optimizer, *args, **kwargs)
+
+    monkeypatch.setattr(torch.optim.AdamW, 'step', count_steps)
+    examples = [
+        {'input_ids': [1, 2, 3], 'labels': [-100, -100, 3], 'epoch': 0},
+        {'input_ids': [2, 3], 'labels': [-100, 3], 'epoch': 0},
+    ]
+    with pytest.raises(v1_run.TrainingDiverged, match='nonfinite loss') as exc_info:
+        v1_run.train(NonfiniteCausalModel(), [examples], SimpleNamespace(pad_token_id=0),
+                     lr=1e-3, output=tmp_path)
+
+    consumed = {'train.input_tokens': 3, 'train.loss_tokens': 1,
+                'train.padded_tokens': 0, 'train.examples': 1}
+    assert exc_info.value.metrics == consumed
+    assert json.loads((tmp_path / 'usage.json').read_text()) == consumed
+    assert optimizer_steps == []
+
+
+def test_main_records_training_divergence_as_completed_and_accepts_next_run(
+        monkeypatch, tmp_path):
+    class Tokenizer:
+        pad_token_id = 0
+        eos_token_id = 0
+
+    monkeypatch.setattr(v1_run.AutoTokenizer, 'from_pretrained', lambda *a, **k: Tokenizer())
+    monkeypatch.setattr(v1_run, 'prepare', lambda data_dir: {'metadata': {'split_ids': {}}})
+    monkeypatch.setattr(v1_run, 'plan_batches', lambda *a, **k: [[
+        {'task': 'piqa', 'id': 'row-1', 'epoch': 0, 'input_ids': [1, 2],
+         'labels': [-100, 2]}]])
+    monkeypatch.setattr(v1_run, 'make_model', lambda *a, **k: nn.Linear(1, 1))
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    monkeypatch.setenv('SR_SPEC_DIGEST', 'unit-test-digest')
+
+    def diverge(*args, **kwargs):
+        raise v1_run.TrainingDiverged('nonfinite gradient norm', {
+            'train.input_tokens': 2, 'train.loss_tokens': 1,
+            'train.padded_tokens': 0, 'train.examples': 1})
+
+    monkeypatch.setattr(v1_run, 'train', diverge)
+    manifests = []
+    for index, lr in enumerate((1e-3, 5e-4)):
+        output = tmp_path / f'run-{index}'
+        monkeypatch.setattr(sys, 'argv', [
+            'v1_run.py', '--arm', 'lora', '--data-dir', str(tmp_path),
+            '--output', str(output), '--smoke-steps', '1', '--lr', str(lr)])
+        v1_run.main()
+        manifest = json.loads((output / 'manifest.json').read_text())
+        manifests.append(manifest)
+
+    assert len(manifests) == 2
+    for manifest in manifests:
+        assert manifest['status'] == 'complete'
+        assert manifest['validator']['passed'] is True
+        assert manifest['metrics']['train.diverged'] is True
+        assert manifest['metrics']['train.failure_reason'] == 'nonfinite gradient norm'
+        assert manifest['metrics']['train.token_overshoot'] == 0

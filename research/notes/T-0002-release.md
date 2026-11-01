@@ -22,3 +22,15 @@ Learning-rate selection fixed by E-0002: per family lower calibration NLL among1
 Environment: uv.lock git blob3c916b51337de3cba594d645e606a31d4f39c443, cuda extra, environment /work/xg24i002/x10041/bypass-lora/envs/3c916b51337d-cuda; PyArrow23.0.1 added for train parquet. Torch2.10.0+cu128/transformers4.57.1/Python3.13.13 unchanged; module cuda/12.8. Hardware GH200 MIG2g.24gb. New environment requires V0 regressions before calibration.
 
 Pending: smoke split mapping hash, measured costs, code review, calibration results, selected LRs and E-0003 costed release. No calibration has run yet.
+
+## Pre-calibration correction from coordinator MSG-0025
+
+This paragraph supersedes the training loss reduction stated above: each example's supervised-token CE is averaged first, then example means are averaged across the optimization step. With microbatch1, each example mean is divided by step sample count before backward. Calibration NLL remains the sealed per-task token-weighted NLL followed by two-task macro mean.
+
+The first complete step reaching200000 tokens is included: the measured schedule is1103 steps,200280 input tokens,280 overshoot per calibration run (identical across all six; total1201680). Per coordinator, overshoot counts against the authorized V0 calibration2M cap, not reserve, and the threshold is unchanged. Apply the same rule to E-0003's2M threshold. Manifests record threshold, planned/actual tokens and overshoot separately.
+
+Nonfinite loss/gradient is a completed failed-LR outcome (`train.diverged=true`) and writes measured consumed tokens. It returns normally so sequential launches can continue other candidates. Engineering exceptions still fail the process. Every microbatch persists usage before backward, including a failed nonfinite presentation.
+
+Initial smoke ATT-0007-1, commit f7e6b4f:96/96 checks passed; all three20-step train/eval/reload paths completed,11586 training tokens,132s/.036667 MIG instance-hours. Those losses used the superseded token-weighted reduction; no calibration or scientific comparison is based on them. Each family's calibration plan is200280 tokens/1103steps. Measured steady steps .232s LoRA/.200s F_out/.210s C_dual,32rows per task/split evaluation about10–11s, repeat reload about10–11s. Full calibration evaluation plus repeat estimated about1000s, training about260s; request35min per calibration with1.5margin. Next smoke uses corrected loss and only5steps/family; initial timing supplies the cost baseline.
+
+Locked split mapping SHA256:47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7f20ded98571b (ATT-0007-1/lora/split-map.json). Subsequent jobs check all three raw checksums and mapping hash before model loading. The small bounds fix rejects empty completions or any candidate leaving no causal prompt token.
