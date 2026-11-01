@@ -68,6 +68,19 @@ def r1_provenance(run, cfg, seed=0):
             'optimizer': 'fresh AdamW, weight_decay=0', 'warmup': 'fresh 300 steps for formal runs'}
 
 
+def replay_record(comparison, episodes):
+    """The start adapter's replay of its source run's recorded contextual dev predictions.
+
+    The episode identities and order must match (an error otherwise). Numerical prediction
+    and NLL differences are recorded, not failures: a cross-job difference that the MIG slice
+    explains is noted and the run continues (D-0018, D-0019). Adapter identity is enforced
+    by the provenance hashes, and the same-job save/reload check stays exact."""
+    normal = comparison['normal']
+    if normal['same_episode_order'] is not True or normal['episodes'] != episodes:
+        raise AssertionError('start-run replay does not cover the same dev episodes in the same order')
+    return dict(normal, numerical_differences='recorded only (D-0018, D-0019)')
+
+
 def gate(summary):
     """E-0010@2 H3 under the isolated write (new protocol, reported apart): the reviewed
     exact-fraction v2r16_analysis.h3_gate on correct counts, all-question-position target
@@ -170,15 +183,14 @@ def run(args):
                 if result['initialization_max_abs'] != 0.:
                     raise AssertionError('zero exit differs from Base under the isolated write')
             else:
-                # The loaded adapter reproduces R1's recorded contextual dev predictions.
+                # Replay the start run's recorded contextual dev predictions (differences recorded).
                 tick = time.monotonic()
                 replay = output/'r1-replay'
-                legacy_evaluate(model, load_data(args.data_dir/'dev.jsonl', 'dev'), pad_id, replay, 'dev',
-                                ('normal',), prior)
+                full_dev = load_data(args.data_dir/'dev.jsonl', 'dev')
+                legacy_evaluate(model, full_dev, pad_id, replay, 'dev', ('normal',), prior)
                 comparison = compare_recorded(args.r1_run/ARM_DIR, replay, 'dev', ('normal',))
-                if comparison['normal']['prediction_mismatches'] != 0:
-                    raise AssertionError('loaded R1 adapter does not reproduce its recorded dev predictions')
-                provenance['recorded_dev_replay'] = dict(comparison['normal'], seconds=time.monotonic()-tick)
+                provenance['recorded_dev_replay'] = dict(replay_record(comparison, len(full_dev)),
+                                                         seconds=time.monotonic()-tick)
             del first, reference
             side = model.adapters()[14].side
             result['requires_grad_parameter_names'] = sorted(n for n, p in side.named_parameters() if p.requires_grad)

@@ -97,9 +97,33 @@ def test_adapter_initialization_follows_the_seed():
         with adapted(base, cfg=cfg, **kwargs) as model:
             return {n: p.detach().clone() for n, p in model.adapters()[14].side.named_parameters()}
     default, zero, one, two = initial(), initial(seed=0), initial(seed=1), initial(seed=2)
+    assert set(default) == {'projection.A_q', 'projection.A_k', 'projection.A_v', 'reader.Rq', 'reader.Ro', 'fusion.P'}
     assert all(torch.equal(default[n], zero[n]) for n in default)
-    random_names = [n for n in default if torch.count_nonzero(default[n])]
-    assert random_names
-    assert all(not torch.equal(default[n], one[n]) and not torch.equal(one[n], two[n]) for n in random_names)
-    # Zero-initialized parameters (the exit) stay zero at every seed.
-    assert all(torch.count_nonzero(one[n]) == 0 for n in default if n not in random_names)
+    # Random projections follow the seed.
+    for name in ('projection.A_q', 'projection.A_k', 'projection.A_v'):
+        assert not torch.equal(default[name], one[name]) and not torch.equal(one[name], two[name])
+        assert not torch.equal(default[name], two[name])
+    # Deterministic initializers do not: identity readers and the zero exit.
+    for state in (default, one, two):
+        for name in ('reader.Rq', 'reader.Ro'):
+            assert torch.equal(state[name], torch.eye(state[name].shape[0], device=state[name].device))
+        assert torch.count_nonzero(state['fusion.P']) == 0
+
+
+def comparison(*, mismatches=4, nll=.3117866516113281, same=True, episodes=1000):
+    return {'normal': {'recorded': 'x', 'episodes': episodes, 'same_episode_order': same,
+                       'prediction_mismatches': mismatches if same else None,
+                       'nll_max_abs_difference': nll if same else None}}
+
+
+def test_start_replay_records_numerical_differences_and_rejects_other_episodes():
+    import v2r16_isolated as runner
+    # Aligned replay with numerical differences (as ATT-0146-1 recorded for R1 on another slice): recorded.
+    record = runner.replay_record(comparison(), 1000)
+    assert record['prediction_mismatches'] == 4 and record['nll_max_abs_difference'] == .3117866516113281
+    assert record['numerical_differences'].startswith('recorded only')
+    assert runner.replay_record(comparison(mismatches=0, nll=0.), 1000)['prediction_mismatches'] == 0
+    with pytest.raises(AssertionError, match='same dev episodes'):
+        runner.replay_record(comparison(same=False), 1000)
+    with pytest.raises(AssertionError, match='same dev episodes'):
+        runner.replay_record(comparison(episodes=999), 1000)
