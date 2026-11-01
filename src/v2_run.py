@@ -156,16 +156,21 @@ def run_arm(base, rows, pad_id, tap, backend, fusion, steps, lr, out):
                   'parameters': sum(p.numel() for p in model.adapter_parameters())}
         result['train'] = train_steps(model, batch, steps, lr, out/'train-progress.json')
         model.eval()
+        torch.cuda.synchronize()
+        eval_start = time.monotonic()
         result['controls'] = {}
         probe_vectors = {}
         for mode in CONTROLS:
             diagnostics, _ = evaluate_batch(model, batch, mode)
             probe_vectors[mode] = {k: v for k, v in diagnostics.items() if k.startswith('_')}
             result['controls'][mode] = json_diagnostics(diagnostics)
+        torch.cuda.synchronize()
+        result['six_control_eval_seconds'] = time.monotonic()-eval_start
         normal = result['controls']['normal']['nll']
         result['positive_control_pass'] = (normal < result['controls']['zero']['nll'] and
                                            normal < result['controls']['shuffled']['nll'])
         torch.save(probe_vectors, out/'probe-vectors.pt')
+        save_start = time.monotonic()
         model.export_adapter(out/'adapter')
         # Reload exact tensors into this same adapter: verifies the actual export
         # names/layout without reloading a second frozen backbone on the MIG.
@@ -176,6 +181,8 @@ def run_arm(base, rows, pad_id, tap, backend, fusion, steps, lr, out):
             if any(not torch.equal(v, original[i][k]) for k, v in layer.side.state_dict().items()):
                 raise AssertionError('checkpoint roundtrip mismatch')
         result['checkpoint_identical'] = True
+        result['checkpoint_save_reload_seconds'] = time.monotonic()-save_start
+        result['batch_input_tokens'] = batch.input_tokens
         (out/'metrics.json').write_text(json.dumps(result, indent=2)+'\n')
         return result
 
