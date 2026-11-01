@@ -121,6 +121,7 @@ def main():
             raise RuntimeError('V0/V1/E3 analysis regression tests failed')
 
         run_start = time.monotonic()
+        order_digest = None
         for arm in ARMS:
             arm_out = out/arm
             command = [sys.executable, str(src/'v1_run.py'), '--arm', arm, '--e3',
@@ -135,6 +136,12 @@ def main():
                 raise RuntimeError(f'{arm} produced no manifest')
             manifest = json.loads(manifest_path.read_text())
             arm_metrics = manifest.get('metrics', {})
+            excluded = json.loads((arm_out/'excluded-train.json').read_text())
+            assert [(row['task'],row['id'],row['candidate_lengths']) for row in excluded] == [('piqa',5528,[537,537])]
+            assert arm_metrics.get('plan.dev_steps') == [3270,6539,9808]
+            if order_digest is None:
+                order_digest = arm_metrics['plan.order_sha256']
+            assert arm_metrics.get('plan.order_sha256') == order_digest
             metrics[f'{arm}.smoke.elapsed_s'] = arm_elapsed
             for key, value in arm_metrics.items():
                 metrics[f'{arm}.{key}'] = value

@@ -11,3 +11,9 @@ Before any formal run: bootstrap uses 10,000 replicates, NumPy default_rng seed 
 Smoke timing is measured after the first 10 of 20 steps for all eight arms. Requested walltime will use measured training/evaluation/save/load durations times 1.5; MIG usage is reported both as instance-hours and node-hours (multiply by .25). E-0003 total ceiling is 10 node-hours including tests and diagnostics.
 
 Status: implementation in progress; no T-0003 PBS checks or formal runs have yet executed.
+
+## E-0003@2 clarification before formal runs (MSG-0063)
+
+Effective means dev macro accuracy at least 1 pp above the rerun Base. Among effective C arms, retain those strictly less than 1 pp below the best effective C arm, then prefer fewer parameters. Equal parameter counts use higher macro accuracy, then lower dev macro NLL, then C_gate. No effective C arm means no C*. Concat wins only when C* exists and the highest scoring concat arm is at least 1 pp above F*. C_dual improves on C_gate only at a difference of at least 1 pp. All decisions use point estimates; bootstrap intervals remain descriptive. This supersedes the unresolved definition above. Formal registrations use E-0003@2.
+
+ATT-0021-1 / RES-0021: 116 tests passed, one new test fixture failed before any smoke training. The fixture supplied one invalid row out of one, correctly triggering the >1% guard while expecting an audit record. Corrected to one invalid row out of 100; the production guard is unchanged. Also corrected the held-out comparison dictionary to key by task and split so both dev and calibration are checked. PBS 3759153.opbs, mg1098, Exit_status 1, 21 s = 0.005833333333333333 MIG instance-h = 0.0014583333333333333 node-h; zero training tokens. Retest pending.

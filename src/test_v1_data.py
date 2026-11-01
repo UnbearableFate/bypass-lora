@@ -90,7 +90,11 @@ def test_audit_reports_known_encoding_failure_and_leaves_nontrain_splits_untouch
         "boolq": {"train": [], "dev": [{"task": "boolq", "id": 42, "preserve": True}],
                   "calibration": [{"task": "boolq", "id": 43, "preserve": True}]},
     }
-    before_heldout = {task: copy.deepcopy(splits[task][name])
+    # Exactly one percent is permitted; two percent is covered separately.
+    splits['piqa']['train'].extend(
+        {'task':'piqa','id':i,'goal':'g','solutions':['ok','fine'],'label':0}
+        for i in range(1,100))
+    before_heldout = {(task,name): copy.deepcopy(splits[task][name])
                       for task in ("piqa", "boolq")
                       for name in ("dev", "calibration")}
 
@@ -98,7 +102,7 @@ def test_audit_reports_known_encoding_failure_and_leaves_nontrain_splits_untouch
 
     assert excluded == [{"task": "piqa", "id": 0, "candidate_lengths": [3, 537],
                         "reason": "a complete candidate exceeds max_length"}]
-    assert {task: splits[task][name] for task in ("piqa", "boolq")
+    assert {(task,name): splits[task][name] for task in ("piqa", "boolq")
             for name in ("dev", "calibration")} == before_heldout
 
 

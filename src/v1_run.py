@@ -276,6 +276,12 @@ def main():
         metrics['plan.token_threshold'] = args.tokens
         metrics['plan.token_overshoot'] = max(0, metrics['plan.input_tokens']-args.tokens)
         metrics['plan.order_sha256'] = hashlib.sha256(json.dumps([(e['task'],e['id'],e['epoch']) for batch in batches for e in batch]).encode()).hexdigest()
+        if args.e3:
+            metrics['plan.dev_steps'] = [math.ceil(len(batches)*f) for f in (.25,.5,.75)]
+            if args.arm != 'base':
+                assert args.tokens == 2000000 and args.batch == 2 and args.lr == .0003
+                assert metrics['plan.steps'] == 13077 and metrics['plan.input_tokens'] == 2000040
+                assert metrics['plan.dev_steps'] == [3270,6539,9808]
         if args.smoke_steps:
             batches = batches[:args.smoke_steps]
         elif args.arm != 'base':

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from fractions import Fraction
 import json
 import math
 from pathlib import Path
@@ -39,8 +40,10 @@ def _read_run(path: Path, run_id: str) -> tuple[list[dict], dict]:
         raise AnalysisError(f'{run_id}: cannot read manifest/predictions in {path}: {exc}') from exc
     if manifest.get('status') != 'complete' or manifest.get('validator', {}).get('passed') is not True:
         raise AnalysisError(f'{run_id}: run is not complete and validator-passed')
-    if manifest.get('metrics', {}).get('reload.identical') is False:
-        raise AnalysisError(f'{run_id}: reload evaluation is not identical')
+    if manifest.get('metrics', {}).get('reload.identical') is not True:
+        raise AnalysisError(f'{run_id}: reload.identical must be true')
+    if manifest.get('metrics', {}).get('train.diverged') is True or manifest.get('metrics', {}).get('run.failed_lr') is True:
+        raise AnalysisError(f'{run_id}: training diverged or failed its learning rate')
     for key, value in manifest.get('metrics', {}).items():
         if isinstance(value, (int, float)) and not math.isfinite(value):
             raise AnalysisError(f'{run_id}: manifest metric {key} is nonfinite')
@@ -92,6 +95,13 @@ def _point_metrics(data: Mapping[str, Mapping[str, np.ndarray]]) -> dict[str, fl
     result['macro_accuracy'] = (result['piqa_accuracy'] + result['boolq_accuracy']) / 2
     result['macro_nll'] = (result['piqa_nll'] + result['boolq_nll']) / 2
     return result
+
+
+def _macro_accuracy_fraction(data: Mapping[str, Mapping[str, np.ndarray]]) -> Fraction:
+    """Exact macro accuracy from integer correct counts and task sample sizes."""
+    task_scores = [Fraction(int(data[task]['correct'].sum()), len(data[task]['correct']))
+                   for task in TASKS]
+    return sum(task_scores, Fraction()) / len(TASKS)
 
 
 def _paired_bootstrap(arrays: list[dict], repeats: int, seed: int, chunk_size: int) -> dict:
@@ -171,17 +181,42 @@ def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
         for pair, value in comparisons.items()
     }
 
-    f_diff = metrics['V1-01']['macro_accuracy'] - metrics['V1-02']['macro_accuracy']
-    f_star = 'V1-01' if f_diff > -NEAR_TIE else 'V1-02'
+    exact_scores = {arm: _macro_accuracy_fraction(data) for arm, data in zip(ordered_ids, arrays)}
+    one_pp = Fraction(1, 100)
+    f_delta = exact_scores['V1-01'] - exact_scores['V1-02']
+    f_star = 'V1-01' if abs(f_delta) < one_pp or f_delta > 0 else 'V1-02'
     c_ids = ('V1-03', 'V1-04', 'V1-05')
     c_scores = {arm: metrics[arm]['macro_accuracy'] for arm in c_ids}
-    c_best = max(c_scores.values())
-    c_near_best = [arm for arm in c_ids if c_best - c_scores[arm] < NEAR_TIE]
-    smallest_params = min(TRAINABLE_PARAMS[arm] for arm in c_near_best)
-    simplest_near_best = [arm for arm in c_near_best if TRAINABLE_PARAMS[arm] == smallest_params]
+    c_best_exact = max(exact_scores[arm] for arm in c_ids)
+    c_near_best = [arm for arm in c_ids if c_best_exact - exact_scores[arm] < one_pp]
+    effective = [arm for arm in c_ids if exact_scores[arm] >= exact_scores['Base'] + one_pp]
+    effective_best_exact = max((exact_scores[arm] for arm in effective), default=None)
+    effective_near_best = ([arm for arm in effective
+                            if effective_best_exact - exact_scores[arm] < one_pp]
+                           if effective_best_exact is not None else [])
+    smallest_params = min((TRAINABLE_PARAMS[arm] for arm in effective_near_best), default=None)
+    simplest_effective = ([arm for arm in effective_near_best
+                           if TRAINABLE_PARAMS[arm] == smallest_params]
+                          if smallest_params is not None else [])
+    # Sequential deterministic tie rules: highest exact macro accuracy, then lower
+    # point-estimate macro NLL, then C_gate. The parameter filter above precedes them.
+    c_star = (min(simplest_effective,
+                  key=lambda arm: (-exact_scores[arm], metrics[arm]['macro_nll'],
+                                   0 if arm == 'V1-03' else 1))
+              if simplest_effective else None)
+    best_concat = max(exact_scores[arm] for arm in c_ids)
+    concat_wins = c_star is not None and best_concat >= exact_scores[f_star] + one_pp
+    dual_better_than_gate = exact_scores['V1-05'] >= exact_scores['V1-03'] + one_pp
+    base_piqa_accuracy = Fraction(int(arrays[-1]['piqa']['correct'].sum()),
+                                  len(arrays[-1]['piqa']['correct']))
+    piqa_no_discrimination = all(
+        abs(Fraction(int(data['piqa']['correct'].sum()), len(data['piqa']['correct']))
+            - base_piqa_accuracy) <= one_pp
+        for data in arrays[:-1])
     return {
         'experiment': 'E-0003', 'arms': {arm: {'name': ARM_NAMES.get(arm, 'Base'),
             'path': str(paths[arm]), 'metrics': metrics[arm],
+            'manifest_metrics': loaded[arm][1].get('metrics', {}),
             'dev_examples': {task: len(arrays[index][task]['correct']) for task in TASKS}}
             for index, arm in enumerate(ordered_ids)},
         'comparisons': comparisons,
@@ -190,15 +225,25 @@ def analyze(run_paths: Mapping[str, str | Path], base_path: str | Path, *,
                       'difference_sign': 'left arm minus right arm'},
         'selection': {
             'near_tie_threshold': NEAR_TIE,
+            'PIQA_no_discrimination': piqa_no_discrimination,
+            'PIQA_no_discrimination_rule': 'true iff every training arm PIQA accuracy is within inclusive ±1 pp of Base',
             'F_star': {'selected': f_star, 'rule': 'higher macro accuracy; if within 1 pp select F_out'},
-            'C_star': None,
-            'C_star_status': 'coordinator_definition_needed',
-            'C_star_reason': 'E-0003 says effective, but does not define an effectiveness criterion.',
+            'C_star': c_star,
+            'C_effective': effective,
+            'C_effectiveness_rule': 'macro accuracy >= Base + 1 pp',
             'C_scores': c_scores,
             'C_near_best_within_1pp': c_near_best,
-            'C_simplest_near_best': simplest_near_best,
+            'C_effective_near_best_within_1pp': effective_near_best,
+            'C_simplest_effective_near_best': simplest_effective,
             'C_parameter_counts': {arm: TRAINABLE_PARAMS[arm] for arm in c_ids},
-            'C_gate_up_tie_convention': 'If a downstream report requires one equal-parameter gate/up label, choose V1-03 by ascending run ID; this is a disclosed reporting convention, not an effectiveness decision.',
+            'C_star_tie_rules': ['among effective arms, macro accuracy within strictly <1 pp of the best',
+                                 'fewest trainable parameters', 'higher macro accuracy',
+                                 'lower macro NLL', 'C_gate'],
+            'concat_wins': concat_wins,
+            'concat_wins_rule': 'C_star exists and best concat macro accuracy >= F_star + 1 pp',
+            'C_dual_better_than_C_gate': dual_better_than_gate,
+            'C_dual_better_rule': 'C_dual macro accuracy >= C_gate + 1 pp',
+            'decision_accuracy_arithmetic': 'exact rational correct-count/sample-size fractions; thresholds are inclusive unless stated strictly <1 pp',
         },
         'notes': ['Single-seed screening results; bootstrap intervals describe paired dev-row variation and are not confirmatory.',
                   'Task NLL is total gold NLL sum divided by total gold loss tokens, matching v1_run metrics.'],
