@@ -27,9 +27,9 @@ def score_logits(logits, targets):
     return logits.argmax(-1), losses
 
 
-def prompt_tokens(tok, row, line):
-    if row['identity']['split'] != 'dev' or row['identity']['layout']['name_pool'] != 'seen':
-        raise ValueError('Base evaluation is restricted to seen-name dev')
+def prompt_tokens(tok, row, line, split='dev'):
+    if split not in ('dev', 'calibration') or row['identity']['split'] != split or row['identity']['layout']['name_pool'] != 'seen':
+        raise ValueError('Base evaluation is restricted to the explicitly selected released split')
     if line not in ('M', 'F'):
         raise ValueError('unknown line')
     prompt = (row['support_text'] if line == 'F' else '') + row['question_text']
@@ -54,7 +54,7 @@ def left_pad(sequences, pad_id, device):
 
 
 @torch.inference_mode()
-def evaluate(model, tok, rows, output, batch_size=8):
+def evaluate(model, tok, rows, output, batch_size=8, split='dev'):
     if batch_size < 1 or not rows:
         raise ValueError('positive batch size and nonempty dev are required')
     model.eval()
@@ -68,7 +68,7 @@ def evaluate(model, tok, rows, output, batch_size=8):
             tick = time.monotonic()
             for start in range(0, len(rows), batch_size):
                 batch = rows[start:start + batch_size]
-                prompts = [prompt_tokens(tok, row, line) for row in batch]
+                prompts = [prompt_tokens(tok, row, line, split=split) for row in batch]
                 inputs = left_pad(prompts, tok.pad_token_id, device)
                 # Last position is valid in every left-padded prompt. Compute
                 # only its vocabulary projection, without support KV reuse.
