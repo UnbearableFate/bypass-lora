@@ -197,3 +197,27 @@ def test_negative_controls_detect_future_leak_repeated_write_and_padding_write()
     broken = MemoryState.empty(1, 1).write(torch.ones(1, 1), torch.ones(1, 1))
     with pytest.raises(AssertionError):
         torch.testing.assert_close(correct.M, broken.M)
+
+
+def test_kernel_identity_negative_control():
+    torch.manual_seed(55)
+    state = MemoryState.empty(2,32)
+    for _ in range(4):
+        state = state.write(torch.rand(2,32)+.1,torch.randn(2,32))
+    q = torch.rand(2,32)+.1
+    correct = state.read(q)
+    # Deliberately drop normalization; the identity assertion must reject it.
+    broken = torch.einsum('br,brv->bv',q,state.M)
+    with pytest.raises(AssertionError):
+        torch.testing.assert_close(broken,correct,atol=2e-5,rtol=2e-5)
+
+
+@pytest.mark.parametrize('steps',[1,2,4])
+def test_depth_does_not_multiply_write_count(steps):
+    torch.manual_seed(2)
+    q,k,v = (torch.randn(2,4,32) for _ in range(3))
+    valid = torch.tensor([[True,True,False,True],[True,False,True,True]])
+    result = process_sequence(q,k,v,LatentReader(32),valid=valid,steps=steps)
+    assert result.accounting['writes'] == 6
+    assert result.accounting['reads'] == 6*steps
+    assert result.state.counts.tolist() == [3,3]
