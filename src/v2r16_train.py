@@ -22,23 +22,27 @@ from v2_schedule import DATA_HASHES, ORDER_HASH_ENCODING, load_data, make_step_s
 
 ARMS = ('D1', 'D2a', 'D2b', 'D3')
 SCHEDULE_ARMS = (*ARMS, 'D4', 'D5')
-RESUME_SEED_RULE = ('base = derive_seed(20261029, "concat_loop_v2", "V2R16", arm, 0); '
-                    'epoch indices shuffled by random.Random(base + epoch), epochs 0..2')
+RESUME_SEED_RULE_TEMPLATE = ('base = derive_seed(20261029, "concat_loop_v2", "V2R16", arm, {seed}); '
+                             'epoch indices shuffled by random.Random(base + epoch), epochs 0..2')
+RESUME_ARMS = ('D2a', 'D2b', 'D5')
 STANDARD = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_value')
 
 
-def make_arm_schedule(rows, arm, steps=6000):
+def make_arm_schedule(rows, arm, steps=6000, seed=0):
+    """``seed`` is the continuation order seed of the resumed arms (E-0017 uses 1, 2 for D5)."""
     if arm not in SCHEDULE_ARMS:
         raise ValueError('unsupported E-0016 arm')
+    if type(seed) is not int or seed < 0 or (seed and arm not in RESUME_ARMS):
+        raise ValueError('a non-zero order seed applies to the resumed arms only')
     if arm in ('D1', 'D3', 'D4'):
         return make_step_schedule(rows, steps)
     if type(steps) is not int or steps <= 0 or not rows or len(rows) % 8:
         raise ValueError('positive integer steps and complete batch-8 rows required')
     order = []
-    seed = derive_seed(20261029, 'concat_loop_v2', 'V2R16', arm, 0)
+    base = derive_seed(20261029, 'concat_loop_v2', 'V2R16', arm, seed)
     for epoch in range(3):
         indices = list(range(len(rows)))
-        random.Random(seed + epoch).shuffle(indices)
+        random.Random(base + epoch).shuffle(indices)
         order.extend(indices)
     if steps * 8 > len(order):
         raise ValueError('step budget exceeds three epochs')
@@ -49,8 +53,9 @@ def make_arm_schedule(rows, arm, steps=6000):
             'warmup_steps': math.ceil(.05*steps), 'step_budget': steps,
             'order_sha256': hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order)
                                            .encode('utf-8')).hexdigest(),
-            'order_hash_encoding': ORDER_HASH_ENCODING, 'order_seed_rule': RESUME_SEED_RULE,
-            'order_seed': seed, 'order_arm': arm}
+            'order_hash_encoding': ORDER_HASH_ENCODING,
+            'order_seed_rule': RESUME_SEED_RULE_TEMPLATE.format(seed=seed), 'order_seed': base, 'order_arm': arm,
+            **({'continuation_seed': seed} if seed else {})}
 
 
 def trim_smoke_schedule(schedule, rows, steps):

@@ -36,15 +36,22 @@ def _cost(row):
     return len(row['support_input_ids']) + len(row['question_input_ids'])
 
 
-def train_order(rows, phase='V2'):
+SEED_ORDER_RULE = ('seed 0: derive_seed(20261029, "concat_loop_v2", phase, "train-order-<epoch>"); '
+                   'seed s >= 1: the same parts followed by s (E-0017)')
+
+
+def train_order(rows, phase='V2', seed=0):
     if phase not in ('V2', 'V3'):
         raise ValueError('unsupported data phase')
     if not rows or len(rows) % 8:
         raise ValueError('complete batches of eight required')
+    if type(seed) is not int or seed < 0:
+        raise ValueError('seed must be a non-negative integer')
     order = []
     for epoch in range(3):
         indices = list(range(len(rows)))
-        random.Random(derive_seed(20261029, 'concat_loop_v2', phase, f'train-order-{epoch}')).shuffle(indices)
+        parts = (20261029, 'concat_loop_v2', phase, f'train-order-{epoch}') + ((seed,) if seed else ())
+        random.Random(derive_seed(*parts)).shuffle(indices)
         order.extend(indices)
     digest = hashlib.sha256(''.join(rows[i]['episode_id']+'\n' for i in order).encode('utf-8')).hexdigest()
     return order, digest
@@ -68,21 +75,25 @@ def make_schedule(rows, budget, *, phase='V2'):
             'budget': budget, 'order_hash_encoding': ORDER_HASH_ENCODING}
 
 
-def make_step_schedule(rows, steps, *, phase='V2'):
+def make_step_schedule(rows, steps, *, phase='V2', seed=0):
     """The first ``steps`` batches of the same three-epoch order (E-0014 step budget).
 
     On rows where the token budget stops at step N, steps=N gives the same batches.
+    ``seed`` > 0 selects another order (SEED_ORDER_RULE); seed 0 is the recorded order.
     """
     if type(steps) is not int or steps <= 0:
         raise ValueError('positive integer step budget required')
-    order, digest = train_order(rows, phase)
+    order, digest = train_order(rows, phase, seed)
     if steps * 8 > len(order):
         raise ValueError('step budget exceeds three epochs')
     batches = [order[offset:offset+8] for offset in range(0, steps*8, 8)]
-    return {'order': order, 'batches': batches, 'steps': steps,
+    plan = {'order': order, 'batches': batches, 'steps': steps,
             'tokens': sum(_cost(rows[i]) for batch in batches for i in batch),
             'warmup_steps': math.ceil(.05*steps), 'order_sha256': digest,
             'step_budget': steps, 'order_hash_encoding': ORDER_HASH_ENCODING}
+    if seed:
+        plan.update(order_seed=seed, order_seed_rule=SEED_ORDER_RULE)
+    return plan
 
 
 def make_curriculum_schedule(segments):

@@ -37,11 +37,11 @@ def write_json(path, value):
 
 
 @contextmanager
-def adapted(base, cfg=None, checkpoint=None):
+def adapted(base, cfg=None, checkpoint=None, seed=0):
     # load_base seeds its own loader; seed after loading to pin the adapter.
-    random.seed(0)
-    torch.manual_seed(0)
-    torch.cuda.manual_seed_all(0)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     model = (BranchModel.load_adapter(base, checkpoint) if checkpoint is not None
              else BranchModel(base, cfg))
     try:
@@ -366,7 +366,7 @@ def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output, 
                          position_ids=(mask.long().cumsum(-1)-1).clamp_min(0), use_cache=False).logits
         last = mask.long().sum(-1)-1
         reference = reference[torch.arange(len(last), device=last.device), last].float()
-    with adapted(base, cfg=cfg) as model:
+    with adapted(base, cfg=cfg, seed=args.seed) as model:
         model.eval()
         with torch.no_grad():
             _, initial_logits, _, _ = train_forward(model, initial_batch)
@@ -474,6 +474,8 @@ def main():
     parser.add_argument('--prior-steps', type=int, default=0)
     parser.add_argument('--prior-lr', type=float, default=0.)
     parser.add_argument('--address-loss-weight', type=float, default=0.)
+    parser.add_argument('--seed', type=int, default=0,
+                        help='adapter initialization and step-budget data order seed (E-0017); 0 is the recorded seed')
     args = parser.parse_args()
     variant_dirs = {}
     for item in args.variant_data:
@@ -504,6 +506,8 @@ def main():
         parser.error('the address loss needs a finite positive weight and --backend soft_slot')
     if not math.isfinite(args.lr) or args.lr <= 0 or args.token_budget <= 0:
         parser.error('finite positive lr and token budget required')
+    if args.seed < 0 or (args.seed and (not args.step_budget or segments or args.prior_rank)):
+        parser.error('--seed >= 1 needs a plain --step-budget run (no curriculum or prior path)')
     if args.microbatch_size < 1 or args.microbatch_size > TRAIN_BATCH_SIZE:
         parser.error('microbatch size must be 1..8')
     if not 0 <= args.smoke_steps <= 64:
@@ -534,7 +538,7 @@ def main():
         elif args.step_budget:
             if args.train_facts != 16:
                 train_rows = variants[args.train_facts]['train'][1]
-            schedule = make_step_schedule(train_rows, args.step_budget)
+            schedule = make_step_schedule(train_rows, args.step_budget, seed=args.seed)
         else:
             schedule = make_schedule(train_rows, args.token_budget)
         if args.prior_rank:
@@ -587,7 +591,7 @@ def main():
         artifacts = [{'path': str(p.resolve()), 'role': p.name} for p in args.output.rglob('*') if p.is_file() and p.name != 'manifest.json']
         write_json(args.output/'manifest.json', {
             'status': 'complete' if passed else 'failed', 'spec_digest': os.environ.get('SR_SPEC_DIGEST'),
-            'model': MODEL, 'revision': REVISION, 'seed': 0, 'batch_size': TRAIN_BATCH_SIZE,
+            'model': MODEL, 'revision': REVISION, 'seed': args.seed, 'batch_size': TRAIN_BATCH_SIZE,
             'data_dir': str(args.data_dir.resolve()),
             'data_sha256': {split: DATA_HASHES[split] for split in ('train', 'dev', 'calibration')
                             if split != 'calibration' or args.eval_splits == 'both'},
