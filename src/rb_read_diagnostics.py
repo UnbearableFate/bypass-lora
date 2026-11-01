@@ -101,8 +101,19 @@ class ReadSummary:
                             total['sums'][name] = total['sums'].get(name, 0.) + float(value[mask].double().sum())
 
     def finish(self):
-        return [{'task': task, 'layer': layer, 'step': step, 'scope': scope,
-                 'count': value['count'], 'empty_reads': value['empty_reads'],
-                 'means': {name: total/value['count'] if value['count'] else None
-                           for name, total in value['sums'].items()}}
-                for (task, layer, step, scope), value in sorted(self.totals.items())]
+        summaries = []
+        for (task, layer, step, scope), value in sorted(self.totals.items()):
+            nonempty_count = value['count'] - value['empty_reads']
+            summaries.append({
+                'task': task, 'layer': layer, 'step': step, 'scope': scope,
+                'count': value['count'], 'empty_reads': value['empty_reads'],
+                # Keep the original means for report compatibility. Empty reads
+                # stay zero here, including for current_weight.
+                'means': {name: total/value['count'] if value['count'] else None
+                          for name, total in value['sums'].items()},
+                'nonempty_means': {
+                    name: total/nonempty_count if nonempty_count else None
+                    for name, total in value['sums'].items()
+                },
+            })
+        return summaries

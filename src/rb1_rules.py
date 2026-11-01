@@ -272,8 +272,11 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
         'probe_budget': 'at most one capacity or feature probe' if rule9 else None,
     }
 
+    pilot = bool(g0 and not gl and gc and c_star)
     if not g0:
         progression = 'stop_at_implementation_and_learnability_check'
+    elif pilot:
+        progression = 'C_S1_S4_pilot_then_draft_RB5_and_review_conclusion'
     elif gr or gc:
         progression = 'draft_RB5_and_review_conclusion'
     elif rule9:
@@ -308,6 +311,11 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
             rb5_matrix.extend(['RB5-03', 'RB5-06', 'RB5-07', 'RB5-09'])
             if gl:
                 rb5_matrix.append('RB5-04')
+    rb5_matrix_status = 'pending_C_S1_S4_pilot' if pilot else 'final'
+    pilot_s4_alternative = ('all nine RB5 groups at fixed S4'
+                            if pilot else None)
+    pilot_s1_alternative = ('retain provisional S1 matrix'
+                            if pilot else None)
     rules = {
         '1_G0_positive_control': {'passed': g0, 'margin': _json_fraction(g0_margin),
                                   'threshold': 'RB1-07 >= Base + 1 pp'},
@@ -334,9 +342,13 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
         '7_RB5_release': {'passed': bool(rb5_released),
                           'gate_condition_met': bool(rb5_gate_condition),
                           'matrix': rb5_matrix,
+                          'matrix_status': rb5_matrix_status,
+                          'if_pilot_C_S4_minus_C_S1_ge_1pp': pilot_s4_alternative,
+                          'if_pilot_C_S4_minus_C_S1_lt_1pp': pilot_s1_alternative,
                           'loop_depth': 1 if not gl else (2 if s_star == 'RB1-03' else 4)},
-        '8_C_S1_S4_pilot': {'gate_condition_met': bool(g0 and not gl and gc_raw),
-                            'triggered': bool(g0 and not gl and gc and c_star),
+        '8_C_S1_S4_pilot': {'raw_gate_condition_met': bool(g0 and not gl and gc_raw),
+                            'gate_condition_met': bool(g0 and not gl and gc and c_star),
+                            'triggered': pilot,
                             'blocked_without_C_star': bool(g0 and not gl and gc_raw and c_star is None),
                             'pilot_result': None, 'condition': 'C*_RB+KernelMatrix C-S4 minus C-S1 >= 1 pp'},
         '9_no_residual_or_concat_signal': rule9_trigger,
@@ -356,7 +368,10 @@ def analyze_counts(counts: Mapping[str, Mapping[str, tuple[int, int]]],
         'raw_gates': {'G0': g0, 'GR': gr, 'GH': gh, 'GL': gl, 'GC': gc_raw},
         'resolved_gates': {'G0': g0, 'GR': gr, 'GL': gl, 'GC': gc},
         'resolved_actions': {'progression': progression, 'RB5_matrix': rb5_matrix,
-                             'C_S1_S4_pilot': bool(g0 and not gl and gc and c_star)},
+                             'RB5_matrix_status': rb5_matrix_status,
+                             'if_pilot_C_S4_minus_C_S1_ge_1pp': pilot_s4_alternative,
+                             'if_pilot_C_S4_minus_C_S1_lt_1pp': pilot_s1_alternative,
+                             'C_S1_S4_pilot': pilot},
         'selection': {'S_F_star': s_star, 'C_star_RB': c_star,
                       'effective_concat_arms': effective_concat,
                       'near_best_effective_concat_arms': near_best},

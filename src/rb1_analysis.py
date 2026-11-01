@@ -13,7 +13,8 @@ import os
 from pathlib import Path
 
 from rb1_artifacts import (finite_tree, read, reference, validate_formal_run,
-                           verified_latency)
+                           verified_latency, ACCEPTED_LR_LOCK_SHA256,
+                           ACCEPTED_TRAINING_SOURCE_COMMIT)
 from rb1_rules import (ARM_IDS, TASKS, analyze_counts, counts_from_rows,
                        paired_interval)
 from v1_analysis import _read_run
@@ -21,6 +22,17 @@ from v5_train import write_json
 
 
 MODES = ('iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute')
+ACCEPTED_BASE_MANIFEST_SHA256 = '076a1a0595de6620508a7e99810a96baf979483d805428465807d40beadde196'
+
+
+def expected_release(spec):
+    expected = spec.get('expected')
+    pins = {'source_commit': ACCEPTED_TRAINING_SOURCE_COMMIT,
+            'lr_lock_sha256': ACCEPTED_LR_LOCK_SHA256,
+            'base_manifest_sha256': ACCEPTED_BASE_MANIFEST_SHA256}
+    if expected != pins:
+        raise ValueError('expected source commit/LR lock/Base manifest must match the pre-result RB1 release pins')
+    return expected
 
 
 def validate_rows(rows, label, paired=None):
@@ -103,6 +115,18 @@ def validate_read_summary(records, arm, mode):
             raise ValueError(f'{arm}/{mode}: invalid normalized read metric range')
         if mode == 'iv_strict' and means['current_weight'] != 0:
             raise ValueError(f'{arm}/{mode}: strict read cannot include current-token weight')
+        conditional = record.get('nonempty_means', {})
+        if set(conditional) != set(means):
+            raise ValueError(f'{arm}/{mode}: missing nonempty read means')
+        count = record['count']-record['empty_reads']
+        if count == 0:
+            if any(value is not None for value in conditional.values()):
+                raise ValueError(f'{arm}/{mode}: all-empty read has undefined nonempty means')
+        else:
+            finite_tree(conditional)
+            if any(not math.isclose(conditional[name], value*record['count']/count, rel_tol=1e-12, abs_tol=1e-12)
+                   for name, value in means.items()):
+                raise ValueError(f'{arm}/{mode}: nonempty read denominator is inconsistent')
     if found != expected:
         raise ValueError(f'{arm}/{mode}: incomplete task/layer/first-last read diagnostic grid')
 
@@ -134,10 +158,24 @@ def measured_cost(paths):
             'conversion': 'node_h = measured MIG instance hours * 0.25; includes supplied attempts only'}
 
 
+def normal_training_agreement(normal, trained, training_hardware='unknown', intervention_hardware='unknown'):
+    if len(normal) != len(trained) or [(r['task'], r['id']) for r in normal] != [(r['task'], r['id']) for r in trained]:
+        raise ValueError('agreement report requires paired normal/training rows')
+    return {'prediction_mismatches': sum(a['prediction'] != b['prediction'] for a, b in zip(normal, trained)),
+            'max_abs_score_difference': max(abs(a-b) for left, right in zip(normal, trained)
+                                             for a, b in zip(left['scores'], right['scores'])),
+            'macro_accuracy_difference': summarize_rows(normal)['macro_accuracy']-summarize_rows(trained)['macro_accuracy'],
+            'training_hardware': training_hardware, 'intervention_hardware': intervention_hardware,
+            'scope': 'descriptive agreement of repeated evaluation; hardware is metadata'}
+
+
 def analyze(spec, stage='final'):
+    expected = expected_release(spec)
     if set(spec.get('training_runs', {})) != set(ARM_IDS):
         raise ValueError('all nine registered training arms are required')
     base_root = Path(spec['base_run'])
+    if reference(base_root/'manifest.json')['sha256'] != expected['base_manifest_sha256']:
+        raise ValueError('Base manifest differs from accepted ATT-0024-1')
     base_rows, base_manifest = _read_run(base_root, 'Base', 'base')
     rows = {'Base': validate_rows(base_rows, 'Base')}
     sources = {'Base': {name: reference(base_root/name) for name in
@@ -148,6 +186,8 @@ def analyze(spec, stage='final'):
         root = Path(spec['training_runs'][arm])
         manifest, refs, _ = validate_formal_run(root, arm)
         metrics = manifest['metrics']
+        if metrics['source.commit'] != expected['source_commit'] or metrics['lr_lock.sha256'] != expected['lr_lock_sha256']:
+            raise ValueError(f'{arm}: source commit or LR lock differs from expected release')
         plan = {k: metrics.get(k) for k in ('plan.steps', 'plan.examples', 'plan.input_tokens',
                 'plan.order_sha256', 'split_manifest.sha256', 'lr_lock.sha256', 'source.commit',
                 'environment.lock_sha256', 'model_revision', 'tokenizer_revision')}
@@ -203,7 +243,7 @@ def analyze(spec, stage='final'):
     counts = {label: counts_from_rows(value) for label, value in rows.items()}
     preliminary = analyze_counts(counts)
     s_star = preliminary['selection']['S_F_star']
-    intervention_tables, read_tables = {}, {}
+    intervention_tables, read_tables, agreement = {}, {}, {}
     if stage == 'final':
         arms = {'RB1-01', 'RB1-02', 'RB1-08', 'RB1-09', s_star}
         if set(spec.get('intervention_runs', {})) != arms:
@@ -221,6 +261,8 @@ def analyze(spec, stage='final'):
             modes = ('iv_swap',) if arm == 'RB1-01' else MODES
             if set(conditions) != {'normal', 'Base_same_allocation', *modes}:
                 raise ValueError(f'{arm}: incomplete intervention condition grid')
+            agreement[arm] = normal_training_agreement(conditions['normal']['predictions'], rows[arm],
+                training[arm]['metrics'].get('hardware', 'unknown'), provenance.get('hardware', 'unknown'))
             for mode, condition in conditions.items():
                 label = f'{arm}/{mode}'
                 condition_rows = validate_rows(condition['predictions'], label, rows['Base'])
@@ -275,9 +317,10 @@ def analyze(spec, stage='final'):
             Path(path).name for path in spec['intervention_runs'].values()} | {Path(spec['latency_run']).name}
         if not required_cost <= {row['attempt'] for row in report['cost']['rows']}:
             raise ValueError('measured usage is missing for a required training/intervention/latency attempt')
-    report.update(contract='E-0021@1', stage=stage, sources=sources, common_training=common,
+    report.update(contract='E-0021@1', stage=stage, expected=expected, sources=sources, common_training=common,
                   performance=performance, learning_curves=curves, training_runtime=runtime,
                   interventions=intervention_tables, read_diagnostics=read_tables,
+                  interventions_normal_vs_training=agreement,
                   decision_authority='Screening facts and pre-registered gates only; coordinator conclusion review precedes any hypothesis status or release.')
     finite_tree(report)
     return report
@@ -295,6 +338,12 @@ def markdown(report):
     for name, rule in report['rules'].items():
         lines.append(f'- {name}: `{json.dumps(rule, ensure_ascii=False, sort_keys=True)}`')
     if report['stage'] == 'final':
+        lines.extend(['', '## Repeated normal evaluation agreement', '',
+                      '| Arm | Prediction mismatches | Max absolute candidate-score difference | Normal minus training macro pp | Training hardware | Intervention hardware |',
+                      '| --- | ---: | ---: | ---: | --- | --- |'])
+        for arm, value in report['interventions_normal_vs_training'].items():
+            lines.append(f'| {arm} | {value["prediction_mismatches"]} | {value["max_abs_score_difference"]:.8g} | {value["macro_accuracy_difference"]*100:.3f} | {value["training_hardware"]} | {value["intervention_hardware"]} |')
+        lines.extend(['', 'Agreement is descriptive; hardware profiles are metadata under D-0018/D-0019.', ''])
         lines.extend(['', '## Frozen side-history interventions', '',
                       '| Arm | Intervention | PIQA difference pp | BoolQ difference pp | Macro difference pp [95% descriptive interval] |',
                       '| --- | --- | ---: | ---: | ---: |'])
@@ -302,6 +351,15 @@ def markdown(report):
             for mode, results in modes.items():
                 macro = results['macro_accuracy']; lo, hi = macro['ci95']
                 lines.append(f'| {arm} | {mode} | {results["piqa_accuracy"]["difference"]*100:.3f} | {results["boolq_accuracy"]["difference"]*100:.3f} | {macro["difference"]*100:.3f} [{lo*100:.3f}, {hi*100:.3f}] |')
+        lines.extend(['', '## Read distributions at answer-predicting positions', '',
+                      'n_eff, entropy and relative n_eff below condition on nonempty reads. Current-token weight retains zero for an empty read. All-valid-input summaries and both denominator conventions are retained in JSON.', '',
+                      '| Condition | Task | Layer | Read step | Empty / queries | Current weight | n_eff (nonempty) | Entropy (nonempty) | Relative n_eff (nonempty) |',
+                      '| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |'])
+        for label, records in report['read_diagnostics'].items():
+            for record in records:
+                if record['scope'] == 'answer_prediction':
+                    conditional = record['nonempty_means']
+                    lines.append(f'| {label} | {record["task"]} | {record["layer"]} | {record["step"]} | {record["empty_reads"]} / {record["count"]} | {record["means"]["current_weight"]} | {conditional["n_eff"]} | {conditional["entropy"]} | {conditional["relative_n_eff"]} |')
         lines.extend(['', 'Differences use each intervention run\'s own normal condition. iv_off and Base are independently checked in the same allocation; T0 swap is a no-op.', '',
                       '## Training and persistent side state', '',
                       '| Arm | Stored / trainable / with gradient | Steps | Input / loss / padded tokens | Train seconds | Peak CUDA GiB | M+c bytes |',

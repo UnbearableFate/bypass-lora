@@ -1,10 +1,12 @@
 """Formal-budget and provenance checks for RB1 producer artifacts."""
 import json
+from pathlib import Path
 
 import pytest
 
-from rb1_artifacts import validate_formal_run, verified_latency
-from test_rb1_latency import _formal_run
+from rb1_artifacts import (ACCEPTED_LR_LOCK_SHA256, validate_formal_run,
+                           verified_latency, verify_lr_lock)
+from test_rb1_latency import _digest, _formal_run
 from v1_run import lr_factor
 
 
@@ -36,13 +38,39 @@ def test_rejects_wrong_parameter_accounting(tmp_path, key, value):
 
 
 def test_rejects_lock_family_split_or_learning_rate_mismatch(tmp_path):
-    run = _formal_run(tmp_path, 'RB1-01')
-    lock = run / 'lock.json'
-    value = json.loads(lock.read_text())
-    value['locked_lrs']['RBc-T'] = .003
+    lock = tmp_path / 'lock-choice.json'
+    source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
+    value = json.loads(source.read_text())
+    value['locked_lrs']['RBc-T'] = .001
     lock.write_text(json.dumps(value))
-    with pytest.raises(ValueError, match='LR lock family/value'):
-        validate_formal_run(run, 'RB1-01')
+    with pytest.raises(ValueError, match='reconstructed calibration choices'):
+        verify_lr_lock(lock, expected_sha256=_digest(lock))
+
+
+def test_rejects_changed_lock_against_accepted_pin(tmp_path):
+    source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
+    lock = tmp_path / 'wrong-lock-hash.json'
+    lock.write_bytes(source.read_bytes() + b' ')
+    with pytest.raises(ValueError, match='accepted T-0024 lock'):
+        verify_lr_lock(lock)
+
+
+def test_rejects_changed_input_reference_hash(tmp_path):
+    source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
+    lock = tmp_path / 'wrong-input-ref.json'
+    value = json.loads(source.read_text())
+    value['inputs'][0]['sha256'] = '0' * 64
+    lock.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match='input hash/size mismatch'):
+        verify_lr_lock(lock, expected_sha256=_digest(lock))
+
+
+def test_accepted_lock_is_reconstructed_from_calibration_manifests():
+    lock = Path(__file__).resolve().parents[1] / 'research/artifacts/T-0024/lr-lock.json'
+    assert _digest(lock) == ACCEPTED_LR_LOCK_SHA256
+    verified = verify_lr_lock(lock)
+    assert verified['locked_lrs'] == {'RBc-T': .003, 'RBc-L': .0003,
+                                     'RBc-R': .003, 'RBc-C': .001}
 
 
 def test_rejects_actual_split_file_change(tmp_path):
@@ -56,10 +84,11 @@ def test_rejects_crossing_two_million_before_final_step(tmp_path):
     run = _formal_run(tmp_path, 'RB1-01')
     steps_path = run / 'steps.jsonl'
     rows = [json.loads(line) for line in steps_path.read_text().splitlines()]
+    learning_rate = json.loads((run / 'config.json').read_text())['lr']
     rows.append({'step': 1955, 'example_mean_nll': 2.4, 'preclip_norm': .4,
-                 'lr': .001 * lr_factor(1954, 1955), 'seconds': 1., 'input_tokens': 1})
+                 'lr': learning_rate * lr_factor(1954, 1955), 'seconds': 1., 'input_tokens': 1})
     for index, row in enumerate(rows, 1):
-        row['lr'] = .001 * lr_factor(index - 1, 1955)
+        row['lr'] = learning_rate * lr_factor(index - 1, 1955)
     steps_path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
     _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(
         **{'plan.steps': 1955, 'train.steps': 1955, 'plan.examples': 3910,
@@ -73,12 +102,13 @@ def test_accepts_natural_three_epoch_stop_below_two_million(tmp_path):
     run = _formal_run(tmp_path, 'RB1-01')
     config_path = run / 'config.json'
     config = json.loads(config_path.read_text())
+    learning_rate = config['lr']
     config['three_epochs'] = False
     config_path.write_text(json.dumps(config))
     rows = []
     for step in range(1, 4):
         rows.append({'step': step, 'example_mean_nll': 2.4, 'preclip_norm': .2,
-                     'lr': .001 * lr_factor(step - 1, 3), 'seconds': 1., 'input_tokens': 100})
+                     'lr': learning_rate * lr_factor(step - 1, 3), 'seconds': 1., 'input_tokens': 100})
     (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
     _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(
         **{'plan.steps': 3, 'train.steps': 3, 'plan.input_tokens': 300,

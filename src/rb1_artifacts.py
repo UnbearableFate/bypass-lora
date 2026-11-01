@@ -12,6 +12,8 @@ from rb_train import FAMILIES, PARAMETERS
 CONTRACT = 'E-0021@1'
 LOCK_CONTRACT = 'E-0020@1'
 TOKEN_BUDGET = 2_000_000
+ACCEPTED_LR_LOCK_SHA256 = '38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d'
+ACCEPTED_TRAINING_SOURCE_COMMIT = '7bf091d4af24c2a9fdc666a5f885c31817b97174'
 
 
 def read(path):
@@ -58,6 +60,43 @@ def _require_finite(value, name, *, positive=False, nonnegative=False):
         raise ValueError(f'{name} must be nonnegative')
 
 
+def verify_lr_lock(path, expected_sha256=ACCEPTED_LR_LOCK_SHA256):
+    """Verify T-0024's accepted lock and reconstruct it from pinned inputs."""
+    from rb_train import lock_lrs
+
+    path = Path(path).resolve()
+    data = read(path)
+    actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise ValueError('LR lock SHA256 differs from the accepted T-0024 lock')
+    inputs = data.get('inputs')
+    if not isinstance(inputs, list) or not inputs:
+        raise ValueError('LR lock has no calibration input references')
+    for index, ref in enumerate(inputs):
+        if not isinstance(ref, dict) or set(ref) != {'path', 'sha256', 'bytes'}:
+            raise ValueError(f'LR lock input reference {index} has an unexpected schema')
+        artifact = Path(ref['path']).resolve()
+        if not artifact.is_file():
+            raise ValueError(f'LR lock input artifact is missing: {artifact}')
+        actual_ref = reference(artifact)
+        if ref['sha256'] != actual_ref['sha256'] or ref['bytes'] != actual_ref['bytes']:
+            raise ValueError(f'LR lock input hash/size mismatch: {artifact}')
+    try:
+        rebuilt = lock_lrs([ref['path'] for ref in inputs])
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError('LR lock cannot be reconstructed from calibration inputs') from exc
+    order_hashes = {read(ref['path']).get('metrics', {}).get('plan.order_sha256') for ref in inputs}
+    if len(order_hashes) != 1 or None in order_hashes:
+        raise ValueError('calibration inputs do not share one plan-order hash')
+    order_hash = next(iter(order_hashes))
+    if data.get('plan_order_sha256') != order_hash:
+        raise ValueError('LR lock plan-order hash differs from calibration inputs')
+    rebuilt['plan_order_sha256'] = order_hash
+    if json.loads(json.dumps(rebuilt)) != data:
+        raise ValueError('LR lock differs from reconstructed calibration choices')
+    return data
+
+
 def validate_formal_run(run_dir, arm):
     """Validate a final RB1 producer run; return manifest, refs, adapter path."""
     if arm not in PARAMETERS:
@@ -97,6 +136,8 @@ def validate_formal_run(run_dir, arm):
     for key, length in (('source.commit', 40), ('plan.order_sha256', 64)):
         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
             raise ValueError(f'{arm}: missing or invalid {key}')
+    if metrics['source.commit'] != ACCEPTED_TRAINING_SOURCE_COMMIT:
+        raise ValueError(f'{arm}: source commit differs from covered RB1 training release')
     expected_params = PARAMETERS[arm]
     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
         if metrics.get(key) != expected_params:
@@ -113,7 +154,7 @@ def validate_formal_run(run_dir, arm):
     lock_path, split_path = Path(lock_value).resolve(), Path(split_value).resolve()
     if not lock_path.is_file() or not split_path.is_file():
         raise ValueError(f'{arm}: LR lock or split manifest file is missing')
-    lock = read(lock_path)
+    lock = verify_lr_lock(lock_path)
     lock_hash = reference(lock_path)['sha256']
     split_hash = reference(split_path)['sha256']
     if lock.get('experiment') != LOCK_CONTRACT or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:

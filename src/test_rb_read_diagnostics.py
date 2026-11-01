@@ -104,6 +104,28 @@ def test_gold_answer_query_scope_excludes_padding_and_uses_preceding_position():
     assert report['answer_prediction']['means']['readable_positions'] == 2
 
 
+def test_read_summary_reports_nonempty_means_without_changing_original_means():
+    valid = torch.tensor([[1, 1, 1]], dtype=torch.bool)
+    labels = torch.full((1, 3), -100)
+    record = {
+        'step': 1,
+        'current_weight': torch.tensor([[0., .5, .25]]),
+        'n_eff': torch.tensor([[0., 1., 3.]]),
+        'entropy': torch.tensor([[0., 0., 1.]]),
+        'relative_n_eff': torch.tensor([[0., 1., 1.5]]),
+        'readable_positions': torch.tensor([[0., 1., 2.]]),
+    }
+    summary = ReadSummary()
+    summary.add('piqa', {6: {'read_metrics': [record]}}, valid, labels)
+    result = summary.finish()[0]
+    assert result['count'] == 3
+    assert result['empty_reads'] == 1
+    assert result['means']['n_eff'] == 4 / 3
+    assert result['nonempty_means']['n_eff'] == 2
+    assert result['means']['current_weight'] == .25
+    assert result['nonempty_means']['current_weight'] == .375
+
+
 @pytest.mark.parametrize('steps,mode,fixed', [(1, 'inclusive', False), (4, 'strict', False), (4, 'inclusive', True)])
 def test_default_prefix_outputs_and_training_gradients_bitwise_match_reviewed_pre_observer_source(steps, mode, fixed):
     path = Path('/work/xg24i002/x10041/bypass-lora/snapshots/6df9e479b229feb3d5edfac588b06264612c7839/src/bypass_core.py')

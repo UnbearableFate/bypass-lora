@@ -122,6 +122,27 @@ def test_raw_gc_without_effective_concat_does_not_release_or_trigger_pilot():
     assert report['screening_directions']['concat'] == 'supports'
 
 
+def test_gc_without_gl_routes_through_pilot_before_provisional_rb5_matrix():
+    counts = _counts(**{
+        'RB1-07': {'piqa': (540, 1000), 'boolq': (500, 1000)},
+        'RB1-02': {'piqa': (500, 1000), 'boolq': (500, 1000)},
+        'RB1-08': {'piqa': (540, 1000), 'boolq': (500, 1000)},
+    })
+    report = _report(counts)
+    assert report['selection']['C_star_RB'] == 'RB1-08'
+    assert report['rules']['6_GC_concat']['resolved_gate_met'] is True
+    assert report['rules']['5_GL_loop']['passed'] is False
+    assert report['rules']['8_C_S1_S4_pilot']['triggered'] is True
+    assert report['progression'] == 'C_S1_S4_pilot_then_draft_RB5_and_review_conclusion'
+    assert report['rules']['7_RB5_release']['matrix'] == [
+        'RB5-01', 'RB5-05', 'RB5-08', 'RB5-03', 'RB5-06', 'RB5-07', 'RB5-09']
+    assert report['rules']['7_RB5_release']['matrix_status'] == 'pending_C_S1_S4_pilot'
+    assert report['rules']['7_RB5_release']['if_pilot_C_S4_minus_C_S1_ge_1pp'] == \
+        'all nine RB5 groups at fixed S4'
+    assert report['resolved_actions']['C_S1_S4_pilot'] is True
+    assert report['resolved_actions']['RB5_matrix_status'] == 'pending_C_S1_S4_pilot'
+
+
 def test_rule10_includes_base_minus_one_but_excludes_base_plus_one():
     counts = _counts(**{
         'RB1-01': {'piqa': (480, 1000), 'boolq': (500, 1000)},

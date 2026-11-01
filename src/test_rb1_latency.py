@@ -22,13 +22,17 @@ def _formal_run(root, arm):
     adapter = run / 'adapter'
     adapter.mkdir(parents=True)
     split = run / 'split.json'
-    split.write_text('{"split":"fixture"}')
+    repo = Path(__file__).resolve().parents[1]
+    accepted_lock_path = repo / 'research/artifacts/T-0024/lr-lock.json'
+    accepted_split_path = repo / 'research/artifacts/T-0022/rb-confirmation.json'
+    split.write_bytes(accepted_split_path.read_bytes())
     lock = run / 'lock.json'
+    lock.write_bytes(accepted_lock_path.read_bytes())
+    accepted_lock = json.loads(lock.read_text())
+    learning_rate = accepted_lock['locked_lrs'][FAMILIES[arm]]
     split_hash = _digest(split)
-    lock.write_text(json.dumps({'experiment': 'E-0020@1',
-        'locked_lrs': {FAMILIES[arm]: .001}, 'split_manifest_sha256': split_hash}))
     training_config = {'arm': arm, 'phase': 'R1', 'seed': 0, 'stage': 'train',
-                       'lr': .001, 'lr_lock': str(lock), 'split_manifest': str(split),
+                       'lr': learning_rate, 'lr_lock': str(lock), 'split_manifest': str(split),
                        'eval_limit': None, 'smoke_steps': None, 'three_epochs': False}
     (run / 'config.json').write_text(json.dumps(training_config))
     model_config = (LoRAConfig(layers=(6, 13, 20, 27), rank=7, alpha=7)
@@ -41,7 +45,7 @@ def _formal_run(root, arm):
         checkpoint[name] = {'path': str(path), 'sha256': _digest(path), 'bytes': path.stat().st_size}
     (run / 'checkpoint.json').write_text(json.dumps(checkpoint))
     steps = [{'step': index, 'example_mean_nll': 2.4, 'preclip_norm': .4,
-              'lr': .001 * lr_factor(index - 1, 1954), 'seconds': 1.,
+              'lr': learning_rate * lr_factor(index - 1, 1954), 'seconds': 1.,
               'input_tokens': 1024 if index < 1954 else 128}
              for index in range(1, 1955)]
     (run / 'steps.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in steps))
@@ -49,12 +53,13 @@ def _formal_run(root, arm):
     metrics = {'failed': False, 'reload.identical': True, 'params.stored': params,
         'model_revision': REVISION, 'tokenizer_revision': REVISION,
         'environment.lock_sha256': _digest(Path(__file__).resolve().parents[1]/'uv.lock'),
-        'source.commit': 'c'*40, 'plan.order_sha256': 'a'*64,
+        'source.commit': '7bf091d4af24c2a9fdc666a5f885c31817b97174',
         'params.trainable': params, 'params.with_grad': params,
-        'learning_rate': .001, 'lr_lock.sha256': _digest(lock),
+        'learning_rate': learning_rate, 'lr_lock.sha256': _digest(lock),
         'split_manifest.sha256': split_hash, 'plan.steps': 1954, 'train.steps': 1954,
         'plan.input_tokens': 2_000_000, 'train.input_tokens': 2_000_000,
-        'plan.examples': 3908, 'train.examples': 3908, 'train.last_epoch': 0}
+        'plan.examples': 3908, 'train.examples': 3908, 'train.last_epoch': 0,
+        'plan.order_sha256': accepted_lock['plan_order_sha256']}
     (run / 'manifest.json').write_text(json.dumps({
         'status': 'complete', 'contract': latency.CONTRACT, 'arm': arm, 'family': FAMILIES[arm],
         'phase': 'R1', 'seed': 0, 'stage': 'train',

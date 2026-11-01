@@ -1,0 +1,160 @@
+{
+  "experiment": "E-0021@1",
+  "task": "T-0025",
+  "release_notice": "MSG-0650",
+  "review": "RV-0064",
+  "expected": {
+    "source_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+    "lr_lock_sha256": "38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d",
+    "base_manifest_sha256": "076a1a0595de6620508a7e99810a96baf979483d805428465807d40beadde196"
+  },
+  "base_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1",
+  "training_runs": {
+    "RB1-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0239-1",
+    "RB1-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1",
+    "RB1-03": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0241-1",
+    "RB1-04": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0242-1",
+    "RB1-05": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0243-1",
+    "RB1-06": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0244-1",
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1",
+    "RB1-08": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0246-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1"
+  },
+  "learning_rate_lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/snapshots/7bf091d4af24c2a9fdc666a5f885c31817b97174/research/artifacts/T-0024/lr-lock.json",
+    "sha256": "38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d",
+    "bytes": 3646
+  },
+  "notification": {
+    "id": "N-20261102-050319-431d",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-050319-431d --notifier miyabi-g2"
+  },
+  "runs": [
+    {
+      "arm": "RB1-01",
+      "attempt": "ATT-0239-1",
+      "run": "RUN-0239",
+      "job_id": "3769194.opbs",
+      "spec_digest": "blake2b:3aa10a3093aae2cbaddec86b5b9b06f9fae55c52be116dbcec3cc539b32ec178",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0239-1",
+      "requested_walltime": "01:40:00",
+      "expected_seconds": 3746,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-01-20261102-050308-861139.log"
+    },
+    {
+      "arm": "RB1-02",
+      "attempt": "ATT-0240-1",
+      "run": "RUN-0240",
+      "job_id": "3769198.opbs",
+      "spec_digest": "blake2b:41801f12d71496e13b04dc256a516ba784295cfdb742cdb973847934209a5c04",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1",
+      "requested_walltime": "01:40:00",
+      "expected_seconds": 3748,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-02-20261102-050321-fad79d.log"
+    },
+    {
+      "arm": "RB1-03",
+      "attempt": "ATT-0241-1",
+      "run": "RUN-0241",
+      "job_id": "3769199.opbs",
+      "spec_digest": "blake2b:85353a1f27e07d53bd43afa39ba2c1a5277c3ddfc7d6c1396fc767e90db12403",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0241-1",
+      "requested_walltime": "01:40:00",
+      "expected_seconds": 3914,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-03-20261102-050325-3aead7.log"
+    },
+    {
+      "arm": "RB1-04",
+      "attempt": "ATT-0242-1",
+      "run": "RUN-0242",
+      "job_id": "3769201.opbs",
+      "spec_digest": "blake2b:87092752a7b1b856cc780511ecec44e2420518f9420bbb53aa455d4456f60d1e",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0242-1",
+      "requested_walltime": "01:50:00",
+      "expected_seconds": 4202,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-04-20261102-050340-7b0ad8.log"
+    },
+    {
+      "arm": "RB1-05",
+      "attempt": "ATT-0243-1",
+      "run": "RUN-0243",
+      "job_id": "3769203.opbs",
+      "spec_digest": "blake2b:6bede8cfa6d2066df81409b2a5aed4e8b60585bb58e44ab38a4721c25b51d870",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0243-1",
+      "requested_walltime": "01:50:00",
+      "expected_seconds": 4065,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-05-20261102-050343-ad9a32.log"
+    },
+    {
+      "arm": "RB1-06",
+      "attempt": "ATT-0244-1",
+      "run": "RUN-0244",
+      "job_id": "3769205.opbs",
+      "spec_digest": "blake2b:5a20ca112e1adc900df66bfc3c7ccc3e15b8475de95af31012f7edb4852d9b12",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0244-1",
+      "requested_walltime": "01:50:00",
+      "expected_seconds": 4233,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-06-20261102-050346-8a253a.log"
+    },
+    {
+      "arm": "RB1-07",
+      "attempt": "ATT-0245-1",
+      "run": "RUN-0245",
+      "job_id": "3769206.opbs",
+      "spec_digest": "blake2b:30575e13ed7fa1fd344f1303681d47cf9303ba33f9ab687ea39e36955eb1d692",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.0003,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1",
+      "requested_walltime": "01:40:00",
+      "expected_seconds": 3723,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-07-20261102-050353-6c32a7.log"
+    },
+    {
+      "arm": "RB1-08",
+      "attempt": "ATT-0246-1",
+      "run": "RUN-0246",
+      "job_id": "3769208.opbs",
+      "spec_digest": "blake2b:18bf2c39a8be5b563be74fb3ec7150884a06c05674cf69de39aa6d4fcca769c7",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.001,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0246-1",
+      "requested_walltime": "01:40:00",
+      "expected_seconds": 3796,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-08-20261102-050357-870a12.log"
+    },
+    {
+      "arm": "RB1-09",
+      "attempt": "ATT-0247-1",
+      "run": "RUN-0247",
+      "job_id": "3769209.opbs",
+      "spec_digest": "blake2b:78298c1877d6990479e37502b8823c757d2e22519192ecf73ca7c0de3e7acde2",
+      "code_commit": "7bf091d4af24c2a9fdc666a5f885c31817b97174",
+      "learning_rate": 0.001,
+      "code_review": "covered",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1",
+      "requested_walltime": "01:40:00",
+      "expected_seconds": 3771,
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/rb1-09-20261102-050400-f97f27.log"
+    }
+  ]
+}
