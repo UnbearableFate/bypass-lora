@@ -1,0 +1,108 @@
+diff --git a/src/test_v2r.py b/src/test_v2r.py
+index 0e9450b..2495a48 100644
+--- a/src/test_v2r.py
++++ b/src/test_v2r.py
+@@ -1,6 +1,7 @@
+ """E-0014 option regressions (centered cosine read, prior path, address loss, step and
+ curriculum schedules, parameter freezing). Execute in the registered GPU allocation."""
+ from dataclasses import asdict
++from fractions import Fraction
+ import json
+ import math
+ from pathlib import Path
+@@ -351,3 +352,35 @@ def test_pinned_variants_load_and_step_schedule_reproduces_v2_token_schedule():
+     token_plan, step_plan = make_schedule(v2, 4_000_000), make_step_schedule(v2, 6000)
+     assert step_plan['batches'] == token_plan['batches'] and step_plan['tokens'] == token_plan['tokens'] == 4000470
+     assert step_plan['warmup_steps'] == 300 and step_plan['order_sha256'] == token_plan['order_sha256']
++
++
++# ---- RV-0040 regressions -----------------------------------------------------------------
++
++def test_r1_gate_is_em_margin_only_while_h3_and_r2_keep_nll():
++    from v2r_analysis import gate
++
++    def controls(correct, nll):
++        return {m: {'count': 1000, 'correct_count': c, 'em': c/1000, 'nll': x}
++                for m, c, x in zip(('normal', 'zero', 'shuffled'), correct, nll)}
++
++    # Normal NLL is worse than zero: R1 still passes on a >= 50 pp EM margin.
++    worse_nll = controls((600, 100, 50), (3., 2., 4.))
++    r1 = gate(worse_nll, None, margin=Fraction(1, 2), weight=None, require_nll=False)
++    assert r1['passed'] and not r1['nll_pass'] and r1['em_margin_fraction'] == '1/2'
++    assert not gate(controls((599, 100, 50), (1., 2., 4.)), None, margin=Fraction(1, 2), weight=None,
++                    require_nll=False)['passed']
++    assert not gate(worse_nll, .9, margin=Fraction(1, 10), weight=.125)['passed']
++    assert not gate(worse_nll, .9, margin=Fraction(1, 10), weight=.5)['passed']
++    assert gate(controls((600, 100, 50), (1., 2., 4.)), .5, margin=Fraction(1, 10), weight=.5)['passed']
++    assert not gate(controls((600, 100, 50), (1., 2., 4.)), .49, margin=Fraction(1, 10), weight=.5)['passed']
++
++
++def test_stage_transition_clears_frozen_prior_gradients():
++    from v2_train import clear_stale_gradients
++    side = torch.nn.ModuleDict({'memory': torch.nn.Linear(2, 2), 'prior': torch.nn.Linear(2, 2)})
++    for parameter in side.parameters():
++        parameter.grad = torch.ones_like(parameter)
++    for name, parameter in side.named_parameters():
++        parameter.requires_grad_(not name.startswith('prior'))
++    clear_stale_gradients(side)
++    assert all((p.grad is None) == name.startswith('prior') for name, p in side.named_parameters())
+diff --git a/src/v2_train.py b/src/v2_train.py
+index ba9849d..1348af2 100644
+--- a/src/v2_train.py
++++ b/src/v2_train.py
+@@ -323,6 +323,14 @@ def train(model, rows, schedule, pad_id, lr, microbatch_size, output, dev, prior
+             **({'monitors': monitor_results} if monitors else {})}
+ 
+ 
++def clear_stale_gradients(module):
++    """Drop gradients of frozen parameters (R4 stage-1 prior grads) so later
++    nonzero-gradient statistics count only parameters trained in that stage."""
++    for parameter in module.parameters():
++        if not parameter.requires_grad:
++            parameter.grad = None
++
++
+ def _side_tensors(model, prior_path):
+     """Copies of the prior-path (True) or memory-path (False) side parameters."""
+     return {name: p.detach().clone() for name, p in model.adapters()[14].side.named_parameters()
+@@ -381,6 +389,7 @@ def run_arm(base, train_rows, dev, calibration, schedule, pad_id, args, output,
+             result['prior_stage']['seconds'] = time.monotonic()-stage_start
+             for name, parameter in side.named_parameters():
+                 parameter.requires_grad_(not name.startswith('prior.'))
++            clear_stale_gradients(side)
+             prior_frozen = _side_tensors(model, True)
+         result['train'] = train(model, train_rows, schedule, pad_id, args.lr, args.microbatch_size, output, dev, prior,
+                                 forward_options=forward_options, monitors=monitors)
+diff --git a/src/v2r_analysis.py b/src/v2r_analysis.py
+index 768036c..594efd3 100644
+--- a/src/v2r_analysis.py
++++ b/src/v2r_analysis.py
+@@ -31,7 +31,8 @@ EXPECTED = {'R1': {'train_facts': 1, 'extra_dev': [1]}, 'R2': {'train_facts': 4,
+             'R6': {}}
+ 
+ 
+-def gate(controls, target_weight, *, margin, weight):
++def gate(controls, target_weight, *, margin, weight, require_nll=True):
++    """E-0014 gates. R1 (E=1) is EM margin only: require_nll=False, weight=None."""
+     normal, zero, shuffled = (controls[m] for m in ('normal', 'zero', 'shuffled'))
+     n = normal['count']
+     require(zero['count'] == n == shuffled['count'], 'gate needs equal counts')
+@@ -43,7 +44,8 @@ def gate(controls, target_weight, *, margin, weight):
+             'em': {m: controls[m]['em'] for m in controls}, 'nll': {m: controls[m]['nll'] for m in controls},
+             'em_margin': float(diff), 'em_margin_fraction': str(diff), 'em_pass': em_pass, 'nll_pass': nll_pass,
+             'target_weight': target_weight, 'weight_pass': weight_pass,
+-            'passed': em_pass and nll_pass and weight_pass is not False}
++            'nll_required': require_nll,
++            'passed': em_pass and (nll_pass or not require_nll) and weight_pass is not False}
+ 
+ 
+ def bootstrap(records, controls):
+@@ -133,7 +135,7 @@ def load_arm(label, run_dir, arm_dir_name, *, reference=False):
+         v_summary, v_records, v_points = load_split(arm/label_e, VARIANT_CONTROLS, provenance, f'{label} {label_e}')
+         weight = v_summary['normal']['diagnostics']['address.target_weight']
+         result['variants'][label_e] = {
+-            'gate_R1': gate(v_points, weight, margin=Fraction(1, 2), weight=None) if facts == 1 else None,
++            'gate_R1': gate(v_points, weight, margin=Fraction(1, 2), weight=None, require_nll=False) if facts == 1 else None,
+             'gate_R2': gate(v_points, weight, margin=Fraction(1, 10), weight=.5) if facts == 4 else None,
+             'controls': {m: {'em': v_points[m]['em'], 'nll': v_points[m]['nll'], 'correct': v_points[m]['correct_count']}
+                          for m in VARIANT_CONTROLS},
