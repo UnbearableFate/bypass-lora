@@ -15,7 +15,7 @@ from v1_data import derive_seed
 from v2_data import (MODEL, REVISION, RELATIONS, canonical, digest, encode,
                      file_digest, visible_delimiters)
 
-VERSION = 'concat-loop-v3-t2-1'
+VERSION = 'concat-loop-v3-t2-2'
 NAME_POOLS_SHA256 = 'a6bde954098e6bee7452abba1eabc56e7d0bf811b4ab220a5106c95c216ef57b'
 RELEASED = ('train', 'calibration', 'dev')
 SEALED = ('confirmation', 'ood_h4', 'ood_h6', 'ood_h8', 'ood_unseen')
@@ -112,7 +112,7 @@ def _structure(ident, pools):
     r_facts = [{'head': a, 'relation': relation, 'tail': b}
                for chain in chains for a, b in zip(chain, chain[1:])]
     noise_rng = random.Random(derive_seed(base, VERSION, 'distractors', index, hop))
-    terminal_noise = index % 2 == 0
+    terminal_noise = (index // 2) % 2 == 0
     other_heads = [name for i, chain in enumerate(chains) if i != chosen for name in chain]
     heads = ([path[-1]] if terminal_noise else []) + noise_rng.sample(other_heads, 3 if terminal_noise else 4)
     distractors = []
@@ -234,7 +234,7 @@ def shortcut_report(rows, constant):
               [('prior', .05), ('random_r_endpoint', .30), ('ignore_relation', .55)]}
     return {'groups': groups, 'gates': checks, 'gates_passed': all(checks.values()),
             'ignore_relation_rule': 'last-presented outgoing edge; stop at no edge; cycles fail',
-            'order_terminal_coupling': 'contract alternates both by index: natural has terminal distractor; shuffled does not'}
+            'joint_rotation': 'hop=i%3+1; natural iff i%2==0; terminal distractor iff (i//2)%2==0; period 12'}
 
 
 def _v2_inventory(directory):
@@ -275,6 +275,7 @@ def generate_dataset(tok, output, *, v2_data_dir, phase='V3', sizes=None, minimu
                 'question_template': QUESTION_TEMPLATE, 'write_scope': 'visible_fact_delimiter',
                 'read_scope': 'all_valid_question', 'name_pools_sha256': file_digest(output / 'name_pools.json'),
                 'frequency_definition': pools['frequency_definition'], 'sizes': sizes, 'splits': {},
+                'joint_rotation': 'hop=i%3+1; natural iff i%2==0; terminal distractor iff (i//2)%2==0; period 12',
                 'composition_sampling': 'uniform ordered compositions of 12; maximum 4 and at least two lengths >=3',
                 'ood_composition_sampling': 'uniform ordered compositions of 12; maximum 8 and maximum >= requested hop',
                 'v2_overlap': {'actual_hashes': 0, 'normalized_facts_query': 0, 'source_counts': v2_counts,

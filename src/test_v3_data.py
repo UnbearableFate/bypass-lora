@@ -54,7 +54,7 @@ def check_graph(ident, graph):
     query_chain = next(c for c in graph['chains'] if path[0] in c)
     noise = [f for f in facts if f['relation'] != relation]
     endpoint_noise = [f for f in noise if f['head'] == path[-1]]
-    assert len(endpoint_noise) == int(ident['index'] % 2 == 0)
+    assert len(endpoint_noise) == int((ident['index'] // 2) % 2 == 0)
     assert all(f['head'] not in query_chain for f in noise if f not in endpoint_noise)
     if endpoint_noise:
         assert endpoint_noise[0]['tail'] not in {x for c in graph['chains'] for x in c}
@@ -87,13 +87,35 @@ def test_hop_does_not_choose_graph_or_composition(pools):
         assert len({g['relation'] for g in graphs}) == 1
 
 
-def test_rotation_joint_balance_and_terminal_alternation():
-    identities = [identity('train', i) for i in range(1000)]
-    counts = Counter((x['layout']['hop'], x['layout']['support_order']) for x in identities)
-    assert len(counts) == 6 and max(counts.values()) - min(counts.values()) <= 1
-    for index, ident in enumerate(identities):
-        assert ident['layout']['hop'] == 1 + index % 3
-        assert ident['layout']['support_order'] == ('natural' if index % 2 == 0 else 'shuffled')
+def test_rotation_joint_balance_and_terminal_alternation(pools):
+    expected_cells = {(hop, order, terminal) for hop in (1, 2, 3)
+                      for order in ('natural', 'shuffled') for terminal in (False, True)}
+    for split in ('train', 'calibration', 'dev', 'confirmation'):
+        cells = []
+        for index in range(60):
+            ident = identity(split, index)
+            graph = _structure(ident, pools)
+            # Inspect actual graph edges, not just the stored axis or formula.
+            terminal = any(f['head'] == graph['path'][-1] and f['relation'] != graph['relation']
+                           for f in graph['facts'])
+            assert graph['terminal_distractor'] == terminal == ((index // 2) % 2 == 0)
+            assert ident['layout']['hop'] == 1 + index % 3
+            assert ident['layout']['support_order'] == ('natural' if index % 2 == 0 else 'shuffled')
+            cells.append((ident['layout']['hop'], ident['layout']['support_order'], terminal))
+        for start in range(0, len(cells), 12):
+            assert Counter(cells[start:start + 12]) == Counter(dict.fromkeys(expected_cells, 1))
+
+
+def test_nonmultiple_rotation_has_only_one_example_cell_imbalance(pools):
+    cells = Counter()
+    for index in range(1000):
+        ident = identity('dev', index)
+        graph = _structure(ident, pools)
+        terminal = any(f['head'] == graph['path'][-1] and f['relation'] != graph['relation']
+                       for f in graph['facts'])
+        cells[(ident['layout']['hop'], ident['layout']['support_order'], terminal)] += 1
+    assert len(cells) == 12
+    assert Counter(cells.values()) == {83: 8, 84: 4}
 
 
 def test_support_order_does_not_change_graph_query_or_semantics(tok, pools):
@@ -159,14 +181,17 @@ def test_shortcuts_independently_known_cases(tok, pools):
         scores = shortcut_scores(row, constant)
         assert scores['prior'] == 1
         assert scores['first_bridge'] == int(row['axes']['hop'] == 1)
-        assert scores['ignore_relation'] == int(i % 2 == 1)
+        assert scores['ignore_relation'] == int((i // 2) % 2 == 1)
         assert scores['random_r_endpoint'] == 1 / row['axes']['n_r_chains']
     report = shortcut_report(rows, -1)
     for hop in (1, 2, 3):
         assert report['groups'][f'hop={hop}']['ignore_relation'] == .5
         assert report['groups'][f'hop={hop}']['prior'] == 0
-    assert report['groups']['order=natural']['ignore_relation'] == 0
-    assert report['groups']['order=shuffled']['ignore_relation'] == 1
+    for hop in (1, 2, 3):
+        for order in ('natural', 'shuffled'):
+            assert report['groups'][f'hop={hop},order={order}']['ignore_relation'] == .5
+    assert report['groups']['order=natural']['ignore_relation'] == .5
+    assert report['groups']['order=shuffled']['ignore_relation'] == .5
     assert report['gates_passed']
     # Three chains, one strictly longest. Presentation-last endpoint differs
     # from the longest, and the direct bridge differs from the true endpoint.

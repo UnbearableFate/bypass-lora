@@ -1,6 +1,7 @@
 # T-0010 T2 implementation choices and validation
 
-E-0011 is the controlling contract. Implementation adds `v3_data.py`,
+E-0011@2 is the controlling contract. Generator `concat-loop-v3-t2-2`
+implements its revised rotation. Implementation adds `v3_data.py`,
 `v3_prepare.py`, `test_v3_data.py`, and `v3_eval.py`, without changing V2's
 generator, dependencies, or M-line code.
 
@@ -24,12 +25,14 @@ weighted pool and may overlap chain vertices. The untyped baseline ignores
 all relation labels, follows the last-presented outgoing edge, and counts
 cycles as failures. The queried trajectory has no outgoing-edge ambiguity.
 
-The contract explicitly alternates **both** support order and terminal noise
-by index. Therefore natural order always has terminal noise and shuffled order
-never does. Untyped traversal consequently scores 0%/100% within those order
-strata and about 50% within each hop. This prescribed coupling is reported in
-the shortcut metadata; it was not changed to improve a gate. Per-order model
-results must be read with this design limitation.
+The revised rotation uses hop = `i % 3 + 1`, natural support order iff
+`i % 2 == 0`, and a terminal distractor iff `(i // 2) % 2 == 0`. Every twelve
+consecutive indices contain all twelve hop × order × terminal-distractor
+combinations once. Thus terminal distractors and support order are balanced
+within each hop, including within every 60-row smoke slice. The 1,000-row dev
+has four cells of 84 rows and eight of 83, the expected one-row imbalance.
+Tests inspect actual terminal edges across train/calibration/dev/confirmation,
+rather than trusting just the axis field. Metadata records the revised rule.
 
 ## Identity, sealing, and independence
 
@@ -71,7 +74,7 @@ and rejects failed shortcut gates before loading any model. The Base command
 itself evaluates dev only and reports full-vocabulary EM/NLL and subject copy,
 including hop × support-order strata. No sealed model evaluation is exposed.
 
-## Initial PBS smoke
+## Initial PBS smoke (superseded rotation, E-0011@1)
 
 Source `5f45c9770fd65911e8efb9c85c57d85244a38fcc`, ATT-0073-1,
 PBS 3761734.opbs, compute host mg1098 (GH200 MIG): all nine tests passed in
@@ -82,3 +85,13 @@ entrypoint elapsed time excluding imports was 4.3610 s. Scheduler measured
 15 s, or approximately 0.001042 node·h. These smoke data are not the final
 V3 dataset. The Base evaluator was added after this snapshot and has not yet
 run; full generation and all model evaluation await code review.
+
+The initial generator `concat-loop-v3-t2-1` followed E-0011@1, coupling support
+order and terminal distractors by index parity. Untyped EM was therefore 0%
+for natural order and 100% for shuffled order, even though the pooled 50%
+passed the old gates. This was reported before full generation or any model
+evaluation. Coordinator MSG-0201 revised the contract to @2; RV-0020 recorded
+the mismatch with the revised contract as its only high finding. The old
+smoke remains evidence for @1 only (ATT-0073-1 / RES-0071 / EV-0059), and its
+immutable files and recorded facts are unchanged. The version bump makes the
+new deterministic content and identities distinct from that smoke.
