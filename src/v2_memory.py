@@ -17,7 +17,7 @@ CONTROLS = ('normal', 'zero', 'shuffled', 'permuted', 'oracle_key', 'oracle_valu
 
 
 def config(tap='direct_hidden', backend='kernel_matrix', fusion='F_out'):
-    if tap not in ('direct_hidden', 'qknorm_pre_rope') or backend not in ('kernel_matrix', 'soft_slot') or fusion not in ('F_out', 'C_dual'):
+    if tap not in ('direct_hidden', 'qknorm_pre_rope') or backend not in ('kernel_matrix', 'soft_slot') or fusion not in ('F_out', 'C_up', 'C_dual'):
         raise ValueError('not a V2 arm')
     return AdapterConfig(layers=(14,), rank=128, branch='memory', tap=tap,
                          backend=backend, fusion=fusion, steps=1, slot_capacity=16)
@@ -233,7 +233,7 @@ def read_metrics(raw, weights, scores, denominator, target_value, target, valid_
 
 
 @torch.no_grad()
-def evaluate_batch(model, batch, mode='normal'):
+def evaluate_batch(model, batch, mode='normal', donor_batch=None):
     if model.training:
         raise ValueError('diagnostics/oracles require model.eval()')
     if mode not in CONTROLS:
@@ -242,7 +242,15 @@ def evaluate_batch(model, batch, mode='normal'):
         raise ValueError('offline diagnostics require the V2 single-layer single-read protocol')
     original, _ = build_support(model, batch, observe=True)
     selected_original = original.select(batch.owners)
-    snapshot = control_snapshot(original, mode).select(batch.owners)
+    if donor_batch is not None:
+        if mode != 'shuffled' or len(donor_batch.rows) != len(batch.rows):
+            raise ValueError('explicit donors require shuffled mode and one donor per query')
+        if any(a['episode_id'] == b['episode_id'] for a, b in zip(batch.rows, donor_batch.rows)):
+            raise ValueError('shuffled donor must differ from recipient')
+        donor, _ = build_support(model, donor_batch, observe=True)
+        snapshot = donor.select(donor_batch.owners)
+    else:
+        snapshot = control_snapshot(original, mode).select(batch.owners)
     target = torch.tensor([r['query']['target_fact_index'] for r in batch.rows], device=batch.labels.device)
     row = torch.arange(len(target), device=target.device)
     if ((target < 0) | (target >= selected_original.valid.sum(-1))).any():

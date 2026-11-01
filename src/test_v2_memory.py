@@ -85,7 +85,7 @@ def test_boundary_and_owner_validation(rows):
 
 @pytest.mark.parametrize('tap', ['direct_hidden', 'qknorm_pre_rope'])
 @pytest.mark.parametrize('backend', ['kernel_matrix', 'soft_slot'])
-@pytest.mark.parametrize('fusion', ['F_out', 'C_dual'])
+@pytest.mark.parametrize('fusion', ['F_out', 'C_up', 'C_dual'])
 def test_m_line_protocol(base, rows, tap, backend, fusion):
     episodes, pad_id = rows
     batch = collate(episodes, pad_id)
