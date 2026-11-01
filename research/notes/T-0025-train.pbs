@@ -1,0 +1,54 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${RB1_ARM:?registered arm required}"
+: "${RB1_LR:?locked family learning rate required}"
+RB1_PROJECT=/work/xg24i002/x10041/bypass-lora
+RB1_SOURCE="$RB1_PROJECT/snapshots/$SR_CODE_COMMIT"
+RB1_OUT="$RB1_PROJECT/runs/$SR_ATTEMPT_ID"
+RB1_PY="$RB1_PROJECT/envs/3c916b51337d-cuda/bin/python"
+RB1_LOCK="$RB1_SOURCE/research/artifacts/T-0024/lr-lock.json"
+RB1_SPLIT="$RB1_SOURCE/research/artifacts/T-0022/rb-confirmation.json"
+mkdir -p "$RB1_OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$RB1_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$RB1_OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$RB1_OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$RB1_SOURCE/src"
+export TMPDIR="/local/${PBS_JOBID}/rb1-train"
+mkdir -p "$TMPDIR"
+# D-0018/D-0019: profile metadata only for ordinary training/evaluation.
+nvidia-smi -L > "$RB1_OUT/nvidia-smi.txt" 2>&1 || true
+cd "$RB1_SOURCE"
+# Accepted T-0024 lock and its upstream manifests are checked before training.
+"$RB1_PY" - "$RB1_LOCK" "$RB1_SPLIT" "$RB1_ARM" "$RB1_LR" "$RB1_OUT" <<'PY'
+import hashlib,json,os,sys
+from pathlib import Path
+lock_path,split_path,arm,rate,out=sys.argv[1:]
+def ref(path):
+    path=Path(path).resolve();data=path.read_bytes()
+    return dict(path=str(path),sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
+lock_ref=ref(lock_path)
+assert lock_ref['sha256']=='38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d'
+lock=json.loads(Path(lock_path).read_text())
+assert len(lock['inputs'])==16
+assert all(ref(item['path'])==item for item in lock['inputs'])
+split_ref=ref(split_path)
+assert split_ref['sha256']==lock['split_manifest_sha256']=='34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc'
+families={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T','RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C'}
+assert arm in families and float(rate)==lock['locked_lrs'][families[arm]]
+source=os.environ['SR_CODE_COMMIT'];assert len(source)==40 and all(c in '0123456789abcdef' for c in source)
+Path(out,'release-preflight.json').write_text(json.dumps(dict(passed=True,contract='E-0021@1',arm=arm,
+    learning_rate=float(rate),source_commit=source,lr_lock=lock_ref,split_manifest=split_ref,
+    calibration_inputs=lock['inputs'],release_notice='MSG-0650',code_review='RV-0064'),indent=2)+'\n')
+PY
+exec "$RB1_PY" src/rb_train.py run --stage train --phase R1 --seed 0 \
+  --arm "$RB1_ARM" --lr "$RB1_LR" --lr-lock "$RB1_LOCK" \
+  --split-manifest "$RB1_SPLIT" --data-dir "$RB1_PROJECT/data/v1" --output "$RB1_OUT"
