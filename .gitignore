@@ -22,3 +22,5 @@ wheels/
 .smooth-research/
 *.tar
 *.tar.gz
+
+/data/
