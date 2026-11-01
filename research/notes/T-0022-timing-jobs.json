@@ -65,7 +65,9 @@
     "D-0026",
     "D-0027"
   ],
-  "code_review_requested": false,
+  "code_review_requested": true,
+  "review_ticket": "RV-0060",
+  "review_snapshot": "a5d04f8",
   "formal_training_started": false,
   "confirmation_evaluated": false
 }

@@ -1,4 +1,39 @@
-# T-0022 current continuation:397checks/startup passed; full cost timing running
+# T-0022 current continuation: timing imported; awaiting RV-0060 code review
+
+This section supersedes every historical section below. No PBS job is pending.
+T-0022 is active, not delivered. The exact review scope is frozen at a5d04f8;
+do not modify any RV-0060 code/config/dependency/evidence files until its answer.
+Only this wait note and T-0022-timing-jobs.json are outside that frozen scope.
+
+ATT-0189-1/PBS3768185/RES-0185 and ATT-0191-1/PBS3768226/RES-0186 are complete,
+validated and imported once, including exact868s and430s usage. Both timing
+guards verified2g. ATT-0193-1/PBS3768635/RES-0188 combined and verified all21
+100stable-step cases and seven512/128latency cases in PBS;one-second usage and
+complete application result were imported once. All seven task attempts sum to
+1756MIGseconds=0.1219444444node_h. No pending usage is assumed zero.
+
+All required checks passed in ATT-0188-1/RES-0183 (397tests,zero skips/failures).
+D0026/D0027 retain BF16token0.8203125 and expansion0.857421875 as diagnostic
+exceedances of unchanged0.50002,identical in reference;required FP32 and same-
+shape gates pass. See T-0022-review-package.md for the complete check/error table.
+Slowest prefix side-layout0.2438990201s;RB1 core forecast2.443961088node_h.
+No threshold trigger within measured scope;future interventions/analysis/planning
+costs must still be added before RB1 release. Tables and conditional RB5 limits
+are in T-0022-cost-tables.md and research/artifacts/T-0022/cost-summary.json.
+
+Required independent review RV-0060 was requested (MSG-0588),target E-0019,
+including core/model,allRB code/tests,V1/V5 dependencies,A2/tolerances,checks and
+cost package. Coordinator assigns the reviewer. Do not poll inbox or sleep.
+On answer:read research/reviews/RV-0060.md;fix concrete findings,test in PBS and
+request the one focused recheck as required. On passing review,add one diagnostic
+evidence supporting H-0017 for implementation invariants only,then finalize the
+check/cost/split/review/usage delivery and deliver T-0022. Coordinator owns RBc/
+RB1 release and hypothesis state. No formal RB training or confirmation/official
+validation evaluation has occurred. A2 source/hash remain in the review package.
+
+---
+
+# Historical continuation before full timing completed
 
 This section supersedes older sections below. Read T-0022-timing-jobs.json for
 exact source/spec/notification/queue details. T0022 is not ready to deliver yet.
