@@ -1,0 +1,120 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source commit required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${V5_CONFIRM_LOCK:?committed lock path required}"
+R20_PROJECT=/work/xg24i002/x10041/bypass-lora
+R20_SOURCE="$R20_PROJECT/snapshots/$SR_CODE_COMMIT"
+R20_OUTPUT="$R20_PROJECT/runs/$SR_ATTEMPT_ID"
+R20_PYTHON="$R20_PROJECT/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$R20_OUTPUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$R20_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$R20_OUTPUT/allocation.json"
+/usr/bin/jq -e '.ok == true' "$R20_OUTPUT/allocation.json"
+export PYTHONPATH="$R20_SOURCE/src" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+cd "$R20_SOURCE"
+"$R20_PYTHON" - "$V5_CONFIRM_LOCK" "$R20_OUTPUT" <<'PY'
+import builtins
+import json
+import os
+from pathlib import Path
+import time
+import v5_confirm as confirm
+
+started = time.monotonic()
+lock_path, out = map(Path, __import__('sys').argv[1:])
+lock = confirm.read_json(lock_path)
+sealed_paths = {Path(ref['path']).resolve() for ref in lock['data'].values()}
+original_open, original_path_open = builtins.open, Path.open
+original_verify = confirm.verify_file
+verified, blocked = [], []
+
+def reject_sealed(file):
+    if isinstance(file, (str, os.PathLike)) and Path(file).resolve() in sealed_paths:
+        blocked.append(str(file))
+        raise AssertionError('preflight attempted access to a sealed data file')
+
+def guarded_open(file, *args, **kwargs):
+    reject_sealed(file)
+    return original_open(file, *args, **kwargs)
+
+def guarded_path_open(path, *args, **kwargs):
+    reject_sealed(path)
+    return original_path_open(path, *args, **kwargs)
+
+class MetadataComplete(Exception):
+    pass
+
+def verify_metadata(reference, name):
+    if name in confirm.SEALED:
+        assert name == next(iter(lock['data'])), 'unexpected first sealed-file boundary'
+        raise MetadataComplete
+    result = original_verify(reference, name)
+    verified.append(name)
+    return result
+
+def forbidden(*args, **kwargs):
+    raise AssertionError('preflight reached an unsealing/model execution entry point')
+
+report = {'passed': False, 'validation_files_accessed': False, 'failure': None}
+try:
+    builtins.open, Path.open = guarded_open, guarded_path_open
+    confirm.verify_file = verify_metadata
+    confirm.read_validation = confirm.read_wikitext_blocks = forbidden
+    confirm.load_model = confirm.load_tokenizer = forbidden
+    try:
+        confirm.verify_lock(lock_path)
+    except MetadataComplete:
+        pass
+    else:
+        raise AssertionError('verify_lock did not reach the expected sealed-file boundary')
+    assert not blocked
+    assert len(verified) == 40, f'incomplete metadata checks: {len(verified)}'
+    assert not Path(lock['unseal_receipt']).exists(), 'an unseal receipt already exists'
+    assert not Path(lock['unseal_receipt']+'.guard').exists(), 'an unseal guard already exists'
+    dev_times = []
+    runs = []
+    for entry in lock['checkpoints']:
+        training = confirm.read_json(entry['training_manifest']['path'])
+        metrics = training['metrics']
+        dev_times.append(metrics['reload.eval_seconds'])
+        runs.append({'arm': entry['arm'], 'seed': entry['seed'], 'path': entry['path'],
+                     'steps': metrics['train.steps'], 'examples': metrics['train.examples'],
+                     'input_tokens': metrics['train.input_tokens'],
+                     'learning_rate': metrics['learning_rate'],
+                     'parameters': metrics['params.trainable'],
+                     'reload_identical': metrics['reload.identical'],
+                     'final_dev_seconds': metrics['reload.eval_seconds']})
+    dev_sum = 143.918 + sum(dev_times)
+    estimate = 3.27*dev_sum + 300
+    report.update(passed=True, experiment=lock['experiment'],
+                  code_commit=lock['code_commit'], lock=confirm.file_reference(lock_path),
+                  verified_metadata_files=verified, sealed_file_boundary_reached=True,
+                  sealed_file_access_attempts=blocked, unseal_receipt_absent=True,
+                  checkpoints=runs, code_files=lock['code_files'],
+                  source_matches_RV0039='nine required files matched git diff 334fdb4..2b5c809',
+                  cost_estimate={'final_dev_seconds_sum_with_base': dev_sum,
+                                 'base_dev_seconds_reference': 'ATT-0024-1 / T-0014-rehearsal.md',
+                                 'row_expansion': 3.27, 'wiki_and_startup_allowance_seconds': 300,
+                                 'expected_seconds': estimate,
+                                 'walltime_factor': 1.5, 'proposed_walltime': '02:40:00',
+                                 'estimated_node_hours': estimate/14400})
+except Exception as exc:
+    report['failure'] = {'type': type(exc).__name__, 'message': str(exc)}
+    raise
+finally:
+    builtins.open, Path.open = original_open, original_path_open
+    report['wall_seconds'] = time.monotonic()-started
+    confirm.write_json(out/'preflight.json', report)
+    confirm.write_json(out/'manifest.json', {
+        'status': 'complete' if report['passed'] else 'failed',
+        'spec_digest': os.environ['SR_SPEC_DIGEST'],
+        'metrics': {'preflight.passed': report['passed'], 'validation_files_accessed': False,
+                    'metadata_files_verified': len(verified), 'wall_seconds': report['wall_seconds']},
+        'artifacts': [{'path': str((out/'preflight.json').resolve()), 'role': 'preflight.json'},
+                      {'path': str((out/'allocation.json').resolve()), 'role': 'allocation.json'}],
+        'validator': {'name': 'T0020-locked-metadata-before-sealed-data', 'passed': report['passed']}})
+PY
