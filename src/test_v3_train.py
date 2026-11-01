@@ -508,6 +508,38 @@ def test_t2_hop1_training_rows_and_schedules(tok):
     assert len(reference['dev']) == 1000 and [sum(h == x for _, h, _ in reference['dev']) for x in (1, 2, 3)] == [334, 333, 333]
 
 
+def write_ready(tmp_path, start, **changes):
+    run = tmp_path/'ready'
+    run.mkdir(parents=True)
+    start_manifest = json.loads((start/'manifest.json').read_text())
+    manifest = {'status': 'complete', 'validator': {'passed': True}, 'contract': 'E-0023@1', 'command': 'ready',
+                'eligible_as_evidence': True, 'smoke_only': False,
+                'start': {'checkpoint_files': start_manifest['checkpoint_files']},
+                'metrics': {'readiness_passed': True, 'readiness_criteria': {'hop1_em_margin': True}}}
+    manifest.update(changes)
+    (run/'manifest.json').write_text(json.dumps(manifest))
+    return run
+
+
+def test_old_gate_failure_is_a_formal_start_only_with_a_passed_readiness_run(tmp_path):
+    """E-0023: ATT-0196-1 failed the old all-position gate; rule R on calibration releases it."""
+    sha = 'c4f3f9f8c24a55a89142cd251e845a39ac4c235fb22aa244afb8e7cc3425b794'
+    start = write_start(tmp_path, contract='E-0022@2', metrics={'hop1_gate': {'passed': False}})
+    with pytest.raises(ValueError):
+        v3.start_provenance(start, sha)
+    record = v3.start_provenance(start, sha, ready_run=write_ready(tmp_path/'ok', start))
+    assert record['formal_start'] is True and record['hop1_gate_passed'] is False
+    assert record['readiness']['criteria'] == {'hop1_em_margin': True}
+    other = {'adapter.pt': {'sha256': 'b'*64, 'bytes': 1}}
+    for changes in ({'metrics': {'readiness_passed': False}}, {'eligible_as_evidence': False}, {'smoke_only': True},
+                    {'contract': 'E-0022@2'}, {'command': 'arm'}, {'status': 'failed'}, {'start': {'checkpoint_files': other}}):
+        with pytest.raises(ValueError):
+            v3.start_provenance(start, sha, ready_run=write_ready(tmp_path/str(len(str(changes))), start, **changes))
+    # A smoke V3-S0 start is not made formal by a readiness run.
+    smoke = write_start(tmp_path/'smoke', eligible_as_evidence=False, smoke_only=True)
+    assert v3.start_provenance(smoke, sha, smoke=True, ready_run=write_ready(tmp_path/'s', smoke))['formal_start'] is False
+
+
 def test_smoke_start_is_accepted_only_by_smoke_jobs(tmp_path):
     sha = 'c4f3f9f8c24a55a89142cd251e845a39ac4c235fb22aa244afb8e7cc3425b794'
     smoke = write_start(tmp_path, eligible_as_evidence=False, smoke_only=True, metrics={'hop1_gate': {'passed': False}})
