@@ -1,0 +1,1275 @@
+diff --git a/research/artifacts/T-0022/cost-summary.json b/research/artifacts/T-0022/cost-summary.json
+index d27176a..bee3f40 100644
+--- a/research/artifacts/T-0022/cost-summary.json
++++ b/research/artifacts/T-0022/cost-summary.json
+@@ -131,21 +131,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 968.3105915436728,
+-          "node_h": 0.06724379107942172,
+-          "eval_passes": 2,
++          "seconds": 603.4438302996066,
++          "node_h": 0.04190582154858379,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 363.6840932741073
+         },
+         "RB1": {
+           "seconds": 3745.309339111084,
+           "node_h": 0.2600909263271586,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 177.5801236689977
+         },
+         "RB5": {
+           "seconds": 6586.2183515752495,
+           "node_h": 0.4573762744149479,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 177.5801236689977
+         }
+       }
+@@ -163,21 +169,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 996.018200567083,
+-          "node_h": 0.06916793059493632,
+-          "eval_passes": 2,
++          "seconds": 615.8093401589547,
++          "node_h": 0.04276453751103852,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 379.9541573160887
+         },
+         "RB1": {
+           "seconds": 3747.447925167877,
+           "node_h": 0.26023943924776927,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 185.52449087699642
+         },
+         "RB5": {
+           "seconds": 6552.796821271235,
+           "node_h": 0.4550553348105024,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 185.52449087699642
+         }
+       }
+@@ -195,21 +207,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1028.748179780988,
+-          "node_h": 0.07144084581812417,
+-          "eval_passes": 2,
++          "seconds": 638.0327073520739,
++          "node_h": 0.04430782689944957,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 390.4572395058642
+         },
+         "RB1": {
+           "seconds": 3913.304949250334,
+           "node_h": 0.2717572881423843,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 190.65294897747276
+         },
+         "RB5": {
+           "seconds": 6858.166823940235,
+           "node_h": 0.47626158499584964,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 190.65294897747276
+         }
+       }
+@@ -227,21 +245,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1094.740791029366,
+-          "node_h": 0.07602366604370597,
+-          "eval_passes": 2,
++          "seconds": 680.6817404553664,
++          "node_h": 0.04726956530940044,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 413.802811007979
+         },
+         "RB1": {
+           "seconds": 4201.310380393963,
+           "node_h": 0.2917576653051363,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 202.05215381248976
+         },
+         "RB5": {
+           "seconds": 7376.040680107024,
+           "node_h": 0.5122250472296545,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 202.05215381248976
+         }
+       }
+@@ -259,21 +283,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1076.8201174368398,
+-          "node_h": 0.07477917482200276,
+-          "eval_passes": 2,
++          "seconds": 666.3712424627291,
++          "node_h": 0.04627578072657841,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 410.1955397751411
+         },
+         "RB1": {
+           "seconds": 4064.454730999812,
+           "node_h": 0.28225380076387585,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 200.29079090583062
+         },
+         "RB5": {
+           "seconds": 7111.776570464203,
+           "node_h": 0.493873372948903,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 200.29079090583062
+         }
+       }
+@@ -291,21 +321,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1114.74600535855,
+-          "node_h": 0.07741291703878819,
+-          "eval_passes": 2,
++          "seconds": 690.9896630527257,
++          "node_h": 0.0479853932675504,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 423.5090443268643
+         },
+         "RB1": {
+           "seconds": 4232.296788523899,
+           "node_h": 0.29390949920304854,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 206.7915255502267
+         },
+         "RB5": {
+           "seconds": 7414.298347313038,
+           "node_h": 0.5148818296745166,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 206.7915255502267
+         }
+       }
+@@ -323,21 +359,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 962.4320041089923,
+-          "node_h": 0.06683555584090224,
+-          "eval_passes": 2,
++          "seconds": 599.7715349550231,
++          "node_h": 0.04165080103854327,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 362.41423589993843
+         },
+         "RB1": {
+           "seconds": 3722.7023848921585,
+           "node_h": 0.25852099895084435,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 176.96007612301682
+         },
+         "RB5": {
+           "seconds": 6546.056662218214,
+           "node_h": 0.4545872682095982,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 176.96007612301682
+         }
+       }
+@@ -355,21 +397,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1013.2229017816995,
+-          "node_h": 0.07036270151261802,
+-          "eval_passes": 2,
++          "seconds": 625.680587091581,
++          "node_h": 0.04345004077024868,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 387.29096724510885
+         },
+         "RB1": {
+           "seconds": 3795.739204829733,
+           "node_h": 0.2635930003353981,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 189.1069176001508
+         },
+         "RB5": {
+           "seconds": 6631.32499619876,
+           "node_h": 0.4605086802915806,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 189.1069176001508
+         }
+       }
+@@ -387,21 +435,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1015.4376905093679,
+-          "node_h": 0.07051650628537277,
+-          "eval_passes": 2,
++          "seconds": 625.4869709566427,
++          "node_h": 0.04343659520532241,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 389.70294662870526
+         },
+         "RB1": {
+           "seconds": 3770.4739659727634,
+           "node_h": 0.26183846985921966,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 190.28464190854748
+         },
+         "RB5": {
+           "seconds": 6575.066479266199,
+           "node_h": 0.4566018388379305,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 190.28464190854748
+         }
+       }
+@@ -419,21 +473,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 9078.152768067628,
+-          "node_h": 0.6304272755602519,
+-          "eval_passes": 2,
++          "seconds": 5721.459032935795,
++          "node_h": 0.39732354395387465,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 3356.4454196948345
+         },
+         "RB1": {
+           "seconds": 36492.36201729588,
+           "node_h": 2.5341918067566587,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 1638.8893650853684
+         },
+         "RB5": {
+           "seconds": 64649.540242160154,
+           "node_h": 4.4895514057055665,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 1638.8893650853684
+         }
+       }
+@@ -451,21 +511,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1112.544989635064,
+-          "node_h": 0.07726006872465722,
+-          "eval_passes": 2,
++          "seconds": 689.9235121051419,
++          "node_h": 0.047911355007301516,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 421.99398944997563
+         },
+         "RB1": {
+           "seconds": 4230.238097144667,
+           "node_h": 0.29376653452393525,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 206.0517526611209
+         },
+         "RB5": {
+           "seconds": 7413.120310016498,
+           "node_h": 0.5148000215289235,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 206.0517526611209
+         }
+       }
+@@ -483,21 +549,27 @@
+       "adapter_state_M_c_bytes": 16896,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1069.8208604329882,
+-          "node_h": 0.07429311530784641,
+-          "eval_passes": 2,
++          "seconds": 660.1294146234046,
++          "node_h": 0.04584232045995865,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 409.43298497158503
+         },
+         "RB1": {
+           "seconds": 3996.9794428604155,
+           "node_h": 0.27756801686530663,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 199.91844969315676
+         },
+         "RB5": {
+           "seconds": 6979.003036001094,
+           "node_h": 0.4846529886111871,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 199.91844969315676
+         }
+       }
+@@ -515,21 +587,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 975.5802318808086,
+-          "node_h": 0.06774862721394503,
+-          "eval_passes": 2,
++          "seconds": 603.0607975130365,
++          "node_h": 0.041879222049516426,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 372.2722885057446
+         },
+         "RB1": {
+           "seconds": 3668.141693185123,
+           "node_h": 0.25473206202674464,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 181.7735783719456
+         },
+         "RB5": {
+           "seconds": 6413.254249242349,
+           "node_h": 0.4453648784196076,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 181.7735783719456
+         }
+       }
+@@ -547,21 +625,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 979.1132994610804,
+-          "node_h": 0.0679939791292417,
+-          "eval_passes": 2,
++          "seconds": 605.95912654677,
++          "node_h": 0.04208049489908125,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 372.86497438434566
+         },
+         "RB1": {
+           "seconds": 3696.7769269557866,
+           "node_h": 0.2567206199274852,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 182.06297577360627
+         },
+         "RB5": {
+           "seconds": 6468.860877451628,
+           "node_h": 0.4492264498230297,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 182.06297577360627
+         }
+       }
+@@ -579,21 +663,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 973.4292639710875,
+-          "node_h": 0.06759925444243663,
+-          "eval_passes": 2,
++          "seconds": 602.7986560309646,
++          "node_h": 0.041861017779928095,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 370.3682940621339
+         },
+         "RB1": {
+           "seconds": 3683.0136968992033,
+           "node_h": 0.25576484006244465,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 180.8438935850263
+         },
+         "RB5": {
+           "seconds": 6447.521997782026,
+           "node_h": 0.4477445831793074,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 180.8438935850263
+         }
+       }
+@@ -611,21 +701,27 @@
+       "adapter_state_M_c_bytes": 31680,
+       "estimates": {
+         "RBc": {
+-          "seconds": 951.1928233155807,
+-          "node_h": 0.06605505717469311,
+-          "eval_passes": 2,
++          "seconds": 587.2880801370746,
++          "node_h": 0.040783894453963514,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 363.526009372485
+         },
+         "RB1": {
+           "seconds": 3561.4043239305474,
+           "node_h": 0.24731974471739912,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 177.50293426390868
+         },
+         "RB5": {
+           "seconds": 6221.294703074164,
+           "node_h": 0.4320343543801503,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 177.50293426390868
+         }
+       }
+@@ -643,21 +739,27 @@
+       "adapter_state_M_c_bytes": 31680,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1053.5379639197954,
+-          "node_h": 0.07316235860554135,
+-          "eval_passes": 2,
++          "seconds": 653.8103145443578,
++          "node_h": 0.0454034940655804,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 399.4905318594444
+         },
+         "RB1": {
+           "seconds": 4016.2765726840153,
+           "node_h": 0.2789080953252788,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 195.06373625949433
+         },
+         "RB5": {
+           "seconds": 7041.697400953635,
+           "node_h": 0.48900676395511355,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 195.06373625949433
+         }
+       }
+@@ -675,21 +777,27 @@
+       "adapter_state_M_c_bytes": 66560,
+       "estimates": {
+         "RBc": {
+-          "seconds": 953.4716634928889,
+-          "node_h": 0.06621330996478395,
+-          "eval_passes": 2,
++          "seconds": 588.4496539424365,
++          "node_h": 0.04086455930155809,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 364.7677000444714
+         },
+         "RB1": {
+           "seconds": 3564.7206805694827,
+           "node_h": 0.24755004726176963,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 178.10922853733953
+         },
+         "RB5": {
+           "seconds": 6225.142469565976,
+           "node_h": 0.4323015603865261,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 178.10922853733953
+         }
+       }
+@@ -707,21 +815,27 @@
+       "adapter_state_M_c_bytes": 66560,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1091.01921108994,
+-          "node_h": 0.07576522299235694,
+-          "eval_passes": 2,
++          "seconds": 674.1430916625288,
++          "node_h": 0.0468154924765645,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 416.62126300632286
+         },
+         "RB1": {
+           "seconds": 4096.2484872788145,
+           "node_h": 0.28446170050547326,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 203.42835107730608
+         },
+         "RB5": {
+           "seconds": 7159.594615154313,
+           "node_h": 0.4971940704968273,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 203.42835107730608
+         }
+       }
+@@ -739,21 +853,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1388.792079693895,
+-          "node_h": 0.09644389442318715,
+-          "eval_passes": 2,
++          "seconds": 898.1596013985591,
++          "node_h": 0.0623721945415666,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 490.34927035336085
+         },
+         "RB1": {
+           "seconds": 6074.507829335019,
+           "node_h": 0.4218408214815985,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 239.42835466472698
+         },
+         "RB5": {
+           "seconds": 10927.158328308808,
+           "node_h": 0.7588304394658895,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 239.42835466472698
+         }
+       }
+@@ -771,21 +891,27 @@
+       "adapter_state_M_c_bytes": 0,
+       "estimates": {
+         "RBc": {
+-          "seconds": 1443.902511951816,
+-          "node_h": 0.10027100777443167,
+-          "eval_passes": 2,
++          "seconds": 940.2014220467069,
++          "node_h": 0.06529176541991019,
++          "eval_passes": 1,
++          "model_loads": 1,
++          "checkpoint_exports": 0,
+           "estimated_eval_seconds_per_pass": 503.28117539006035
+         },
+         "RB1": {
+           "seconds": 6453.0592816139,
+           "node_h": 0.448129116778743,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 245.7427614209279
+         },
+         "RB5": {
+           "seconds": 11650.697965286021,
+           "node_h": 0.809076247589307,
+           "eval_passes": 5,
++          "model_loads": 2,
++          "checkpoint_exports": 1,
+           "estimated_eval_seconds_per_pass": 245.7427614209279
+         }
+       }
+@@ -904,17 +1030,17 @@
+   "profile_required": false,
+   "RB1_core_estimate_exceeds4": false,
+   "RBc_family_node_h_per_candidate": {
+-    "RBc-L": 0.06683555584090224,
+-    "RBc-T": 0.06724379107942172,
+-    "RBc-R": 0.06916793059493632,
+-    "RBc-C": 0.07036270151261802
++    "RBc-L": 0.04165080103854327,
++    "RBc-T": 0.04190582154858379,
++    "RBc-R": 0.04276453751103852,
++    "RBc-C": 0.04345004077024868
+   },
+-  "RBc_12candidate_node_h": 0.8208299370836349,
+-  "RBc_16candidate_node_h": 1.0944399161115133,
++  "RBc_12candidate_node_h": 0.5093136026052428,
++  "RBc_16candidate_node_h": 0.6790848034736571,
+   "actual_T0022_through_timing_MIG_seconds": 1755,
+   "actual_T0022_through_timing_node_h": 0.121875,
+   "timing_sample_rule": "20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches",
+-  "estimate_rule": "two loads+plannedsteps*measuredstep+evalpasses*scaleddev+save;RBc2passes4096calibration/2000dev;RB1/RB5fivepasses",
++  "estimate_rule": "RBc one load+plannedsteps*measuredstep+one4096calibration pass,no export/reload;RB1/RB5 two loads+steps+five scaleddev passes+save",
+   "limits": [
+     "Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.",
+     "Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.",
+diff --git a/research/notes/T-0022-cost-tables.md b/research/notes/T-0022-cost-tables.md
+index fa115aa..1ae1dce 100644
+--- a/research/notes/T-0022-cost-tables.md
++++ b/research/notes/T-0022-cost-tables.md
+@@ -42,14 +42,16 @@ RB1 arms:training,three intermediate dev passes,final dev and fresh reload evalu
+ 
+ RB1 core total: 2.443961 node_h. Frozen interventions,analysis and planning overhead are additional.
+ 
++RBc candidates use one load and one calibration pass,with no export or fresh reload (RV-0060 fix).
++
+ | RBc family | Estimated node_h/candidate |
+ | --- | ---: |
+-| RBc-L | 0.066836 |
+-| RBc-T | 0.067244 |
+-| RBc-R | 0.069168 |
+-| RBc-C | 0.070363 |
++| RBc-L | 0.041651 |
++| RBc-T | 0.041906 |
++| RBc-R | 0.042765 |
++| RBc-C | 0.043450 |
+ 
+-RBc12-16candidate estimate: 0.820830-1.094440 node_h.
++RBc12-16candidate estimate: 0.509314-0.679085 node_h.
+ 
+ | Latency case | Prefill tok/s | Decode p50 ms | Decode p95 ms | Peak CUDA GiB | Persistent adapter M+c bytes |
+ | --- | ---: | ---: | ---: | ---: | ---: |
+diff --git a/research/notes/T-0022-review-followup.md b/research/notes/T-0022-review-followup.md
+new file mode 100644
+index 0000000..478c42f
+--- /dev/null
++++ b/research/notes/T-0022-review-followup.md
+@@ -0,0 +1,76 @@
++# RV-0060 focused follow-up
++
++RV-0060 passed with four low findings. Coordinator MSG-0599 authorized closing
++all four inside T-0022, one PBS regression/three-CLI-smoke job, then one focused
++recheck. No RBc/RB1 training is authorized here.
++
++1. Replace tautological write controls with patched broken prefix-state builders:
++   duplicated active writes and ignored padding. Run each through the real
++   prefix/reference output/M/c/counts gate. A separate test feeds doubled writes
++   through the actual TrainingAccounting forward hook and train assertion.
++2. Swap/permutation require valid tokens contiguous from position0; swap also
++   checks donor masks. Unpadded/right-padded scoring is supported. Left padding
++   and holes explicitly raise; other history modes preserve arbitrary masks.
++   Tests retain supported-mask identities and add recipient/donor guard cases.
++3. Calibration evaluates NLL once and exports/reloads nothing; smoke and formal
++   train retain checkpoint/reload checks. A targeted run-level unit regression
++   requires one model load/eval, no checkpoint calls/files and unchanged lock
++   input fields. rb_report and rb_benchmark cost formulas now charge RBc one
++   load and one calibration pass with no save; RB1/RB5 estimates are unchanged.
++4. rb_revision_check executes the actual rb_train CLI for RB1-02, RB1-01 and
++   RB1-07, smoke stage, four steps, limit2. Smoke final evaluation includes both
++   calibration and dev to exercise the calibration.nll manifest field; the
++   planned metadata describes the selected four-step smoke, not the full budget.
++   The driver checks family/stage/phase/seed, finite NLL/LR, failed=false, split
++   and sample-order hashes, matching plan/train counts, parameter counts,
++   intermediate-monitor files, checkpoint inventory bytes/hashes and fresh reload
++   identity. Smoke manifests remain explicitly ineligible as LR-lock candidates.
++
++Validation complete:ATT-0197-1/PBS3768755.opbs/RES-0191,executed source
++183ad685785b8249d8a1c679a09e8dd5280d8cd5. Allocation verified on mg1098;the
++profile was recorded as2g with nonfatal policy. Scheduler exit0,complete parent
++manifest and passed validator. All408regressions pass (0failures,0skips) in
++96.72s. Both patched broken-state builders are rejected by the actual reference
++gate;doubled accounting is rejected by train;unsupported masks raise;the
++calibration run-level unit check proves one eval and no export/reload.
++
++The three actual trainer CLI smoke manifests (RB1-02/01/07) are complete,each
++with4steps/8examples/744input tokens and reload.identical=true. Family,stage,
++phase,seed,failed,LRS/NLL,split/sample-order hashes,plan/train/parameter counts,
++three monitoring files and checkpoint file hashes were checked by the PBS
++driver. They retain stage=smoke/phase=R1 and are not calibration candidates.
++Their shared smoke order hash is
++439277d84952473c71ec378d4f6e6acecdc52b6aac9d8d352b46975901314cbb.
++
++The PBS driver also regenerated rb_report against the original immutable timing
++inputs. It did not repeat100-step timing or create scientific training results.
++RBc now costs0.509314-0.679085node_h for12-16candidates with one load and one
++calibration pass,no export/reload. The RB1 core2.443961088node_h forecast and
++conditional RB5 costs are unchanged. All prior estimate limitations apply.
++The committed JSON/MD are byte-identical to ATT0197/cost-report outputs.
++
++Exact additional use162MIGseconds=0.01125node_h was imported once;all8attempts
++now total1918MIGseconds=0.1331944444node_h,within the1.0node_h ceiling. The
++generated table's explicitly historical through-timing subtotal excludes both
++tabulation/follow-up work;this is the final total through RES0191.
++
++Focused runtime artifacts:
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/manifest.json
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/checks/checks.xml
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/checks/checks.log
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/RB1-02/manifest.json
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/RB1-01/manifest.json
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/RB1-07/manifest.json
++- /work/xg24i002/x10041/bypass-lora/runs/ATT-0197-1/cost-report/manifest.json
++
++Updated cost JSON SHA256:
++5fe146e9c6d7f0e64cc236a3205e9f109d2b92f637bae4372cc7e1896faec56b.
++Updated cost table SHA256:
++f58d74ca58da06b5f75e401e2b520ff3741fc48d91ed486102cdac44f01cc616.
++
++One focused RV-0060 recheck is next,before delivery. No RBc/RB1 release.
++
++Shared bypass_core/bypass_model, native read loops, FP32/BF16 thresholds, strong
++model fixtures, A2 split, data/scoring/objective and formal sample budgets remain
++unchanged. D-0026/D-0027 tests remain intact. Original review evidence and old
++cost output remain historical artifacts; regenerated tables will cite this fix.
+diff --git a/research/notes/T-0022-review-package.md b/research/notes/T-0022-review-package.md
+index 3dfdf7a..2f2df51 100644
+--- a/research/notes/T-0022-review-package.md
++++ b/research/notes/T-0022-review-package.md
+@@ -1,5 +1,10 @@
+ # T-0022 RB0 code review package
+ 
++Historical first-review package (RV-0060,a5d04f8). Its measured timing and397-test
++evidence remain valid. The four low follow-ups and the updated RBc single-pass
++cost policy are in T-0022-review-followup.md;that note supersedes the two-pass
++RBc forecast below. The revised PBS report is validated in ATT0197/RES0191.
++
+ Target: E-0019@1 / H-0017@1, task T-0022. This is an implementation and cost
+ diagnostic. No RBc, RB1 or RB5 scientific training or confirmation evaluation has
+ started. The coordinator owns release and hypothesis-state decisions.
+diff --git a/src/rb_benchmark.py b/src/rb_benchmark.py
+index e74ebaf..27b9499 100644
+--- a/src/rb_benchmark.py
++++ b/src/rb_benchmark.py
+@@ -111,17 +111,19 @@ def main():
+                 measured=timings[arm]
+                 evaluation=measured['sample_eval_seconds']*factor
+                 estimates[arm]={}
+-                for stage,evaluations in [('RBc',2),('RB1',5),('RB5',5)]:
++                for stage,evaluations in [('RBc',1),('RB1',5),('RB5',5)]:
+                     # RB1:25/50/75%dev,finaldev,fresh reload. RB5 estimate
+                     # assumes the same monitoring;its later contract can refine.
+                     rows_ratio=(sum(len(splits['splits'][t]['calibration']) for t in ('piqa','boolq'))/
+                                 sum(len(splits['splits'][t]['dev']) for t in ('piqa','boolq'))) if stage=='RBc' else 1.
+                     per_pass=evaluation*rows_ratio
+-                    seconds=2*measured['load_seconds']+schedule[stage]['plan.steps']*measured['step_seconds']+evaluations*per_pass+measured['save_seconds']
++                    loads=1 if stage=='RBc' else 2
++                    save=0 if stage=='RBc' else measured['save_seconds']
++                    seconds=loads*measured['load_seconds']+schedule[stage]['plan.steps']*measured['step_seconds']+evaluations*per_pass+save
+                     estimates[arm][stage]={'estimated_seconds':seconds,'estimated_node_h':seconds/14400,
+                         'steps':schedule[stage]['plan.steps'],'eval_count':evaluations,
+                         'eval_seconds_per_pass_estimate':per_pass,'eval_row_ratio_to_dev':rows_ratio,
+-                        'basis':'direct100-step timing;full/sample dev scaling anchored toR_res S1;RBc additionally scales4096calibration/2000dev rows,not measured calibration lengths;two loads+save;excludes later interventions/bootstrap and queue wait'}
++                        'basis':'direct100-step timing;full/sample dev scaling anchored toR_res S1;RBc scales4096calibration/2000dev rows with one load/eval and no checkpoint;RB1/RB5 two loads+save;excludes later interventions/bootstrap and queue wait'}
+         write_json(out/'cost-estimates.json',{'schedules':schedule,'arms':estimates,
+             'RB1_training_monitor_reload_node_h':sum(v['RB1']['estimated_node_h'] for v in estimates.values()),
+             'needs_profile':any(v['step_seconds']>.4 for v in timings.values() if v['impl']=='prefix' and v['arm']!='RB1-07'),
+diff --git a/src/rb_history.py b/src/rb_history.py
+index 79a3a4a..d01e98b 100644
+--- a/src/rb_history.py
++++ b/src/rb_history.py
+@@ -11,6 +11,12 @@ from v1_data import derive_seed
+ KINDS = ("iv_off", "iv_window1", "iv_window8", "iv_window", "iv_strict", "iv_swap", "iv_permute")
+ 
+ 
++def require_prefix_valid(valid, label):
++    expected = torch.arange(valid.shape[1], device=valid.device)[None] < valid.long().sum(1)[:, None]
++    if not torch.equal(valid.bool(), expected):
++        raise ValueError(label+' requires valid tokens contiguous from position 0')
++
++
+ def donor_indices(rows, phase):
+     """Uniform rejection-sampled derangement separately within each task."""
+     result = list(range(len(rows)))
+@@ -33,12 +39,15 @@ def run_history(q, k, v, reader, valid, config, options):
+     """Full-sequence diagnostic path. Interventions never accept cached state.
+ 
+     The donor contains projected positive keys and raw values from a normal
+-    forward of that donor, at this same adapter layer. Histories use physical
+-    sequence positions; invalid writes contribute zero.
++    forward of that donor, at this same adapter layer. Swap and permutation
++    require unpadded or right-padded rows, so physical and logical valid-token
++    positions agree. Other diagnostics retain general mask support.
+     """
+     kind = options.get('kind')
+     if kind is not None and kind not in KINDS:
+         raise ValueError('unknown F-line history intervention')
++    if kind in ('iv_swap', 'iv_permute'):
++        require_prefix_valid(valid, kind+' recipient')
+     keys, values, matrices, masses, counts, final = kernel_prefix_states(k, v, reader, valid)
+     normal_m, normal_c, normal_n = matrices, masses, counts
+     zero_m = torch.zeros_like(matrices[:, :1])
+@@ -64,6 +73,7 @@ def run_history(q, k, v, reader, valid, config, options):
+         if dk.ndim != 3 or dk.shape != dv.shape or dk.shape[0] != q.shape[0] or dk.shape[2] != q.shape[2] or dm.shape != dk.shape[:2]:
+             raise ValueError('donor history shape mismatch')
+         dm = dm.to(q.device)
++        require_prefix_valid(dm, 'iv_swap donor')
+         dk = torch.where(dm[..., None], dk.to(q.device), torch.zeros_like(dk, device=q.device))
+         dv = torch.where(dm[..., None], dv.to(q.device), torch.zeros_like(dv, device=q.device))
+         index = torch.arange(q.shape[1], device=q.device).clamp_max(dk.shape[1])
+diff --git a/src/rb_report.py b/src/rb_report.py
+index e2605b2..fe325d5 100644
+--- a/src/rb_report.py
++++ b/src/rb_report.py
+@@ -122,10 +122,13 @@ def main():
+             job='ATT-0189-1' if label in primary else 'ATT-0191-1'
+             evaluation=value['sample_eval_seconds']*scale
+             estimates={}
+-            for stage,passes in (('RBc',2),('RB1',5),('RB5',5)):
++            for stage,passes in (('RBc',1),('RB1',5),('RB5',5)):
+                 per_pass=evaluation*(2.048 if stage=='RBc' else 1)
+-                seconds=2*value['load_seconds']+schedule[stage]['plan.steps']*value['step_seconds']+passes*per_pass+value['save_seconds']
++                loads=1 if stage=='RBc' else 2
++                save=0 if stage=='RBc' else value['save_seconds']
++                seconds=loads*value['load_seconds']+schedule[stage]['plan.steps']*value['step_seconds']+passes*per_pass+save
+                 estimates[stage]={'seconds':seconds,'node_h':seconds/14400,'eval_passes':passes,
++                                  'model_loads':loads,'checkpoint_exports':int(stage!='RBc'),
+                                   'estimated_eval_seconds_per_pass':per_pass}
+             rows.append({'case':label,'attempt':job,'step_seconds':value['step_seconds'],
+                 'tokens_per_second':value['tokens_per_second'],'peak_cuda_bytes':value['peak_cuda_bytes'],
+@@ -161,7 +164,7 @@ def main():
+             'RBc_16candidate_node_h':sum(family_costs.values())*4,
+             'actual_T0022_through_timing_MIG_seconds':1755,'actual_T0022_through_timing_node_h':1755/14400,
+             'timing_sample_rule':'20warmup+100stable optimizer steps,effectivebatch2/micro1;pairedfirst120R1batches',
+-            'estimate_rule':'two loads+plannedsteps*measuredstep+evalpasses*scaleddev+save;RBc2passes4096calibration/2000dev;RB1/RB5fivepasses',
++            'estimate_rule':'RBc one load+plannedsteps*measuredstep+one4096calibration pass,no export/reload;RB1/RB5 two loads+steps+five scaleddev passes+save',
+             'limits':['Estimates omit future frozen interventions,bootstrap/analysis and data planning overhead;they are not billed usage.',
+                 'Only R_res S1 full dev was timed;other evals scale32rows/task against that full/sample ratio;RBc also scales row count,not measured calibration lengths.',
+                 'RB5 matrix/monitoring remains conditional;S2 unmeasured layouts need labeled interpolation;S1concatT0 and mixed-rankLoRA are not measured here.',
+@@ -180,6 +183,7 @@ def main():
+         for i in range(1,10):
+             label=f'RB1-{i:02}';lines.append(f'| {label} | {row_map[label]["estimates"]["RB1"]["node_h"]:.6f} |')
+         lines += ['',f'RB1 core total: {rb1:.6f} node_h. Frozen interventions,analysis and planning overhead are additional.',
++            '', 'RBc candidates use one load and one calibration pass,with no export or fresh reload (RV-0060 fix).',
+             '', '| RBc family | Estimated node_h/candidate |','| --- | ---: |']
+         for family,cost in family_costs.items():lines.append(f'| {family} | {cost:.6f} |')
+         lines += ['',f'RBc12-16candidate estimate: {sum(family_costs.values())*3:.6f}-{sum(family_costs.values())*4:.6f} node_h.',
+diff --git a/src/rb_revision_check.py b/src/rb_revision_check.py
+new file mode 100644
+index 0000000..50d76c2
+--- /dev/null
++++ b/src/rb_revision_check.py
+@@ -0,0 +1,92 @@
++"""PBS regression and actual trainer CLI smoke for the four RV-0060 findings."""
++import argparse
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++
++
++def read(path):return json.loads(Path(path).read_text())
++
++
++def ref(path,role):
++    path=Path(path).resolve()
++    return {'path':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
++            'bytes':path.stat().st_size,'role':role}
++
++
++def main():
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--data-dir',required=True)
++    parser.add_argument('--split-manifest',required=True)
++    parser.add_argument('--timing-jobs',required=True)
++    parser.add_argument('--output',type=Path,required=True)
++    args=parser.parse_args();out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
++    metrics={};artifacts=[];passed=False;started=time.monotonic()
++    try:
++        subprocess.run([sys.executable,'src/rb_check.py','--suite','all','--output',str(out/'checks')],check=True)
++        checks=read(out/'checks'/'manifest.json')
++        assert checks['status']=='complete' and checks['validator']['passed'] is True
++        assert checks['metrics']['checks.failed']==checks['metrics']['checks.skipped']==0
++        metrics['checks']=checks['metrics'];artifacts.append(ref(out/'checks'/'manifest.json','regression_manifest'))
++        smoke={}
++        for arm in ('RB1-02','RB1-01','RB1-07'):
++            folder=out/arm
++            subprocess.run([sys.executable,'src/rb_train.py','run','--stage','smoke',
++                '--arm',arm,'--lr','.001','--seed','0','--smoke-steps','4','--eval-limit','2',
++                '--data-dir',args.data_dir,'--split-manifest',args.split_manifest,
++                '--output',str(folder)],check=True)
++            value=read(folder/'manifest.json');m=value['metrics']
++            assert value['status']=='complete' and value['validator']['passed'] is True
++            assert value['contract']=='E-0019@1' and value['arm']==arm
++            assert value['stage']=='smoke' and value['phase']=='R1' and value['seed']==0
++            assert value['family']=={'RB1-02':'RBc-R','RB1-01':'RBc-T','RB1-07':'RBc-L'}[arm]
++            assert m['failed'] is False and m['reload.identical'] is True
++            assert m['train.steps']==m['plan.steps']==4 and m['train.examples']==m['plan.examples']==8
++            assert m['train.input_tokens']==m['plan.input_tokens']>0
++            assert m['params.stored']==m['params.trainable']==m['params.with_grad']==(630784 if arm=='RB1-07' else 663552)
++            assert m['learning_rate']==.001 and math.isfinite(m['calibration.nll']) and m['calibration.nll']>0
++            assert m['split_manifest.sha256']==hashlib.sha256(Path(args.split_manifest).read_bytes()).hexdigest()
++            assert len(m['plan.order_sha256'])==64
++            assert m['source.commit']==os.environ['SR_CODE_COMMIT']
++            for split in ('calibration','dev'):
++                for task in ('piqa','boolq'):assert m[f'{split}.{task}.examples']==2
++            for step in (1,2,3):assert (folder/f'dev-step-{step}.json').is_file()
++            inventory=read(folder/'checkpoint.json')
++            for name in ('config.json','adapter.pt'):
++                actual=ref(folder/'adapter'/name,name)
++                assert inventory[name]=={k:actual[k] for k in ('path','sha256','bytes')}
++            smoke[arm]={'stage':'smoke','lock_schema_keys_present':True,
++                'not_a_calibration_candidate':True,'reload.identical':True,
++                'train.steps':m['train.steps'],'train.input_tokens':m['train.input_tokens']}
++            artifacts.append(ref(folder/'manifest.json',arm+'_smoke_manifest'))
++        metrics['smoke']=smoke
++        subprocess.run([sys.executable,'src/rb_report.py','--jobs',args.timing_jobs,
++            '--probe','/work/xg24i002/x10041/bypass-lora/runs/ATT-0188-1',
++            '--output',str(out/'cost-report')],check=True)
++        report=read(out/'cost-report'/'manifest.json')
++        assert report['status']=='complete' and report['validator']['passed'] is True
++        costs=read(out/'cost-report'/'cost-summary.json')
++        for row in costs['cases']:
++            policy=row['estimates']['RBc']
++            assert policy['eval_passes']==policy['model_loads']==1 and policy['checkpoint_exports']==0
++        metrics['costs']=report['metrics']
++        metrics['RBc_12candidate_node_h']=costs['RBc_12candidate_node_h']
++        metrics['RBc_16candidate_node_h']=costs['RBc_16candidate_node_h']
++        artifacts.append(ref(out/'cost-report'/'manifest.json','updated_cost_manifest'))
++        artifacts.extend(ref(out/'cost-report'/name,name) for name in ('cost-summary.json','cost-tables.md'))
++        passed=True
++    finally:
++        metrics['elapsed_s']=time.monotonic()-started
++        (out/'manifest.json').write_text(json.dumps({'status':'complete' if passed else 'partial',
++            'spec_digest':os.environ['SR_SPEC_DIGEST'],'contract':'E-0019@1',
++            'source_commit':os.environ['SR_CODE_COMMIT'],'review_fixes':'RV-0060 lows1-4',
++            'metrics':metrics,'artifacts':artifacts,
++            'validator':{'name':'rb0_review_revision','passed':passed}},indent=2,allow_nan=False)+'\n')
++
++
++if __name__=='__main__':main()
+diff --git a/src/rb_train.py b/src/rb_train.py
+index 3a3578d..bfb0e6d 100644
+--- a/src/rb_train.py
++++ b/src/rb_train.py
+@@ -221,15 +221,16 @@ def run(args):
+         write_json(out/'config.json',vars(args))
+         budget=200000 if args.stage=='calibration' else None if args.three_epochs else 2000000
+         batches=plan_batches(splits,tok,phase,args.seed,[(x['task'],x['id']) for x in excluded],budget)
++        if args.stage=='smoke':
++            batches=batches[:args.smoke_steps or 4]
+         metrics.update(plan_metadata(batches))
+         metrics['split_manifest.sha256']=file_sha256(args.split_manifest)
+         metrics['learning_rate']=args.lr
++        metrics['failed']=False
+         metrics.update({'model_revision':REVISION,'tokenizer_revision':REVISION,
+             'source.commit':os.environ.get('SR_CODE_COMMIT','unknown'),
+             'environment.lock_sha256':file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
+             'torch':torch.__version__,'cuda':torch.version.cuda})
+-        if args.stage=='smoke':
+-            batches=batches[:args.smoke_steps or 4]
+         tick=time.monotonic()
+         model=make_model(args.arm,phase,args.seed)
+         metrics['load.seconds']=time.monotonic()-tick
+@@ -241,25 +242,32 @@ def run(args):
+             write_json(out/f'dev-step-{step}.json',{'step':step,'metrics':values,'predictions':preds})
+         metrics.update(train(model,batches,tok,args.lr,out,monitor if args.stage!='calibration' else None))
+         assert metrics['params.with_grad']==PARAMETERS[args.arm]
+-        tick=time.monotonic()
+-        model.export_adapter(out/'adapter')
+-        metrics['save.seconds']=time.monotonic()-tick
+-        split_names=('calibration',) if args.stage=='calibration' else ('dev',)
++        if args.stage!='calibration':
++            tick=time.monotonic()
++            model.export_adapter(out/'adapter')
++            metrics['save.seconds']=time.monotonic()-tick
++        else:
++            # RBc selects an LR from NLL and RB1 starts from scratch. Checkpoint
++            # identity is covered by smoke/formal runs, not repeated per LR.
++            metrics['calibration.export_reload_skipped']=True
++        split_names=(('calibration',) if args.stage=='calibration' else
++                     ('calibration','dev') if args.stage=='smoke' else ('dev',))
+         tick=time.monotonic()
+         values,preds=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
+         metrics.update(values)
+         metrics['eval.seconds']=time.monotonic()-tick
+         write_json(out/'predictions.json',preds)
+-        del model
+-        gc.collect()
+-        torch.cuda.empty_cache()
+-        model=make_model(args.arm,phase,args.seed,out/'adapter')
+-        values,reloaded=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
+-        metrics['reload.identical']=preds==reloaded
+-        assert metrics['reload.identical'] and all(metrics[k]==v for k,v in values.items())
+-        write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
+-            'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
+-            for name in ('config.json','adapter.pt')})
++        if args.stage!='calibration':
++            del model
++            gc.collect()
++            torch.cuda.empty_cache()
++            model=make_model(args.arm,phase,args.seed,out/'adapter')
++            values,reloaded=evaluate(model,splits,tok,args.eval_limit,split_names=split_names)
++            metrics['reload.identical']=preds==reloaded
++            assert metrics['reload.identical'] and all(metrics[k]==v for k,v in values.items())
++            write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
++                'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
++                for name in ('config.json','adapter.pt')})
+         passed=True
+     except (TrainingDiverged,EvaluationNonfinite) as exc:
+         if isinstance(exc,TrainingDiverged):
+diff --git a/src/test_rb_core.py b/src/test_rb_core.py
+index 81df9c8..34e4414 100644
+--- a/src/test_rb_core.py
++++ b/src/test_rb_core.py
+@@ -4,7 +4,6 @@ Per tensor: ||actual-reference||inf <= 1e-5 + 1e-4*||reference||inf.
+ Both the absolute infinity norm and normalized relative error are reported.
+ No componentwise ratio or post-result tolerance change is used.
+ """
+-from dataclasses import replace
+ from unittest.mock import patch
+ 
+ import pytest
+@@ -121,16 +120,18 @@ def test_t0_definition_and_history_independence():
+     close(process_kernel_tokenwise(*changed,reader,valid,4)[:,5:], actual[:,5:])
+ 
+ 
+-def history_inputs():
++def history_inputs(left_padding=True):
+     torch.manual_seed(193)
+     q,k,v = [torch.randn(2,17,8) for _ in range(3)]
+     valid = torch.ones(2,17,dtype=torch.bool)
+-    valid[0,:2], valid[1,-3:] = False, False
++    if left_padding:
++        valid[0,:2] = False
++    valid[1,-3:] = False
+     return q,k,v,valid,LatentReader(8)
+ 
+ 
+ def test_history_identities_strict_and_current_weights():
+-    q,k,v,valid,reader = history_inputs()
++    q,k,v,valid,reader = history_inputs(left_padding=False)
+     cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fixed_query=True,steps=4,fusion='F_out')
+     normal = run_history(q,k,v,reader,valid,cfg,{'capture_history':True,'trace_reads':True})
+     for options in ({'kind':'iv_window','window':64},
+@@ -140,7 +141,7 @@ def test_history_identities_strict_and_current_weights():
+     off = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_off'})
+     assert torch.count_nonzero(off.outputs) == 0
+     strict = run_history(q,k,v,reader,valid,cfg,{'kind':'iv_strict'})
+-    assert torch.count_nonzero(strict.outputs[0,:3]) == 0
++    assert torch.count_nonzero(strict.outputs[0,0]) == 0
+     assert torch.count_nonzero(strict.outputs[1,0]) == 0
+     weights = normal.diagnostics['current_weight']
+     assert weights.shape == (2,17,4)
+@@ -155,7 +156,7 @@ def test_history_identities_strict_and_current_weights():
+ 
+ @pytest.mark.parametrize('kind',['iv_window1','iv_window8','iv_strict','iv_swap','iv_permute','iv_off'])
+ def test_every_intervention_causal_at_feature_boundary(kind):
+-    q,k,v,valid,reader = history_inputs()
++    q,k,v,valid,reader = history_inputs(left_padding=kind not in ('iv_swap','iv_permute'))
+     cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out',steps=4)
+     donor = run_history(q.flip(0),k.flip(0),v.flip(0),reader,valid.flip(0),cfg,{'capture_history':True})
+     options = {'kind':kind,'phase':'R1','example_ids':['a','b'],'donor':donor.diagnostics['history']}
+@@ -177,12 +178,58 @@ def test_wrong_implementations_are_rejected():
+         masses[:,-1:].expand_as(masses),counts[:,-1:].expand_as(counts),valid)
+     with pytest.raises(AssertionError):
+         close(bad[:,:8],normal.outputs[:,:8])
+-    duplicate = replace(normal,accounting={**normal.accounting,'writes':valid.sum()*2})
+-    with pytest.raises(AssertionError):
+-        assert duplicate.accounting['writes'] == valid.sum()
+-    padded = process_prefix(q,k,v,reader,valid=torch.ones_like(valid))
+-    with pytest.raises(AssertionError):
+-        assert torch.equal(padded.state.counts,valid.sum(1))
++
++
++@pytest.mark.parametrize('broken',['duplicate','ignore_padding'])
++def test_broken_prefix_writes_fail_the_reference_gate(broken):
++    import bypass_core
++    q,k,v,valid,reader = history_inputs()
++    reference = process_sequence(q,k,v,reader,valid=valid,steps=4)
++    def gate():
++        result = process_prefix(q,k,v,reader,valid=valid,steps=4)
++        # State comparisons are essential: doubling M and c together can leave
++        # normalized reads almost unchanged while corrupting the saved state.
++        close(result.state.M,reference.state.M,name='M')
++        close(result.state.c,reference.state.c,name='c')
++        assert torch.equal(result.state.counts,reference.state.counts),'counts'
++        close(result.outputs,reference.outputs,name='outputs')
++    gate()
++    original = bypass_core.kernel_prefix_states
++    def bad_states(k,v,reader,valid,write=None,state=None):
++        if broken=='ignore_padding':
++            return original(k,v,reader,torch.ones_like(valid),write,state)
++        keys,values,matrices,masses,counts,_ = original(k,v,reader,valid,write,state)
++        initial = state or MemoryState.empty(k.shape[0],reader.rank,device=k.device)
++        matrices = initial.M[:,None]+2*(matrices-initial.M[:,None])
++        masses = initial.c[:,None]+2*(masses-initial.c[:,None])
++        counts = initial.counts[:,None]+2*(counts-initial.counts[:,None])
++        final = MemoryState(matrices[:,-1],masses[:,-1],counts[:,-1],'kernel_matrix',reader.rank)
++        return 2*keys,values,matrices,masses,counts,final
++    with patch('bypass_core.kernel_prefix_states',side_effect=bad_states):
++        with pytest.raises(AssertionError,match='M|c|counts'):
++            gate()
++
++
++@pytest.mark.parametrize('kind',['iv_swap','iv_permute'])
++@pytest.mark.parametrize('mask_kind',['left_padding','gap'])
++def test_swap_permute_reject_nonprefix_recipient_masks(kind,mask_kind):
++    q,k,v,valid,reader = history_inputs(left_padding=False)
++    cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out')
++    donor = run_history(q,k,v,reader,valid,cfg,{'capture_history':True}).diagnostics['history']
++    valid[0,0 if mask_kind=='left_padding' else 3] = False
++    with pytest.raises(ValueError,match='recipient.*contiguous from position 0'):
++        run_history(q,k,v,reader,valid,cfg,{'kind':kind,'donor':donor,
++            'phase':'R1','example_ids':['a','b']})
++
++
++@pytest.mark.parametrize('mask_kind',['left_padding','gap'])
++def test_swap_rejects_nonprefix_donor_masks(mask_kind):
++    q,k,v,valid,reader = history_inputs(left_padding=False)
++    cfg = AdapterConfig(branch='memory',rank=8,impl='prefix',fusion='F_out')
++    donor = run_history(q,k,v,reader,valid,cfg,{'capture_history':True}).diagnostics['history']
++    donor['valid'][0,0 if mask_kind=='left_padding' else 3] = False
++    with pytest.raises(ValueError,match='donor.*contiguous from position 0'):
++        run_history(q,k,v,reader,valid,cfg,{'kind':'iv_swap','donor':donor})
+ 
+ 
+ def test_donor_mapping_is_within_task_derangement():
+diff --git a/src/test_rb_train.py b/src/test_rb_train.py
+index cbc6c5f..53e504b 100644
+--- a/src/test_rb_train.py
++++ b/src/test_rb_train.py
+@@ -1,5 +1,6 @@
+ import json
+ from pathlib import Path
++from types import SimpleNamespace
+ 
+ import pytest
+ 
+@@ -64,3 +65,68 @@ def test_T0_rejects_backend_that_would_create_an_unused_temperature():
+     from bypass_model import AdapterConfig
+     with pytest.raises(ValueError,match='parameter family'):
+         AdapterConfig(branch='kernel_tokenwise',backend='centered_cos_slot')
++
++
++@pytest.mark.parametrize('double_writes',[False,True])
++def test_train_accounting_gate_rejects_doubled_writes(tmp_path,monkeypatch,double_writes):
++    import torch
++    import rb_train
++    from bypass_model import BranchModel
++    model=BranchModel.__new__(BranchModel)
++    torch.nn.Module.__init__(model)
++    model.config=adapter_config('RB1-02')
++    def forward(self,*args):
++        return SimpleNamespace(accounting={6:{'base':{'attention':1,'ffn':1},
++            'side':{'valid_tokens':torch.tensor(1),'writes':torch.tensor(2 if double_writes else 1),
++                    'reads':torch.tensor(1)}}},cache=SimpleNamespace(memory={6:None}))
++    monkeypatch.setattr(BranchModel,'forward',forward)
++    def fake_train(current,*args,**kwargs):
++        current(None);current(None)
++        return {'train.input_tokens':2,'train.examples':2}
++    monkeypatch.setattr(rb_train,'v1_train',fake_train)
++    monkeypatch.setattr(torch.cuda,'reset_peak_memory_stats',lambda:None)
++    if double_writes:
++        with pytest.raises(AssertionError):
++            rb_train.train(model,[],None,.001,tmp_path)
++    else:
++        result=rb_train.train(model,[],None,.001,tmp_path)
++        assert result['runtime.accounting']['layers']['6']['writes']==2
++
++
++def test_calibration_entry_evaluates_once_without_export_or_reload(tmp_path,monkeypatch):
++    import torch
++    import rb_train
++    split=tmp_path/'split.json';split.write_text('{}')
++    args=SimpleNamespace(output=tmp_path/'run',stage='calibration',phase='R1',seed=0,
++        arm='RB1-02',lr=.001,lr_lock=None,split_manifest=split,data_dir='fixture',
++        three_epochs=False,eval_limit=None,smoke_steps=None)
++    class Model(torch.nn.Module):
++        def __init__(self):
++            super().__init__();self.new=torch.nn.Parameter(torch.zeros(rb_train.PARAMETERS[args.arm]))
++        def adapter_parameters(self):return self.parameters()
++        def export_adapter(self,*args):pytest.fail('calibration must not export')
++    loads=[];evaluations=[]
++    def make(arm,phase,seed):
++        loads.append((arm,phase,seed));return Model()
++    def evaluate(model,splits,tok,limit,split_names):
++        evaluations.append(split_names)
++        return {'calibration.nll':1.2},[{'id':1,'prediction':0}]
++    monkeypatch.setattr(rb_train.AutoTokenizer,'from_pretrained',lambda *a,**k:SimpleNamespace(eos_token_id=0))
++    monkeypatch.setattr(rb_train,'load_data',lambda *a:({},[]))
++    monkeypatch.setattr(rb_train,'plan_batches',lambda *a:[None])
++    monkeypatch.setattr(rb_train,'plan_metadata',lambda *a:{'plan.steps':1,'plan.order_sha256':'b'*64})
++    monkeypatch.setattr(rb_train,'make_model',make)
++    monkeypatch.setattr(rb_train,'train',lambda *a:{'params.with_grad':rb_train.PARAMETERS[args.arm],
++        'train.steps':1,'train.input_tokens':200001})
++    monkeypatch.setattr(rb_train,'evaluate',evaluate)
++    monkeypatch.setattr(torch.cuda,'get_device_name',lambda:'unit fixture')
++    monkeypatch.setenv('SR_SPEC_DIGEST','unit-fixture')
++    rb_train.run(args)
++    value=json.loads((args.output/'manifest.json').read_text())
++    assert value['status']=='complete' and value['validator']['passed'] is True
++    assert value['phase']=='V0' and value['stage']=='calibration'
++    assert loads==[('RB1-02','V0',0)] and evaluations==[('calibration',)]
++    assert value['metrics']['calibration.export_reload_skipped'] is True
++    assert value['metrics']['failed'] is False and value['metrics']['calibration.nll']==1.2
++    assert 'reload.identical' not in value['metrics'] and 'save.seconds' not in value['metrics']
++    assert not (args.output/'adapter').exists() and not (args.output/'checkpoint.json').exists()
