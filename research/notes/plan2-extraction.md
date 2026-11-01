@@ -1,7 +1,8 @@
 # plan2（v2.1）提取：RB 线（残差旁路线）
 
 - 来源：`docs/plan2.md`（git blob 7b2b9321，SHA256 64f79d69…）。按用户 2026-11-02 的决定（`docs/constraints.md`），它作为互补的另一条线加入：已有结论不改写；plan2 的 token 数只作每个 arm 的样本预算；算力计入全项目 200 node·h。plan2 卷首写“取代 v2”，这里按该决定理解为新增一条线。
-- 记录：在沙盒 `/work/xg24i002/x10041/bypass-lora-worktrees/plan2-sandbox`（主项目 data_version 2474 的 export/restore）里建了 6 个假设和 3 个契约，主项目没有写入。命令见 `research/notes/plan2-commands.sh`（可在主项目原样重放，id 可能不同）；契约副本见 `research/notes/plan2-contracts/`（RB0.md=E-0018，RBc.md=E-0019，RB1.md=E-0020）。
+- 主项目（2026-11-02 协调者审核后重放，D-0025）：假设 H-0013..H-0018，契约 E-0019（RB0）、E-0020（RBc）、E-0021（RB1）；下文的 id 已换成主项目编号。第 5 节问题的决定见 D-0025：Q1 选 A2（确认集从 V1 train 切，不用 A1），Q2–Q4 照建议，Q6 已完成，Q7 放到 M 线 V3/V4 设计时，Q9 已写入 `docs/constraints.md`。
+- 记录：最初在沙盒 `/work/xg24i002/x10041/bypass-lora-worktrees/plan2-sandbox`（主项目 data_version 2474 的 export/restore）里建了 6 个假设和 3 个契约，主项目没有写入。命令见 `research/notes/plan2-commands.sh`（可在主项目原样重放，id 可能不同）；契约副本见 `research/notes/plan2-contracts/`（RB0.md=E-0019，RBc.md=E-0020，RB1.md=E-0021）。
 
 ## 1. 提取
 
@@ -21,9 +22,9 @@
 
 **首批实验**
 
-- V0 中本线需要的新实现检查（§6.3、§15.5）→ RB0（E-0018，E0）。
-- 家族 LR 校准（§6.4）→ RBc（E-0019，E2）。
-- R1 八组（§6A）→ RB1（E-0020，E2），另加 RB1-09（C_up）。
+- V0 中本线需要的新实现检查（§6.3、§15.5）→ RB0（E-0019，E0）。
+- 家族 LR 校准（§6.4）→ RBc（E-0020，E2）。
+- R1 八组（§6A）→ RB1（E-0021，E2），另加 RB1-09（C_up）。
 - V5 九组（§11）→ RB5：现在不建契约，见第 4 节。
 
 **指标与推进/停止条件**
@@ -90,9 +91,9 @@
 | H-0016 | 同一状态下 gate/up 条件融合优于残差写回 | active | — |
 | H-0017 | RB 线新实现正确 | active | — |
 | H-0018 | RB1 无信号时一次容量或特征探针 | candidate | 储备 ≤ 8M tokens |
-| E-0018 | RB0：实现与计时（tests H-0017） | E0 | ≤ 1.0 node·h（估计 0.5） |
-| E-0019 | RBc：四个家族的 LR 校准（tests H-0013） | E2 | ≤ 1.5 node·h（估计 0.6–0.8） |
-| E-0020 | RB1：首轮筛选，九组（tests H-0013..H-0016） | E2 | ≤ 4 node·h（估计 2.6–3.2） |
+| E-0019 | RB0：实现与计时（tests H-0017） | E0 | ≤ 1.0 node·h（估计 0.5） |
+| E-0020 | RBc：四个家族的 LR 校准（tests H-0013） | E2 | ≤ 1.5 node·h（估计 0.6–0.8） |
+| E-0021 | RB1：首轮筛选，九组（tests H-0013..H-0016） | E2 | ≤ 4 node·h（估计 2.6–3.2） |
 
 - 三个契约的上限合计 6.5 node·h（估计 3.7–4.5）。
 - RB5（plan2 V5，E3）现在不建契约。RB1 规则 7 成立时起草，矩阵由 RB1 的规则决定。九组全展开估计 17–20 node·h，建议上限 25。
