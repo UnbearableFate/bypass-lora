@@ -47,7 +47,7 @@ class AdapterConfig:
     def __post_init__(self):
         if self.fusion not in FUSIONS or self.branch not in ('tokenwise_silu', 'tokenwise_linear', 'memory', 'kernel_tokenwise'):
             raise ValueError('unknown branch or fusion')
-        if self.tap not in ('qknorm_pre_rope', 'raw_qkv', 'direct_hidden'):
+        if self.tap not in ('qknorm_pre_rope', 'raw_qkv', 'direct_hidden', 'normalized_qk'):
             raise ValueError('unknown feature tap')
         if self.steps < 1 or self.rank < 1 or len(set(self.layers)) != len(self.layers):
             raise ValueError('invalid rank, steps or duplicate layers')
@@ -94,7 +94,11 @@ class FeatureTap:
         if self.kind == 'direct_hidden':
             values.update(q=normalized_hidden, k=normalized_hidden, v=normalized_hidden)
         else:
-            modules = {'q': self.attention.q_norm, 'k': self.attention.k_norm,
+            if self.kind == 'normalized_qk':
+                values.update(q=normalized_hidden, k=normalized_hidden)
+                modules = {'v': self.attention.v_proj}
+            else:
+                modules = {'q': self.attention.q_norm, 'k': self.attention.k_norm,
                        'v': self.attention.v_proj} if self.kind == 'qknorm_pre_rope' else {
                            'q': self.attention.q_proj, 'k': self.attention.k_proj, 'v': self.attention.v_proj}
             for key, module in modules.items():
@@ -165,8 +169,9 @@ class SideBranch(nn.Module):
         d = layer.self_attn.q_proj.in_features
         if config.branch in ('memory', 'kernel_tokenwise'):
             dims = (d, d, d) if config.tap == 'direct_hidden' else (
+                (d, d, layer.self_attn.v_proj.out_features) if config.tap == 'normalized_qk' else (
                 layer.self_attn.q_proj.out_features, layer.self_attn.k_proj.out_features,
-                layer.self_attn.v_proj.out_features)
+                layer.self_attn.v_proj.out_features))
             self.projection = LowDimProjection(dims, config.rank)
             self.reader = LatentReader(config.rank, eta=config.eta, read_gain=config.read_gain,
                                        eps_norm=config.eps_norm, eps_read=config.eps_read,

@@ -1,0 +1,100 @@
+#!/bin/bash
+# E-0029 immutable snapshot entry; all operations require registered attempts.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${IMPROVE_JOB:?registered operation required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+SIDE_LOCK="$SRC/research/artifacts/T-0024/lr-lock.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0032-${IMPROVE_JOB}"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+case "$IMPROVE_JOB" in
+  smoke|tests)
+    "$PY" -m pytest -q -p no:cacheprovider src/test_rb_improve.py src/test_rb_improve_analysis.py \
+      src/test_rb_improve_lr.py src/test_rb_tap.py src/test_rb_train.py src/test_rb1_artifacts.py \
+      src/test_rb_tap_analysis.py src/test_rb_tap_eval.py src/test_rb_eta_select.py src/test_v1_lora.py \
+      > "$OUT/pytest.txt" 2>&1
+    if [ "$IMPROVE_JOB" = smoke ]; then
+      exec "$PY" src/rb_improve_smoke.py --output "$OUT" --split-manifest "$SPLIT" --data-dir "$P/data/v1"
+    fi
+    "$PY" - "$OUT" <<'PY'
+import json,os,sys
+from pathlib import Path
+out=Path(sys.argv[1])
+json.dump({'status':'complete','contract':'E-0029@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+ 'metrics':{'pytest_exit':0,'source_commit':os.environ['SR_CODE_COMMIT']},
+ 'artifacts':[{'path':str(out/'pytest.txt'),'role':'tests'}],
+ 'validator':{'name':'e0029_tests','passed':True}},open(out/'manifest.json','w'),indent=2)
+PY
+    ;;
+  ig|calibration|train)
+    : "${IMPROVE_ARM:?registered arm required}"
+    : "${IMPROVE_LR:?registered LR required}"
+    extra=()
+    if [ "$IMPROVE_JOB" = train ]; then
+      : "${IMPROVE_UP_LOCK:?locked up-only LR required}"
+      LOCK="$SIDE_LOCK"
+      if [[ "$IMPROVE_ARM" = L-* ]]; then LOCK="$IMPROVE_UP_LOCK"; fi
+      extra+=(--lr-lock "$LOCK" --up-lr-lock "$IMPROVE_UP_LOCK" --base-run "$P/runs/ATT-0024-1")
+      if [[ "$IMPROVE_ARM" = G-* ]]; then
+        : "${IMPROVE_IG_INIT:?reviewed I-G initialization required}"
+        extra+=(--ig-init "$IMPROVE_IG_INIT")
+      fi
+    fi
+    exec "$PY" src/rb_improve_train.py --stage "$IMPROVE_JOB" --arm "$IMPROVE_ARM" --lr "$IMPROVE_LR" \
+      --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT" "${extra[@]}"
+    ;;
+  lr-plan|lr-lock)
+    : "${IMPROVE_SELECTION_INPUT:?registered calibration input list required}"
+    exec "$PY" - "$IMPROVE_SELECTION_INPUT" "$OUT" "$IMPROVE_JOB" <<'PY'
+import json,os,sys
+from pathlib import Path
+from rb_improve_lr import lock
+from rb1_artifacts import reference
+source,out,mode=sys.argv[1:];out=Path(out)
+inputs=json.loads(Path(source).read_text())
+value=lock(inputs['manifests'],final=mode=='lr-lock')
+path=out/('lr-lock.json' if mode=='lr-lock' else 'lr-plan.json')
+with path.open('x') as handle:
+    json.dump(value,handle,indent=2,allow_nan=False);handle.write('\n')
+json.dump({'status':'complete','contract':'E-0029@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+ 'stage':mode,'metrics':{'locked_lrs':value['locked_lrs'],'required_extension':value['required_extension'],
+ 'selection_sha256':reference(path)['sha256']},
+ 'artifacts':[{'path':str(path),'role':path.name},{'path':str(Path(source).resolve()),'role':'calibration_inputs'}],
+ 'validator':{'name':'e0029_calibration_only_selection','passed':True}},open(out/'manifest.json','w'),indent=2)
+PY
+    ;;
+  reference-read)
+    : "${IMPROVE_ARM:?reference arm required}"
+    : "${IMPROVE_REFERENCE_RUN:?validated training run required}"
+    extra=()
+    if [ "$IMPROVE_ARM" = X-01 ]; then
+      : "${IMPROVE_REFERENCE_SOURCE:?X-01 reviewed source required}"
+      extra+=(--training-source "$IMPROVE_REFERENCE_SOURCE")
+    fi
+    exec "$PY" src/rb_improve_reference.py --arm "$IMPROVE_ARM" --training-run "$IMPROVE_REFERENCE_RUN" \
+      --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT" "${extra[@]}"
+    ;;
+  analysis)
+    : "${IMPROVE_ANALYSIS_INPUT:?locked analysis input required}"
+    exec "$PY" src/rb_improve_analysis.py --input "$IMPROVE_ANALYSIS_INPUT" --output "$OUT"
+    ;;
+  *) exit 2 ;;
+esac

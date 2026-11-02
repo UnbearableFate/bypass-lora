@@ -60,6 +60,8 @@ def _get_parent(root, path):
 
 class LoRAModel(nn.Module):
     """Attach LoRA to Q/K/V/O and gate/up/down projections in selected layers."""
+    target_names = TARGETS
+
     def __init__(self, model, config=None):
         super().__init__()
         self.model = model
@@ -71,8 +73,8 @@ class LoRAModel(nn.Module):
         self._targets = {}
         for index in self.config.layers:
             layer = layers[index]
-            paths = [f'self_attn.{name}' for name in TARGETS[:4]] + [
-                f'mlp.{name}' for name in TARGETS[4:]]
+            paths = [f'{"self_attn" if name in TARGETS[:4] else "mlp"}.{name}'
+                     for name in self.target_names]
             for path in paths:
                 parent, name = _get_parent(layer, path)
                 base = getattr(parent, name)
@@ -112,4 +114,9 @@ class LoRAModel(nn.Module):
                 for name in ('A', 'B'):
                     getattr(adapter, name).copy_(state[f'{i}.{path}.{name}'])
         return result
+
+
+class UpLoRAModel(LoRAModel):
+    """Same zero-exit LoRA, restricted to up_proj in the configured layers."""
+    target_names = ('up_proj',)
 
