@@ -26,10 +26,17 @@ from v1_run import (prepare,evaluate,train as v1_train,TrainingDiverged,Evaluati
 from v5_train import file_sha256,write_json,plan_metadata
 
 LAYERS=(6,13,20,27)
+# E-0026 width probe: W-01 r128 T0, W-02 r128 R_res KernelMatrix S1, W-03 the
+# same-four-layer all-7 LoRA whose implementation count is nearest to W-02.
+WIDTH_ARMS=('W-01','W-02','W-03')
+WIDTH_RANK=128
+LORA_RANKS={'RB1-07':7,'W-03':31}
 PARAMETERS={**{f'RB1-{i:02}':663552 for i in range(1,7)},
-            'RB1-07':630784,'RB1-08':1318912,'RB1-09':925696}
+            'RB1-07':630784,'RB1-08':1318912,'RB1-09':925696,
+            'W-01':2752512,'W-02':2752512,'W-03':2793472}
 FAMILIES={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T',
-          'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C'}
+          'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C',
+          'W-01':'RBc-T','W-02':'RBc-R','W-03':'RBc-L'}
 REPRESENTATIVES={'RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-L':'RB1-07','RBc-C':'RB1-08'}
 GRIDS={'RBc-T':(1e-4,3e-4,1e-3),'RBc-L':(1e-4,3e-4,1e-3),
        'RBc-R':(3e-4,1e-3,3e-3),'RBc-C':(3e-4,1e-3,3e-3)}
@@ -37,11 +44,18 @@ EXTENSIONS={'RBc-T':(3e-5,3e-3),'RBc-L':(3e-5,3e-3),
             'RBc-R':(1e-4,1e-2),'RBc-C':(1e-4,1e-2)}
 
 
+def contract(arm,stage):
+    if arm in WIDTH_ARMS:
+        return 'E-0026@1'
+    return 'E-0019@1' if stage=='smoke' else 'E-0020@1' if stage=='calibration' else 'E-0021@1'
+
+
 def adapter_config(arm,impl='prefix'):
-    if arm not in PARAMETERS or arm=='RB1-07':
+    if arm not in PARAMETERS or arm in LORA_RANKS:
         raise ValueError('not an RB side-branch arm')
-    return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm=='RB1-01' else 'memory',
-        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' else 'F_out',rank=32,
+    return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm in ('RB1-01','W-01') else 'memory',
+        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' else 'F_out',
+        rank=WIDTH_RANK if arm in WIDTH_ARMS else 32,
         steps=2 if arm=='RB1-03' else 4 if arm in ('RB1-04','RB1-05','RB1-06') else 1,
         fixed_query=arm=='RB1-05',eta=.0625 if arm=='RB1-06' else .25,impl=impl)
 
@@ -53,8 +67,8 @@ def make_model(arm,phase='R1',seed=0,checkpoint=None,impl='prefix'):
     torch.manual_seed(derive_seed(BASE_SEED,STUDY,phase,'init',seed))
     if arm=='Base':
         return base
-    if arm=='RB1-07':
-        config=LoRAConfig(layers=LAYERS,rank=7,alpha=7)
+    if arm in LORA_RANKS:
+        config=LoRAConfig(layers=LAYERS,rank=LORA_RANKS[arm],alpha=LORA_RANKS[arm])
         model=LoRAModel.load_adapter(base,checkpoint) if checkpoint else LoRAModel(base,config)
     else:
         config=adapter_config(arm,impl)
@@ -240,6 +254,12 @@ def run(args):
         def monitor(step,current):
             values,preds=evaluate(current,splits,tok,args.eval_limit,split_names=('dev',))
             write_json(out/f'dev-step-{step}.json',{'step':step,'metrics':values,'predictions':preds})
+        if args.arm in WIDTH_ARMS:
+            # E-0026 rule 1(b): the zero-exit initialization is scored before any update.
+            tick=time.monotonic()
+            with preserved_evaluation_state(model):
+                monitor(0,model)
+            metrics['init_eval.seconds']=time.monotonic()-tick
         metrics.update(train(model,batches,tok,args.lr,out,monitor if args.stage!='calibration' else None))
         assert metrics['params.with_grad']==PARAMETERS[args.arm]
         if args.stage!='calibration':
@@ -280,7 +300,7 @@ def run(args):
     finally:
         metrics['elapsed_s']=time.monotonic()-start
         write_json(out/'manifest.json',{'status':'complete' if passed else 'partial',
-            'spec_digest':os.environ['SR_SPEC_DIGEST'],'contract':'E-0019@1' if args.stage=='smoke' else 'E-0020@1' if args.stage=='calibration' else 'E-0021@1',
+            'spec_digest':os.environ['SR_SPEC_DIGEST'],'contract':contract(args.arm,args.stage),
             'arm':args.arm,'family':FAMILIES[args.arm],'seed':args.seed,'phase':phase,'stage':args.stage,
             'metrics':metrics,'artifacts':[{'path':str(p),'role':p.name} for p in out.iterdir() if p.is_file() and p.name!='manifest.json'],
             'validator':{'name':'rb_training_runtime','passed':passed}})

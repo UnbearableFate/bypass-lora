@@ -6,7 +6,7 @@ import re
 import statistics
 from pathlib import Path
 
-from rb_train import FAMILIES, PARAMETERS
+from rb_train import FAMILIES, LORA_RANKS, PARAMETERS, WIDTH_ARMS, contract
 
 
 CONTRACT = 'E-0021@1'
@@ -97,10 +97,23 @@ def verify_lr_lock(path, expected_sha256=ACCEPTED_LR_LOCK_SHA256):
     return data
 
 
-def validate_formal_run(run_dir, arm):
-    """Validate a final RB1 producer run; return manifest, refs, adapter path."""
+def validate_formal_run(run_dir, arm, source_commit=None):
+    """Validate a final RB1/E-0026 producer run; return manifest, refs, adapter path.
+
+    RB1 arms are pinned to the accepted E-0021 training source. E-0026 width
+    arms have no accepted source yet, so the caller must name the reviewed one.
+    """
     if arm not in PARAMETERS:
         raise ValueError(f'unknown RB1 arm {arm}')
+    if arm in WIDTH_ARMS:
+        if not isinstance(source_commit, str) or re.fullmatch('[0-9a-f]{40}', source_commit) is None:
+            raise ValueError(f'{arm}: E-0026 validation requires the reviewed training source commit')
+        expected_source = source_commit
+    elif source_commit is not None:
+        raise ValueError(f'{arm}: RB1 arms are pinned to the accepted E-0021 training source')
+    else:
+        expected_source = ACCEPTED_TRAINING_SOURCE_COMMIT
+    run_contract = contract(arm, 'train')
     root = Path(run_dir).resolve()
     required = ('manifest.json', 'config.json', 'checkpoint.json', 'steps.jsonl')
     missing = [name for name in required if not (root / name).is_file()]
@@ -110,8 +123,8 @@ def validate_formal_run(run_dir, arm):
     config = read(root / 'config.json')
     checkpoint = read(root / 'checkpoint.json')
     expected = {'arm': arm, 'phase': 'R1', 'seed': 0, 'stage': 'train'}
-    if manifest.get('status') != 'complete' or manifest.get('contract') != CONTRACT:
-        raise ValueError(f'{arm}: requires a complete {CONTRACT} formal training manifest')
+    if manifest.get('status') != 'complete' or manifest.get('contract') != run_contract:
+        raise ValueError(f'{arm}: requires a complete {run_contract} formal training manifest')
     if any(manifest.get(key) != value for key, value in expected.items()):
         raise ValueError(f'{arm}: manifest arm/phase/seed/stage mismatch')
     if manifest.get('family') != FAMILIES[arm] or manifest.get('validator', {}).get('passed') is not True:
@@ -136,8 +149,8 @@ def validate_formal_run(run_dir, arm):
     for key, length in (('source.commit', 40), ('plan.order_sha256', 64)):
         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
             raise ValueError(f'{arm}: missing or invalid {key}')
-    if metrics['source.commit'] != ACCEPTED_TRAINING_SOURCE_COMMIT:
-        raise ValueError(f'{arm}: source commit differs from covered RB1 training release')
+    if metrics['source.commit'] != expected_source:
+        raise ValueError(f'{arm}: source commit differs from covered training release')
     expected_params = PARAMETERS[arm]
     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
         if metrics.get(key) != expected_params:
@@ -230,10 +243,10 @@ def validate_formal_run(run_dir, arm):
         raise ValueError(f'{arm}: config and adapter checkpoint files are split')
     adapter_dir = paths['adapter.pt'].parent
     model_config = read(adapter_dir / 'config.json')
-    if arm == 'RB1-07':
+    if arm in LORA_RANKS:
         from v1_lora import LoRAConfig
-        expected_config = json.loads(json.dumps(LoRAConfig(layers=(6, 13, 20, 27), rank=7,
-                                                            alpha=7).__dict__))
+        expected_config = json.loads(json.dumps(LoRAConfig(layers=(6, 13, 20, 27), rank=LORA_RANKS[arm],
+                                                            alpha=LORA_RANKS[arm]).__dict__))
     else:
         from rb_train import adapter_config
         expected_config = json.loads(json.dumps(adapter_config(arm).__dict__))

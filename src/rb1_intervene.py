@@ -18,14 +18,20 @@ from transformers import AutoTokenizer
 from calibrate import MODEL, REVISION
 from rb_history import donor_indices
 from rb_read_diagnostics import ReadSummary
-from rb_train import make_model
+from rb_train import contract, make_model
 from v1_data import encode_candidates
 from v1_run import batch_tensors, evaluate, prepare
 from v5_train import file_sha256, write_json
 
 
 MODES = ('iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute')
-INTERVENTION_ARMS = ('RB1-01', 'RB1-02', 'RB1-03', 'RB1-04', 'RB1-08', 'RB1-09')
+INTERVENTION_ARMS = ('RB1-01', 'RB1-02', 'RB1-03', 'RB1-04', 'RB1-08', 'RB1-09', 'W-02')
+# E-0026 registers only these three frozen interventions for the r128 memory arm.
+WIDTH_MODES = ('iv_off', 'iv_swap', 'iv_permute')
+
+
+def intervention_modes(arm):
+    return ('iv_swap',) if arm == 'RB1-01' else WIDTH_MODES if arm == 'W-02' else MODES
 
 
 class HistoryView:
@@ -111,7 +117,7 @@ def run(args):
     try:
         if args.arm not in INTERVENTION_ARMS:
             raise ValueError('arm is outside the registered frozen-intervention grid')
-        _, inventory, adapter = validate_formal_run(args.training_run, args.arm)
+        _, inventory, adapter = validate_formal_run(args.training_run, args.arm, args.training_source)
         tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
         tokenizer.pad_token_id = tokenizer.eos_token_id
         splits = prepare(args.data_dir)
@@ -122,7 +128,7 @@ def run(args):
         conditions = {'normal': {'metrics': normal_metrics, 'predictions': normal_predictions,
                                   'read_diagnostics': normal_reads},
                       'Base_same_allocation': {'metrics': base_metrics, 'predictions': base_predictions}}
-        modes = ('iv_swap',) if args.arm == 'RB1-01' else MODES
+        modes = intervention_modes(args.arm)
         for kind in modes:
             tick = time.monotonic()
             metrics, predictions, reads = evaluate_history(model, splits, tokenizer, kind)
@@ -161,7 +167,7 @@ def run(args):
     finally:
         values['elapsed_s'] = time.monotonic()-start
         write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
-            'contract': 'E-0021@1', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
+            'contract': contract(args.arm, 'train'), 'spec_digest': os.environ['SR_SPEC_DIGEST'],
             'arm': args.arm, 'phase': 'R1', 'seed': 0, 'stage': 'intervention',
             'metrics': values, 'artifacts': artifacts,
             'validator': {'name': 'rb1_frozen_history', 'passed': passed}})
@@ -171,6 +177,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--arm', choices=INTERVENTION_ARMS, required=True)
     parser.add_argument('--training-run', type=Path, required=True)
+    parser.add_argument('--training-source', help='reviewed training source commit (E-0026 W-02 only)')
     parser.add_argument('--data-dir', required=True)
     parser.add_argument('--output', type=Path, required=True)
     run(parser.parse_args())
