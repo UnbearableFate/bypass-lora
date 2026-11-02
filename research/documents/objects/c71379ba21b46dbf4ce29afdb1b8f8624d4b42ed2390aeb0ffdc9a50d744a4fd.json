@@ -1,0 +1,50 @@
+{
+  "status": "complete",
+  "contract": "E-0028@1",
+  "spec_digest": "blake2b:b1bc1e1d9cd2b2eb5c9516a3ab2dcc16b6926bd1b15b6dc8753a727c781f1599",
+  "phase": "R1",
+  "seed": 0,
+  "stage": "intervention",
+  "metrics": {
+    "arm": "X-01",
+    "conditions": [
+      "normal",
+      "Base_same_allocation",
+      "iv_off",
+      "iv_window1",
+      "iv_window8",
+      "iv_strict",
+      "iv_swap",
+      "iv_permute"
+    ],
+    "dev_rows": 2000,
+    "iv_off_identical_to_Base": true,
+    "T0_swap_noop": false,
+    "elapsed_s": 2239.564641090983
+  },
+  "artifacts": [
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1/conditions.json",
+      "role": "conditions.json"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1/bootstrap.json",
+      "role": "bootstrap.json"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1/provenance.json",
+      "role": "provenance.json"
+    },
+    {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1/manifest.json",
+      "role": "raw_producer_manifest"
+    }
+  ],
+  "validator": {
+    "name": "rb1_frozen_history",
+    "passed": true
+  },
+  "producer_arm": "X-01",
+  "import_metadata_note": "The immutable RunSpec names this job X-01-interventions; the producer correctly names model arm X-01. This import-only envelope leaves arm unspecified, as allowed by the manifest contract. Raw producer manifest, validation, predictions, provenance and measurements are unchanged.",
+  "producer_manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1/manifest.json"
+}

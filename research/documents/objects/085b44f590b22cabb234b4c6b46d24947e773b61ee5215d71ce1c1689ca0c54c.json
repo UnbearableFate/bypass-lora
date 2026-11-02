@@ -1,0 +1,427 @@
+{
+  "contract": "E-0028@1",
+  "selection_split": "calibration",
+  "selection_metric": "macro_accuracy",
+  "training_source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "registration": {
+    "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0315-1/tap-registration.json",
+    "sha256": "63ef9a21ab8c93b1903afa8c6b4877568d6659dae5dbaf15c984beda507978c9",
+    "bytes": 19317
+  },
+  "tie_rule": "max accuracy, min abs(log2(eta/0.25)), min eta",
+  "split_manifest_sha256": "34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc",
+  "choices": {
+    "QK": {
+      "eta": 0.25,
+      "extension": null,
+      "grid_boundary": false
+    },
+    "X": {
+      "eta": 1.0,
+      "extension": null,
+      "grid_boundary": false
+    }
+  },
+  "candidates": {
+    "QK": {
+      "0.0625": {
+        "arm": "ETA-QK-0.0625",
+        "score": {
+          "numerator": 3203,
+          "denominator": 4096
+        },
+        "counts": {
+          "piqa": [
+            1502,
+            2048
+          ],
+          "boolq": [
+            1701,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.5698876222943356,
+          "boolq": 0.4475177583867378
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0330-1/manifest.json",
+            "sha256": "e23300d7db1ff3ae1dbaaa029f31e408139e1f7ee084031d37b5613eda45e34e",
+            "bytes": 6823
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0330-1/calibration-predictions.json",
+            "sha256": "38b18e04f21b574112030d76d1c748f482031b20578797b40034f1ff76b821ff",
+            "bytes": 1032110
+          }
+        }
+      },
+      "0.125": {
+        "arm": "ETA-QK-0.125",
+        "score": {
+          "numerator": 1597,
+          "denominator": 2048
+        },
+        "counts": {
+          "piqa": [
+            1501,
+            2048
+          ],
+          "boolq": [
+            1693,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.565474072841728,
+          "boolq": 0.47542872721596297
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0331-1/manifest.json",
+            "sha256": "a75a2cd713effb20776a7c8a775fa64ce3e757a20532df093919f3c30a2440eb",
+            "bytes": 7037
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0331-1/calibration-predictions.json",
+            "sha256": "5cba7d1125a388d9be49ae3b09a4c9f3b0950b1bb9d72e73e49834e82f69e198",
+            "bytes": 1032495
+          }
+        }
+      },
+      "0.5": {
+        "arm": "ETA-QK-0.5",
+        "score": {
+          "numerator": 1599,
+          "denominator": 2048
+        },
+        "counts": {
+          "piqa": [
+            1505,
+            2048
+          ],
+          "boolq": [
+            1693,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.565489376872962,
+          "boolq": 0.5445046278413486
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0332-1/manifest.json",
+            "sha256": "9d4c703936f737b310c42bde30b5aa45b5aa124c5e795a05796dc3a26b40556d",
+            "bytes": 6822
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0332-1/calibration-predictions.json",
+            "sha256": "c885f43b6d1dd517fc22b42a58ea26d384ddd9e2e78224694762487f71989998",
+            "bytes": 1032865
+          }
+        }
+      },
+      "1": {
+        "arm": "ETA-QK-1",
+        "score": {
+          "numerator": 3205,
+          "denominator": 4096
+        },
+        "counts": {
+          "piqa": [
+            1507,
+            2048
+          ],
+          "boolq": [
+            1698,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.56289518201874,
+          "boolq": 0.5317500943315565
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0333-1/manifest.json",
+            "sha256": "bf66adff91fb6a336a5fead2ab5fbfc8b251b5c7ca187b0ab8268206f91cc393",
+            "bytes": 6813
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0333-1/calibration-predictions.json",
+            "sha256": "c3b6d068194b4678db7e0ba5328f116e795771d947415b4c6aa82c83cdb969ab",
+            "bytes": 1032725
+          }
+        }
+      },
+      "2": {
+        "arm": "ETA-QK-2",
+        "score": {
+          "numerator": 799,
+          "denominator": 1024
+        },
+        "counts": {
+          "piqa": [
+            1500,
+            2048
+          ],
+          "boolq": [
+            1696,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.557567782313336,
+          "boolq": 0.5533721786293384
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0334-1/manifest.json",
+            "sha256": "af6d4d7581eda6d923c9ee4bb6e135ac564458aa3f23033df32ea82e893c7750",
+            "bytes": 6811
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0334-1/calibration-predictions.json",
+            "sha256": "9b5d3899806088d254982ab85cd216155c18b38f85421fd5e47331451fcd8681",
+            "bytes": 1033316
+          }
+        }
+      },
+      "0.25": {
+        "arm": "RB1-09",
+        "score": {
+          "numerator": 201,
+          "denominator": 256
+        },
+        "counts": {
+          "piqa": [
+            1509,
+            2048
+          ],
+          "boolq": [
+            1707,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.5644951465740493,
+          "boolq": 0.5060480793482327
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0335-1/manifest.json",
+            "sha256": "669de35b773ee31c09767913e6a1fa54d534193320939faa8ef3695300c2007b",
+            "bytes": 3849
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0335-1/calibration-predictions.json",
+            "sha256": "b3b33f2760cf39b57cc289a1394e4a6e14359ced76ff0131564810cd17c3bcdb",
+            "bytes": 1032651
+          }
+        }
+      }
+    },
+    "X": {
+      "0.25": {
+        "arm": "X-01",
+        "score": {
+          "numerator": 3201,
+          "denominator": 4096
+        },
+        "counts": {
+          "piqa": [
+            1507,
+            2048
+          ],
+          "boolq": [
+            1694,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.5577299942316998,
+          "boolq": 0.5174236215455323
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1/manifest.json",
+            "sha256": "11348b031d25ba6a2210573f75bef1e84fb01c198a8530cb470699725d5e0915",
+            "bytes": 6811
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1/calibration-predictions.json",
+            "sha256": "51243a0c0191f0deb6630c1354fd4c7c4bcefcbba407c96347608390eaa6182e",
+            "bytes": 1032759
+          }
+        }
+      },
+      "0.0625": {
+        "arm": "ETA-X-0.0625",
+        "score": {
+          "numerator": 799,
+          "denominator": 1024
+        },
+        "counts": {
+          "piqa": [
+            1497,
+            2048
+          ],
+          "boolq": [
+            1699,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.565809854129692,
+          "boolq": 0.47009844687983815
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0324-1/manifest.json",
+            "sha256": "1d16d26d8badc8053ab07e1581e539e5326e49320e58fe7543e3576397e32d7a",
+            "bytes": 6825
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0324-1/calibration-predictions.json",
+            "sha256": "936448a08c4e1f7d8e10346b521c51030b6492e7f31d32fb2c9eb7a6694bef5e",
+            "bytes": 1032634
+          }
+        }
+      },
+      "0.125": {
+        "arm": "ETA-X-0.125",
+        "score": {
+          "numerator": 1601,
+          "denominator": 2048
+        },
+        "counts": {
+          "piqa": [
+            1500,
+            2048
+          ],
+          "boolq": [
+            1702,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.5626211770143765,
+          "boolq": 0.48985231590827993
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0325-1/manifest.json",
+            "sha256": "ba0521a7933bc9e2476243132f920a4b1b2149995f9b9f63dc05089dfe279af8",
+            "bytes": 6821
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0325-1/calibration-predictions.json",
+            "sha256": "5ed8607b3062a1f4bd3f47e3b53aa550035d49cad18ce86980e198601fb296f6",
+            "bytes": 1032587
+          }
+        }
+      },
+      "0.5": {
+        "arm": "ETA-X-0.5",
+        "score": {
+          "numerator": 3189,
+          "denominator": 4096
+        },
+        "counts": {
+          "piqa": [
+            1495,
+            2048
+          ],
+          "boolq": [
+            1694,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.5536573503026054,
+          "boolq": 0.5469540853602304
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0326-1/manifest.json",
+            "sha256": "e06cdf442d2fb90d25fa8df31b25a8004240089f5d752e2f80f3fa4386dd2682",
+            "bytes": 6819
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0326-1/calibration-predictions.json",
+            "sha256": "ea31881d8dd0f1cae430e56647c615c0cb8c8bfb3cdcdac78f2fc7b699563a75",
+            "bytes": 1033230
+          }
+        }
+      },
+      "1": {
+        "arm": "ETA-X-1",
+        "score": {
+          "numerator": 801,
+          "denominator": 1024
+        },
+        "counts": {
+          "piqa": [
+            1502,
+            2048
+          ],
+          "boolq": [
+            1702,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.548016340927492,
+          "boolq": 0.5360515935196517
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0327-1/manifest.json",
+            "sha256": "b2abed1839a373652c96552d0ec735c6cb52320d069c44c91fc17de8f1135b5b",
+            "bytes": 6818
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0327-1/calibration-predictions.json",
+            "sha256": "342408598a275fef42e227e92b7d327a3e7a6a7e4e2cdce98be21ab89b2b3f87",
+            "bytes": 1032859
+          }
+        }
+      },
+      "2": {
+        "arm": "ETA-X-2",
+        "score": {
+          "numerator": 3187,
+          "denominator": 4096
+        },
+        "counts": {
+          "piqa": [
+            1504,
+            2048
+          ],
+          "boolq": [
+            1683,
+            2048
+          ]
+        },
+        "nll": {
+          "piqa": 2.545970813101699,
+          "boolq": 0.5358929855381973
+        },
+        "inputs": {
+          "manifest": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0329-1/manifest.json",
+            "sha256": "dd010daf874288508818690313a5eb782461c226c2a014901daaf31603ae0a08",
+            "bytes": 7019
+          },
+          "calibration_predictions": {
+            "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0329-1/calibration-predictions.json",
+            "sha256": "1e082b3d4f9064a26743a28b7252a13e4717577f02f4febcf64901aa9307eb58",
+            "bytes": 1033011
+          }
+        }
+      }
+    }
+  }
+}

@@ -60,10 +60,10 @@ def esc(s):
 
 LEDE = ("29 个假说、29 个实验分属 7 条研究线。得到支持的只有 3 个（两项实现检查与 M 线的单独编码写入）；"
         "在已完成的普通设置比较中，侧支组的宏平均都低于参数相近的 LoRA。")
-CAPTION = ("受挑战的 9 个假说有 7 个在 M 线与 RB 线；未检验的 11 个有 8 个在 RB1-09 改进线，"
-           "这条线的 E-0028、E-0029 正在进行。")
+CAPTION = ("受挑战的 10 个假说有 7 个在 M 线与 RB 线；未检验的 9 个有 6 个在 RB1-09 改进线，"
+           "这条线的 E-0028 已结束，E-0029 正在进行。")
 assert len(hs) == 29 and len(es) == 29
-assert cnt == {"supported": 3, "challenged": 9, "inconclusive": 6, "untested": 11}, cnt
+assert cnt == {"supported": 3, "challenged": 10, "inconclusive": 7, "untested": 9}, cnt
 
 gloss_html = "\n".join(
     f"<dt>{esc(t)}</dt><dd>{esc(d)}</dd>" for t, d in GLOSSARY)

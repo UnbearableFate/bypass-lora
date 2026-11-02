@@ -1,0 +1,133 @@
+diff --git a/src/test_rb1_artifacts.py b/src/test_rb1_artifacts.py
+index a0375d9..f619fe0 100644
+--- a/src/test_rb1_artifacts.py
++++ b/src/test_rb1_artifacts.py
+@@ -47,6 +47,22 @@ def test_rejects_lock_family_split_or_learning_rate_mismatch(tmp_path):
+         verify_lr_lock(lock, expected_sha256=_digest(lock))
+ 
+ 
++def test_rejects_other_familys_locked_lr_despite_consistent_run_metadata_and_schedule(tmp_path):
++    run = _formal_run(tmp_path, 'RB1-07')
++    lock = json.loads((run/'lock.json').read_text())
++    wrong_rate = lock['locked_lrs']['RBc-R']
++    assert wrong_rate != lock['locked_lrs']['RBc-L']
++    _rewrite(run, 'config.json', lambda data: data.update(lr=wrong_rate))
++    _rewrite(run, 'manifest.json', lambda data: data['metrics'].update(learning_rate=wrong_rate))
++    path = run/'steps.jsonl'
++    steps = [json.loads(line) for line in path.read_text().splitlines()]
++    for index, row in enumerate(steps):
++        row['lr'] = wrong_rate*lr_factor(index, len(steps))
++    path.write_text(''.join(json.dumps(row)+'\n' for row in steps))
++    with pytest.raises(ValueError, match='LR lock family/value mismatch'):
++        validate_formal_run(run, 'RB1-07')
++
++
+ def test_rejects_changed_lock_against_accepted_pin(tmp_path):
+     source = _formal_run(tmp_path, 'RB1-01') / 'lock.json'
+     lock = tmp_path / 'wrong-lock-hash.json'
+diff --git a/src/test_rb_read_diagnostics.py b/src/test_rb_read_diagnostics.py
+index f079bc0..22e56fa 100644
+--- a/src/test_rb_read_diagnostics.py
++++ b/src/test_rb_read_diagnostics.py
+@@ -58,6 +58,15 @@ def test_read_statistics_equal_independent_explicit_distribution(kind):
+             torch.testing.assert_close(got['n_eff'][b, t], neff)
+             torch.testing.assert_close(got['relative_n_eff'][b, t], neff/len(selected))
+             torch.testing.assert_close(got['entropy'][b, t], -(prob*prob.log()).sum())
++            # Position-0 shares index the history's first token (the donor's under swap).
++            first = [j for j, i in enumerate(indices) if i < 3]
++            share0 = prob[indices.index(0)] if 0 in indices else torch.tensor(0.)
++            torch.testing.assert_close(got['share0'][b, t], share0)
++            torch.testing.assert_close(got['share0_2'][b, t], prob[first].sum())
++            argmax0 = 0 in indices and int(prob.argmax()) == indices.index(0)
++            assert got['argmax0'][b, t] == float(argmax0)
++            torch.testing.assert_close(got['uniform0'][b, t], torch.tensor((0 in indices)/len(selected)))
++            torch.testing.assert_close(got['uniform0_2'][b, t], torch.tensor(len(first)/len(selected)))
+ 
+ 
+ def test_observer_sees_native_first_and_last_queries_without_changing_outputs_or_gradients():
+@@ -149,3 +158,85 @@ def test_default_prefix_outputs_and_training_gradients_bitwise_match_reviewed_pr
+     ga = torch.autograd.grad(current.outputs.square().sum(), (*inputs, *current_reader.parameters()))
+     gb = torch.autograd.grad(previous.outputs.square().sum(), (*legacy_inputs, *old_reader.parameters()))
+     assert all(torch.equal(a, b) for a, b in zip(ga, gb))
++
++
++def test_sink_shares_on_a_constructed_first_token_sink():
++    query = torch.ones(1, 6, 2)
++    keys = torch.tensor([[[9., 9.], [1., 0.], [1., 0.], [0., 1.], [0., 1.], [0., 1.]]])
++    valid = torch.ones(1, 6, dtype=torch.bool)
++    got = prefix_read_metrics(query, keys, valid)
++    # At t=5 the scores are 18,1,1,1,1,1 over six positions.
++    torch.testing.assert_close(got['share0'][0, 5], torch.tensor(18/23))
++    torch.testing.assert_close(got['share0_2'][0, 5], torch.tensor(20/23))
++    assert got['argmax0'][0].tolist() == [1.]*6
++    torch.testing.assert_close(got['uniform0'][0], 1/torch.arange(1., 7.))
++    window = prefix_read_metrics(query, keys, valid, kind='iv_window1')
++    assert window['share0'][0, 1:].abs().max() == 0 and window['argmax0'][0, 1:].sum() == 0
++
++
++@pytest.mark.parametrize('kind', [None, 'iv_strict', 'iv_window8', 'iv_permute'])
++def test_read_vector_is_the_actual_normalized_read_before_the_exit(kind):
++    torch.manual_seed(5)
++    q, k, v = [torch.randn(2, 12, 4) for _ in range(3)]
++    reader = LatentReader(4)
++    with torch.no_grad():
++        reader.Rq.copy_(torch.randn(4, 4))
++        reader.Ro.copy_(torch.randn(4, 4))
++    valid = torch.arange(12)[None] < torch.tensor([[12], [9]])
++    cfg = AdapterConfig(branch='memory', rank=4, steps=1, impl='prefix')
++    options = {'trace_reads': True}
++    if kind:
++        options['kind'] = kind
++    if kind == 'iv_permute':
++        options.update(phase='R1', example_ids=['a', 'b'])
++        valid = torch.ones(2, 12, dtype=torch.bool)
++    with torch.no_grad():
++        result = run_history(q, k, v, reader, valid, cfg, options)
++        plain = run_history(q, k, v, reader, valid, cfg, {key: value for key, value in options.items()
++                                                          if key != 'trace_reads'})
++    assert torch.equal(result.outputs, plain.outputs)
++    read = result.diagnostics['read_metrics'][0]['read_vector']
++    # S1 increment readout: z - z0 = eta * read @ Ro.
++    torch.testing.assert_close(result.outputs, reader.eta*(read @ reader.Ro), rtol=1e-5, atol=1e-6)
++    assert not read[~valid].any()
++    if kind in (None, 'iv_strict', 'iv_window8'):
++        # Independent slot form: kernel-weighted mean of the eligible raw values.
++        from bypass_core import elu_plus_one, rmsnorm_no_affine
++        query = elu_plus_one(rmsnorm_no_affine(q, reader.eps_norm) @ reader.Rq)
++        key = elu_plus_one(rmsnorm_no_affine(k, reader.eps_norm))*valid[..., None]
++        for b in range(2):
++            for t in range(int(valid[b].sum())):
++                lo = t-7 if kind == 'iv_window8' else 0
++                hi = t if kind == 'iv_strict' else t+1
++                n = torch.arange(max(lo, 0), hi)
++                if not n.numel():
++                    continue
++                score = key[b, n] @ query[b, t]
++                expected = (score[:, None]*v[b, n]).sum(0)/(score.sum()+reader.eps_read)
++                torch.testing.assert_close(read[b, t], expected, rtol=1e-4, atol=1e-5)
++
++
++def test_read_summary_never_averages_read_vectors():
++    valid = torch.ones(1, 2, dtype=torch.bool)
++    record = {'step': 1, 'n_eff': torch.tensor([[1., 2.]]), 'readable_positions': torch.tensor([[1., 2.]]),
++              'read_vector': torch.ones(1, 2, 4)}
++    summary = ReadSummary()
++    summary.add('piqa', {6: {'read_metrics': [record]}}, valid, torch.full((1, 2), -100))
++    assert all('read_vector' not in row['means'] for row in summary.finish())
++
++
++def test_swap_first_three_shares_exclude_recipient_current_for_a_short_donor():
++    query = torch.ones(1, 5, 2)
++    keys = torch.ones(1, 5, 2)
++    valid = torch.ones(1, 5, dtype=torch.bool)
++    short = {'keys': torch.ones(1, 2, 2), 'valid': torch.ones(1, 2, dtype=torch.bool)}
++    padded = {'keys': torch.cat((torch.ones(1, 2, 2), torch.zeros(1, 3, 2)), 1),
++              'valid': torch.tensor([[True, True, False, False, False]])}
++    a = prefix_read_metrics(query, keys, valid, kind='iv_swap', donor=short)
++    b = prefix_read_metrics(query, keys, valid, kind='iv_swap', donor=padded)
++    # t >= 2: two donor slots plus the recipient current slot, equal scores.
++    for name in ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2'):
++        torch.testing.assert_close(a[name][0, 2:], b[name][0, 2:])
++    torch.testing.assert_close(a['share0_2'][0, 2:], torch.full((3,), 2/3))
++    torch.testing.assert_close(a['uniform0_2'][0, 2:], torch.full((3,), 2/3))
++    torch.testing.assert_close(a['share0'][0, 2:], torch.full((3,), 1/3))

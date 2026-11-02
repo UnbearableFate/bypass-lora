@@ -1,0 +1,511 @@
+diff --git a/src/rb_improve_analysis.py b/src/rb_improve_analysis.py
+index 64e8131..70e340d 100644
+--- a/src/rb_improve_analysis.py
++++ b/src/rb_improve_analysis.py
+@@ -27,28 +27,40 @@ def any_gain(deltas):
+ def rule_outcomes(scores, implementation_passed=True):
+     if not implementation_passed:
+         raise ValueError('implementation checks failed; no scientific outcomes')
+-    required = {*E0029_ARMS, 'Base', 'RB1-07', 'RB1-09', 'X-01'}
++    required = {*E0029_ARMS, 'Base', 'RB1-07', 'RB1-09'}
+     if not required <= scores.keys():
+         raise ValueError('required valid references are pending; withhold dependent comparisons')
+-    up = {'T': scores['L-56']-scores['RB1-09'], 'N': scores['L-48']-scores['X-01']}
++    x_available = 'X-01' in scores
++    up = {'T': scores['L-56']-scores['RB1-09']}
+     ig = {arm: scores[arm]-scores[ref] for arm, ref in
+-          (('G-T', 'RB1-09'), ('G-QN', 'Q-N'), ('G-N', 'X-01'))}
+-    pair = {'P-T': scores['P-T']-scores['RB1-09'], 'P-N': scores['P-N']-scores['X-01']}
++          (('G-T', 'RB1-09'), ('G-QN', 'Q-N'))}
++    pair = {'P-T': scores['P-T']-scores['RB1-09']}
++    if x_available:
++        up['N'] = scores['L-48']-scores['X-01']
++        ig['G-N'] = scores['G-N']-scores['X-01']
++        pair['P-N'] = scores['P-N']-scores['X-01']
+     qk = scores['Q-N']-scores['RB1-09']
+     lora = {arm: scores[arm]-scores['RB1-07'] for arm in SIDE_ARMS}
+-    h23 = 'challenges' if any(d >= ONE_PP for d in up.values()) else 'supports'
+-    h24, h25 = any_gain(ig.values()), any_gain(pair.values())
++    h23 = ('challenges' if any(d >= ONE_PP for d in up.values()) else 'supports') if x_available else 'pending_X01'
++    h24 = any_gain(ig.values()) if x_available else 'pending_X01'
++    h25 = any_gain(pair.values()) if x_available else 'pending_X01'
+     h26 = 'supports' if qk >= ONE_PP else 'challenges' if qk <= 0 else 'inconclusive'
+     return {
+-        '1_implementation': {'passed': True, 'evidence_level': 'diagnostic'},
++        '1_implementation': {'passed': True, 'evidence_level': 'diagnostic',
++            'X01_reference_status': 'valid' if x_available else 'pending_X01'},
+         '2_learnability': {arm: {'minus_Base': pp(scores[arm]-scores['Base']),
+             'at_least_Base_plus_1pp': scores[arm]-scores['Base'] >= ONE_PP} for arm in E0029_ARMS},
+         '3_H0023': {'outcome': h23, 'd_up': {tap: pp(d) for tap, d in up.items()},
++            'pending_comparisons': [] if x_available else ['L-48 - X-01'],
+             'activate_H0027': h23 == 'challenges', 'L56_minus_RB107': pp(scores['L-56']-scores['RB1-07'])},
+         '4_H0024': {'outcome': h24, 'd_IG': {arm: pp(d) for arm, d in ig.items()},
++            'pending_comparisons': [] if x_available else ['G-N - X-01'],
+             'activate_H0028': h24 == 'supports'},
+-        '5_H0025': {'outcome': h25, 'd_pair': {arm: pp(d) for arm, d in pair.items()}},
+-        '6_H0026': {'outcome': h26, 'd_QK': pp(qk), 'd_V_descriptive': pp(scores['X-01']-scores['Q-N']),
++        '5_H0025': {'outcome': h25, 'd_pair': {arm: pp(d) for arm, d in pair.items()},
++            'pending_comparisons': [] if x_available else ['P-N - X-01']},
++        '6_H0026': {'outcome': h26, 'd_QK': pp(qk),
++            'd_V_descriptive': pp(scores['X-01']-scores['Q-N']) if x_available else None,
++            'd_V_status': 'available' if x_available else 'pending_X01',
+             'GQN_minus_GT_descriptive': pp(scores['G-QN']-scores['G-T'])},
+         '7_LoRA': {'differences': {arm: pp(d) for arm, d in lora.items()},
+             'new_two_seed_replication': [arm for arm, d in lora.items() if d >= ONE_PP],
+@@ -57,6 +69,21 @@ def rule_outcomes(scores, implementation_passed=True):
+             'hypothesis_status_changes': False}}
+ 
+ 
++def bind_reference(arm, inventory, xcheck=None, diagnostic=None):
++    if arm == 'X-01' and (xcheck is None or
++            xcheck.get('sources', {}).get('X-01', {}).get('manifest') != inventory['manifest']):
++        raise ValueError('X-01 differs from the run that passed E-0028 rule1')
++    if diagnostic is not None and diagnostic.get('training_inputs') != inventory:
++        raise ValueError('reference diagnostics replayed a different checkpoint')
++
++
++def runtime_metrics(manifests):
++    return {arm: {key: value for key, value in manifests[arm]['metrics'].items()
++        if key.startswith(('train.', 'plan.', 'runtime.', 'params.', 'init.')) or
++        key in ('learning_rate', 'hardware', 'source.commit', 'environment.lock_sha256')}
++        for arm in E0029_ARMS}
++
++
+ def validate_reads(value):
+     records = value.get('records', [])
+     keys = set()
+@@ -89,20 +116,24 @@ def analyze(spec):
+     if (smoke.get('status') != 'complete' or smoke.get('validator', {}).get('passed') is not True or
+             smoke.get('metrics', {}).get('source_commit') != source or smoke['metrics'].get('pytest_exit') != 0):
+         raise ValueError('implementation tests do not cover the training source')
+-    xcheck = read(spec['e0028_analysis'])
+-    if xcheck.get('contract') != 'E-0028@1' or xcheck.get('rules', {}).get('1_implementation', {}).get('passed') is not True:
+-        raise ValueError('X-01 is pending or fails E-0028 rule1')
++    xcheck = read(spec['e0028_analysis']) if spec.get('e0028_analysis') else None
++    if xcheck is not None and xcheck.get('contract') != 'E-0028@1':
++        raise ValueError('X-01 validation is not an E-0028 analysis')
++    x_available = xcheck is not None and xcheck.get('rules', {}).get('1_implementation', {}).get('passed') is True
++    reference_arms = ('RB1-07', 'RB1-09', 'X-01') if x_available else ('RB1-07', 'RB1-09')
+     base = Path(spec['base_run'])
+     if reference(base/'manifest.json')['sha256'] != ACCEPTED_BASE_MANIFEST_SHA256:
+         raise ValueError('Base differs from locked E-0021 reference')
+     rows = {'Base': validate_rows(read(base/'predictions.json'), 'Base')}
+     manifests, sources, performance, curves, reads, checks, initial = {}, {}, {}, {}, {}, {}, {}
+     performance['Base'] = check_metrics(rows['Base'], read(base/'manifest.json')['metrics'], 'Base')
+-    for arm in ('RB1-07', 'RB1-09', 'X-01', *E0029_ARMS):
+-        root = Path(spec['reference_runs'][arm] if arm in ('RB1-07', 'RB1-09', 'X-01') else spec['training_runs'][arm])
++    for arm in (*reference_arms, *E0029_ARMS):
++        root = Path(spec['reference_runs'][arm] if arm in reference_arms else spec['training_runs'][arm])
+         expected = spec['x01_source_commit'] if arm == 'X-01' else source if arm in E0029_ARMS else None
+         manifest, refs, _ = validate_formal_run(root, arm, expected)
+         manifests[arm], sources[arm] = manifest, refs
++        if arm == 'X-01':
++            bind_reference(arm, refs, xcheck=xcheck)
+         rows[arm] = validate_rows(read(root/'predictions.json'), arm, rows['Base'])
+         performance[arm] = check_metrics(rows[arm], manifest['metrics'], arm)
+         if arm not in E0029_ARMS:
+@@ -150,18 +181,22 @@ def analyze(spec):
+         sources[arm].update({name: reference(root/name) for name in ('initialization.json', 'ig-samples.json', 'initial-identity.json')})
+     if len({manifests[arm]['metrics']['ig.sample_sha256'] for arm in E0029_ARMS}) != 1:
+         raise ValueError('arms used different training-side initialization/diagnostic samples')
+-    for arm in ('RB1-09', 'X-01'):
++    for arm in (('RB1-09', 'X-01') if x_available else ('RB1-09',)):
+         diagnostic = read(spec['reference_diagnostics'][arm])
+         if diagnostic['arm'] != arm or diagnostic['sample_sha256'] != manifests['Q-N']['metrics']['ig.sample_sha256']:
+             raise ValueError('reference diagnostics use different examples')
++        bind_reference(arm, sources[arm], xcheck=xcheck, diagnostic=diagnostic)
+         reads[arm] = {stage: validate_reads(diagnostic[stage]) for stage in ('step0', 'final')}
+     scores = {arm: accuracy(value) for arm, value in rows.items()}
+     rules = rule_outcomes(scores)
+     rules['1_implementation'].update(initial_references=initial, initialization_checks=checks,
+-        smoke=reference(spec['smoke_manifest']), X01_rule1=reference(spec['e0028_analysis']))
++        smoke=reference(spec['smoke_manifest']),
++        X01_rule1=reference(spec['e0028_analysis']) if xcheck is not None else None)
+     arrays = {arm: {task: [int(row['gold'] == row['prediction']) for row in value if row['task'] == task]
+                    for task in TASKS} for arm, value in rows.items()}
+     result = {'contract': 'E-0029@1', 'rules': rules, 'performance': performance, 'curves': curves,
++        'comparison_status': 'complete' if x_available else 'pending_X01',
++        'runtime': runtime_metrics(manifests),
+         'read_diagnostics': reads, 'sources': sources, 'LoRA_LR_lock': lock,
+         'bootstrap': {'repeats': 10000, 'seed': 20261101, 'comparisons': paired_bootstrap(arrays),
+             'scope': 'descriptive paired task-stratified resampling; excludes seed and selection uncertainty'},
+@@ -181,7 +216,8 @@ if __name__ == '__main__':
+     args.output.mkdir(parents=True, exist_ok=True)
+     result = analyze(read(args.input))
+     write_json(args.output/'analysis.json', result)
+-    write_json(args.output/'manifest.json', {'status': 'complete', 'contract': 'E-0029@1',
++    write_json(args.output/'manifest.json', {'status': 'complete' if result['comparison_status'] == 'complete' else 'partial',
++        'contract': 'E-0029@1',
+         'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': {'implementation_passed': True, 'rules': result['rules']},
+         'artifacts': [{'path': str(args.output/'analysis.json'), 'role': 'analysis'}],
+         'validator': {'name': 'e0029_locked_analysis', 'passed': True}})
+diff --git a/src/rb_improve_lr.py b/src/rb_improve_lr.py
+index 4b3a956..42c7831 100644
+--- a/src/rb_improve_lr.py
++++ b/src/rb_improve_lr.py
+@@ -11,8 +11,8 @@ GRID = (1e-4, 3e-4, 1e-3)
+ 
+ 
+ def candidate_grid(manifests):
+-    from rb_eta_select import validate_calibration
+-    records, refs, artifacts, common = {}, [], [], None
++    from rb_eta_select import ref as step_reference, validate_calibration
++    records, refs, artifacts, common, paired_membership = {}, [], [], None, None
+     for name in manifests:
+         value = read(name)
+         metrics = value.get('metrics', {})
+@@ -23,34 +23,48 @@ def candidate_grid(manifests):
+         lr = metrics.get('learning_rate')
+         if lr not in (*GRID, 3e-5, 3e-3) or lr in records:
+             raise ValueError('duplicate or unregistered LR')
+-        predictions = Path(name).parent/'predictions.json'
+-        rows = read(predictions)
+-        validate_calibration(rows, metrics)
+-        membership = [(row['task'], row['id'], row['gold'], row['gold_loss_tokens']) for row in rows]
+         identity = {key: metrics.get(key) for key in ('source.commit', 'environment.lock_sha256',
+                     'split_manifest.sha256', 'plan.order_sha256', 'plan.steps', 'plan.input_tokens',
+                     'init.parameters.sha256')}
+-        identity['calibration_membership_sha256'] = hashlib.sha256(json.dumps(membership).encode()).hexdigest()
+         if any(identity[key] in (None, 'unknown') for key in identity) or common is not None and common != identity:
+             raise ValueError('calibration code/environment/split/order/budget mismatch')
+         common = identity
+         if any(key.startswith('dev.') for key in metrics) or metrics.get('dev_read') is not False:
+             raise ValueError('LR calibration may not read dev')
++        config = read(Path(name).parent/'config.json')
++        if (config.get('smoke_steps') is not None or config.get('eval_limit') is not None or
++                any(config.get(key) != field for key, field in
++                    {'arm': 'L-56', 'stage': 'calibration', 'phase': 'V0', 'seed': 0, 'lr': lr}.items())):
++            raise ValueError('partial calibration candidate')
+         failed = metrics.get('failed')
+-        if failed is not False:
+-            raise ValueError('engineering/nonfinite failures stop E-0029; they are not LR exclusions')
+         nll = metrics.get('calibration.nll')
++        inventory = {'config.json': reference(Path(name).parent/'config.json'),
++                     'steps.jsonl': step_reference(Path(name).parent/'steps.jsonl')}
++        if failed is True:
++            reason = metrics.get('failure_reason')
++            if (metrics.get('failure_kind') not in ('training_nonfinite', 'evaluation_nonfinite') or
++                    not isinstance(reason, str) or not reason.strip() or nll is not None):
++                raise ValueError('only typed nonfinite calibration candidates may be excluded')
++            records[float(lr)] = None
++            refs.append(reference(name))
++            artifacts.append(inventory)
++            continue
++        if failed is not False:
++            raise ValueError('candidate requires an explicit failed flag')
++        predictions = Path(name).parent/'predictions.json'
++        rows = read(predictions)
++        validate_calibration(rows, metrics)
++        membership = [(row['task'], row['id'], row['gold'], row['gold_loss_tokens']) for row in rows]
++        membership_hash = hashlib.sha256(json.dumps(membership).encode()).hexdigest()
++        if paired_membership is not None and membership_hash != paired_membership:
++            raise ValueError('calibration membership differs between finite candidates')
++        paired_membership = membership_hash
+         if type(nll) not in (float, int) or not math.isfinite(nll) or nll <= 0:
+             raise ValueError('finite positive calibration NLL required')
+         if (metrics.get('train.input_tokens') != identity['plan.input_tokens'] or
+                 metrics.get('train.steps') != identity['plan.steps'] or metrics['train.input_tokens'] < 200000 or
+                 any(metrics.get(f'calibration.{task}.examples') != 2048 for task in ('piqa', 'boolq'))):
+             raise ValueError('incomplete calibration tokens/steps/evaluation')
+-        config = read(Path(name).parent/'config.json')
+-        if (config.get('smoke_steps') is not None or config.get('eval_limit') is not None or
+-                any(config.get(key) != field for key, field in
+-                    {'arm': 'L-56', 'stage': 'calibration', 'phase': 'V0', 'seed': 0, 'lr': lr}.items())):
+-            raise ValueError('partial calibration candidate')
+         before, tokens, count = 0, 0, 0
+         with (Path(name).parent/'steps.jsonl').open() as handle:
+             for count, line in enumerate(handle, 1):
+@@ -62,14 +76,20 @@ def candidate_grid(manifests):
+             raise ValueError('calibration did not stop at the first full step reaching200k')
+         records[float(lr)] = float(nll)
+         refs.append(reference(name))
+-        artifacts.append({key: reference(Path(name).parent/key) for key in ('config.json', 'predictions.json', 'steps.jsonl')})
++        inventory['predictions.json'] = reference(predictions)
++        artifacts.append(inventory)
++    if common is not None:
++        common = dict(common, calibration_membership_sha256=paired_membership)
+     return records, refs, common, artifacts
+ 
+ 
+ def endpoint(records):
+     if set(records) != set(GRID):
+         raise ValueError('initial LR grid is incomplete')
+-    best = min(records, key=lambda lr: (records[lr], lr))
++    finite = {lr: nll for lr, nll in records.items() if nll is not None}
++    if not finite:
++        raise ValueError('initial LR grid has no finite candidate')
++    best = min(finite, key=lambda lr: (finite[lr], lr))
+     return 3e-5 if best == GRID[0] else 3e-3 if best == GRID[-1] else None
+ 
+ 
+@@ -79,8 +99,9 @@ def lock(manifests, final=True):
+     expected = set(GRID) | ({extension} if extension is not None and final else set())
+     if set(records) != expected:
+         raise ValueError('LR endpoint extension missing or extraneous')
+-    minimum = min(records.values())
+-    choice = min(lr for lr, nll in records.items() if (nll-minimum)/minimum <= .01)
++    finite = {lr: nll for lr, nll in records.items() if nll is not None}
++    minimum = min(finite.values())
++    choice = min(lr for lr, nll in finite.items() if (nll-minimum)/minimum <= .01)
+     return {'experiment': 'E-0029@1', 'family': 'RBc-UP', 'representative': 'L-56',
+         'locked_lrs': {'RBc-UP': choice} if final else {}, 'required_extension': extension,
+         'boundary_minimum': extension is not None and records.get(extension) == minimum,
+diff --git a/src/rb_improve_train.py b/src/rb_improve_train.py
+index fb5b26e..9c7c158 100644
+--- a/src/rb_improve_train.py
++++ b/src/rb_improve_train.py
+@@ -20,7 +20,7 @@ from rb_improve_read import diagnose
+ from rb_tap_check import initial_state
+ from rb_tap_identity import PINNED_PROFILE, reference_check
+ from rb_train import E0029_ARMS, FAMILIES, IG_ARMS, PARAMETERS, UP_LORA_ARMS, load_data, make_model, train
+-from v1_run import evaluate, preserved_evaluation_state
++from v1_run import EvaluationNonfinite, TrainingDiverged, evaluate, preserved_evaluation_state
+ from v5_train import plan_metadata, write_json
+ 
+ 
+@@ -237,9 +237,19 @@ def run(args):
+                 if not metrics['reload.identical']:
+                     raise ValueError('checkpoint reload differs')
+         passed = True
++    except (TrainingDiverged, EvaluationNonfinite) as exc:
++        if args.stage != 'calibration':
++            raise
++        if isinstance(exc, TrainingDiverged):
++            metrics.update(exc.metrics)
++        metrics.update({'failed': True, 'failure_reason': str(exc), 'calibration.nll': None,
++            'failure_kind': 'training_nonfinite' if isinstance(exc, TrainingDiverged) else 'evaluation_nonfinite'})
++        # This is a completed E-0020 LR-candidate exclusion, not a successful
++        # training run. OOM and all untyped engineering failures still propagate.
++        passed = True
+     finally:
+         forward_accounting.close()
+-        metrics['failed'] = not passed
++        metrics['failed'] = metrics.get('failed', False) or not passed
+         metrics['runtime.total_forward_input_tokens'] = forward_accounting.tokens
+         metrics['runtime.total_forward_calls'] = forward_accounting.calls
+         metrics['elapsed_s'] = time.monotonic()-tick
+diff --git a/src/test_rb_improve_analysis.py b/src/test_rb_improve_analysis.py
+index a3770e4..2e43512 100644
+--- a/src/test_rb_improve_analysis.py
++++ b/src/test_rb_improve_analysis.py
+@@ -2,7 +2,8 @@ from fractions import Fraction
+ 
+ import pytest
+ 
+-from rb_improve_analysis import rule_outcomes
++from rb_improve_analysis import bind_reference, rule_outcomes, runtime_metrics
++from rb1_artifacts import reference
+ from rb_improve_lr import endpoint
+ from rb_train import E0029_ARMS
+ 
+@@ -11,13 +12,26 @@ def scores():
+     return {arm: Fraction(7, 10) for arm in (*E0029_ARMS, 'RB1-09', 'RB1-07', 'Base', 'X-01')}
+ 
+ 
+-def test_implementation_failure_or_pending_x01_withholds_all_rule_results():
++def test_implementation_failure_withholds_all_rule_results():
+     with pytest.raises(ValueError, match='implementation'):
+         rule_outcomes(scores(), False)
++
++
++def test_pending_x01_preserves_independent_rules_and_defers_only_dependent_comparisons():
+     incomplete = scores()
+     del incomplete['X-01']
+-    with pytest.raises(ValueError, match='pending'):
+-        rule_outcomes(incomplete)
++    incomplete['Q-N'] += Fraction(1, 100)
++    result = rule_outcomes(incomplete)
++    assert result['6_H0026']['outcome'] == 'supports'
++    assert result['6_H0026']['d_V_status'] == 'pending_X01'
++    assert result['6_H0026']['d_V_descriptive'] is None
++    assert set(result['2_learnability']) == set(E0029_ARMS)
++    assert set(result['7_LoRA']['differences']) == set(E0029_ARMS[:6])
++    for rule, delta in [('3_H0023', 'd_up'), ('4_H0024', 'd_IG'), ('5_H0025', 'd_pair')]:
++        assert result[rule]['outcome'] == 'pending_X01'
++        assert result[rule]['pending_comparisons'] and result[rule][delta]
++    assert result['3_H0023']['activate_H0027'] is False
++    assert result['4_H0024']['activate_H0028'] is False
+ 
+ 
+ @pytest.mark.parametrize('arm', ['L-56', 'L-48'])
+@@ -56,3 +70,33 @@ def test_up_lora_lr_endpoint_extension_is_once_in_the_correct_direction():
+     assert endpoint({1e-4: 1.1, 3e-4: 1., 1e-3: 1.2}) is None
+     with pytest.raises(ValueError):
+         endpoint({1e-4: 1.})
++
++
++def test_analysis_rejects_retried_x01_manifest_and_stale_reference_checkpoint(tmp_path):
++    manifest = tmp_path/'manifest.json'
++    weights = tmp_path/'adapter.pt'
++    manifest.write_text('{"arm":"X-01"}')
++    weights.write_bytes(b'original checkpoint')
++    inventory = {'manifest': reference(manifest), 'adapter_weights': reference(weights)}
++    validated = {'sources': {'X-01': {'manifest': inventory['manifest']}}}
++    diagnostic = {'training_inputs': inventory}
++    bind_reference('X-01', inventory, xcheck=validated, diagnostic=diagnostic)
++    manifest.write_text('{"arm":"X-01","retry":true}')
++    retry = dict(inventory, manifest=reference(manifest))
++    with pytest.raises(ValueError, match='run that passed'):
++        bind_reference('X-01', retry, xcheck=validated)
++    weights.write_bytes(b'replacement checkpoint')
++    changed = dict(inventory, adapter_weights=reference(weights))
++    with pytest.raises(ValueError, match='different checkpoint'):
++        bind_reference('X-01', changed, xcheck=validated, diagnostic=diagnostic)
++
++
++def test_runtime_report_preserves_contract_metrics_for_all_eight_arms():
++    expected = {'train.steady_step_seconds': .23, 'train.peak_cuda_bytes': 2700000000,
++        'params.stored': 794624, 'params.trainable': 794624, 'params.with_grad': 794624,
++        'runtime.total_forward_input_tokens': 2000000,
++        'runtime.accounting': {'states': {'6': {'M.shape': [1, 32, 32], 'dtype': 'torch.float32'}}}}
++    manifests = {arm: {'metrics': dict(expected, **{'dev.piqa.accuracy': .7})} for arm in E0029_ARMS}
++    report = runtime_metrics(manifests)
++    assert set(report) == set(E0029_ARMS)
++    assert all(value == expected for value in report.values())
+diff --git a/src/test_rb_improve_lr.py b/src/test_rb_improve_lr.py
+index d85684c..edcbe5d 100644
+--- a/src/test_rb_improve_lr.py
++++ b/src/test_rb_improve_lr.py
+@@ -1,11 +1,12 @@
+ import json
++from types import SimpleNamespace
+ 
+ import pytest
+ 
+ from rb_improve_lr import lock, verify_lock
+ 
+ 
+-def candidate(root, lr, nll=1., source='a'*40):
++def candidate(root, lr, nll=1., source='a'*40, failure_kind=None):
+     out = root/f'{lr:g}'
+     out.mkdir()
+     metrics = {'learning_rate': lr, 'source.commit': source, 'environment.lock_sha256': 'b'*64,
+@@ -19,11 +20,18 @@ def candidate(root, lr, nll=1., source='a'*40):
+                 'scores': [-nll, -nll-1], 'gold_nll_sum': nll, 'gold_loss_tokens': 1})
+         metrics.update({f'calibration.{task}.nll': nll, f'calibration.{task}.accuracy': 1.,
+             f'calibration.{task}.examples': 2048, f'calibration.{task}.loss_tokens': 2048})
+-    (out/'predictions.json').write_text(json.dumps(rows))
++    if failure_kind is None:
++        (out/'predictions.json').write_text(json.dumps(rows))
++    else:
++        metrics = {key: value for key, value in metrics.items() if not key.startswith('calibration.')}
++        metrics.update({'failed': True, 'failure_kind': failure_kind,
++            'failure_reason': 'injected nonfinite candidate', 'calibration.nll': None})
++        if failure_kind == 'training_nonfinite':
++            metrics.update({'train.steps': 3, 'train.input_tokens': 1536})
+     (out/'config.json').write_text(json.dumps({'arm': 'L-56', 'stage': 'calibration', 'phase': 'V0',
+         'seed': 0, 'lr': lr, 'smoke_steps': None, 'eval_limit': None}))
+     (out/'steps.jsonl').write_text(''.join(json.dumps({'step': i+1, 'input_tokens': 512 if i < 390 else 320})+'\n'
+-        for i in range(391)))
++        for i in range(metrics['train.steps'])))
+     path = out/'manifest.json'
+     path.write_text(json.dumps({'status': 'complete', 'contract': 'E-0029@1', 'arm': 'L-56',
+         'family': 'RBc-UP', 'stage': 'calibration', 'phase': 'V0', 'seed': 0,
+@@ -63,3 +71,107 @@ def test_lr_candidates_reject_changed_source_and_spurious_dev_metrics(tmp_path):
+     paths[1].write_text(json.dumps(value))
+     with pytest.raises(ValueError, match='dev'):
+         lock(paths)
++
++
++@pytest.mark.parametrize('failure_kind', ['training_nonfinite', 'evaluation_nonfinite'])
++def test_nonfinite_candidate_is_excluded_and_lock_reconstructs(tmp_path, failure_kind):
++    paths = [candidate(tmp_path, 1e-4, 1.1), candidate(tmp_path, 3e-4, 1.),
++             candidate(tmp_path, 1e-3, failure_kind=failure_kind)]
++    value = lock(paths)
++    assert value['locked_lrs'] == {'RBc-UP': 3e-4}
++    assert value['candidates']['0.001'] is None and value['required_extension'] is None
++    saved = tmp_path/'lr-lock.json'
++    saved.write_text(json.dumps(value))
++    assert verify_lock(saved) == value
++
++
++def test_failed_low_endpoint_does_not_turn_the_middle_LR_into_a_grid_endpoint(tmp_path):
++    paths = [candidate(tmp_path, 1e-4, failure_kind='training_nonfinite'),
++             candidate(tmp_path, 3e-4, 1.), candidate(tmp_path, 1e-3, 1.1)]
++    assert lock(paths)['required_extension'] is None
++
++
++def test_first_step_divergence_can_bind_an_empty_step_log(tmp_path):
++    paths = [candidate(tmp_path, 1e-4, 1.1), candidate(tmp_path, 3e-4, 1.),
++             candidate(tmp_path, 1e-3, failure_kind='training_nonfinite')]
++    (paths[-1].parent/'steps.jsonl').write_text('')
++    value = lock(paths)
++    saved = tmp_path/'lr-lock.json'
++    saved.write_text(json.dumps(value))
++    assert verify_lock(saved) == value
++
++
++def test_finite_low_endpoint_still_requires_one_extension_with_an_excluded_candidate(tmp_path):
++    paths = [candidate(tmp_path, 1e-4, 1.), candidate(tmp_path, 3e-4, failure_kind='training_nonfinite'),
++             candidate(tmp_path, 1e-3, 1.1)]
++    assert lock(paths, final=False)['required_extension'] == 3e-5
++    paths.append(candidate(tmp_path, 3e-5, failure_kind='evaluation_nonfinite'))
++    assert lock(paths)['locked_lrs'] == {'RBc-UP': 1e-4}
++
++
++def test_all_nonfinite_candidates_and_engineering_failures_stop_selection(tmp_path):
++    paths = [candidate(tmp_path, lr, failure_kind='training_nonfinite') for lr in (1e-4, 3e-4, 1e-3)]
++    with pytest.raises(ValueError, match='no finite'):
++        lock(paths)
++    value = json.loads(paths[0].read_text())
++    value['metrics']['failure_kind'] = 'OOM'
++    paths[0].write_text(json.dumps(value))
++    with pytest.raises(ValueError, match='only typed'):
++        lock(paths)
++
++
++@pytest.mark.parametrize('kind', ['training_nonfinite', 'evaluation_nonfinite', 'engineering'])
++def test_calibration_producer_excludes_only_typed_nonfinite_failures(tmp_path, monkeypatch, kind):
++    import torch
++    import rb_improve_train as runner
++    from rb_tap_check import initial_state
++    from v1_run import EvaluationNonfinite, TrainingDiverged
++
++    class ToyAdapter(torch.nn.Module):
++        def __init__(self):
++            super().__init__()
++            self.model = torch.nn.Linear(2, 2, bias=False).requires_grad_(False)
++            self.new = torch.nn.Parameter(torch.zeros(7))
++            self._targets = {(0, 'mlp.up_proj'): None}
++        def adapter_parameters(self):
++            yield self.new
++    model = ToyAdapter()
++    monkeypatch.setitem(runner.PARAMETERS, 'L-56', 7)
++    monkeypatch.setattr(runner, 'random_reference', lambda *args: initial_state(model)[1])
++    monkeypatch.setattr(runner, 'make_model', lambda *args, **kwargs: model)
++    monkeypatch.setattr(runner.AutoTokenizer, 'from_pretrained', lambda *args, **kwargs:
++        SimpleNamespace(eos_token_id=0, pad_token_id=0))
++    monkeypatch.setattr(runner, 'load_data', lambda *args: ({}, []))
++    monkeypatch.setattr(runner, 'calibration_examples', lambda *args:
++        ([], {'examples_sha256': 'f'*64, 'input_tokens': 0}))
++    example = {'task': 'piqa', 'id': 1, 'epoch': 0, 'epoch_end': False, 'input_ids': [1, 2]}
++    monkeypatch.setattr(runner, 'plan_batches', lambda *args: [[example, example]])
++    def injected_train(*args, **kwargs):
++        if kind == 'training_nonfinite':
++            raise TrainingDiverged('injected nonfinite loss', {'train.input_tokens': 2})
++        if kind == 'engineering':
++            raise RuntimeError('injected OOM')
++        return {'params.with_grad': 7}
++    def injected_eval(*args, **kwargs):
++        raise EvaluationNonfinite('injected nonfinite candidate likelihood')
++    monkeypatch.setattr(runner, 'train', injected_train)
++    monkeypatch.setattr(runner, 'evaluate', injected_eval)
++    monkeypatch.setenv('SR_CODE_COMMIT', 'a'*40)
++    monkeypatch.setenv('SR_SPEC_DIGEST', 'blake2b:'+'b'*64)
++    split = tmp_path/'split.json'
++    split.write_text('{}')
++    args = SimpleNamespace(output=tmp_path/'run', stage='calibration', arm='L-56', lr=.001,
++        smoke_steps=None, eval_limit=None, data_dir=tmp_path, split_manifest=split)
++    if kind == 'engineering':
++        with pytest.raises(RuntimeError, match='OOM'):
++            runner.run(args)
++    else:
++        runner.run(args)
++    value = json.loads((args.output/'manifest.json').read_text())
++    assert value['metrics']['failed'] is True and value['metrics']['dev_read'] is False
++    if kind == 'engineering':
++        assert value['status'] == 'partial' and value['validator']['passed'] is False
++    else:
++        assert value['status'] == 'complete' and value['validator']['passed'] is True
++        assert value['metrics']['failure_kind'] == kind
++        assert value['metrics']['calibration.nll'] is None
