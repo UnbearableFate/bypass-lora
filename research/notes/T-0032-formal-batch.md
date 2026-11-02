@@ -1,5 +1,11 @@
 # E-0029 formal batch continuation
 
+Completed: all8 formal runs and both reference reads passed; final PBS locked
+analysis ATT-0373-1 /3779401.opbs (RES-0347) passed with complete comparisons.
+Results/evidence/cost are in T-0032-results.md and T-0032-final-cost.json.
+Final measured cost2.517847node-h; no replication trigger or follow-up jobs.
+The remainder of this note preserves submission details and acceptance checks.
+
 Runtime source remains dc82cfc6c1f642f9380596a6be3244dafd4147a4; later
 commits change only notes. Reviews RV-0090/RV-0092/RV-0094/RV-0095 pass and
 all8 formal registrations report coverage. Source-matched126 tests, all8
