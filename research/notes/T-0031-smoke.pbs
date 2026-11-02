@@ -1,0 +1,72 @@
+#!/bin/bash
+# E-0028 deterministic checks, three-arm timing, and one full calibration eval.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0031-smoke"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+"$PY" -m pytest -q -p no:cacheprovider src/test_rb_tap.py src/test_rb_eta_select.py \
+  src/test_rb_tap_analysis.py src/test_rb_train.py src/test_rb1_artifacts.py \
+  src/test_rb1_intervene.py src/test_rb_width.py src/test_rb1_analysis.py \
+  > "$OUT/pytest.txt" 2>&1
+"$PY" src/rb_tap_check.py --output "$OUT" > "$OUT/registration.log" 2>&1
+for arm in X-01 X-02 X-03 ETA-QK-1; do
+  "$PY" src/rb_train.py run --stage smoke --phase R1 --seed 0 --arm "$arm" --lr 0.001 \
+    --split-manifest "$SPLIT" --data-dir "$P/data/v1" --smoke-steps 80 --eval-limit 16 \
+    --output "$OUT/smoke-$arm" > "$OUT/smoke-$arm.log" 2>&1
+done
+"$PY" src/rb_tap_eval.py --training-run "$P/runs/ATT-0247-1" --calibration-only \
+  --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT/calibration-timing" \
+  > "$OUT/calibration-timing.log" 2>&1
+"$PY" - "$OUT" <<'PY'
+import json,os,sys
+from pathlib import Path
+out=Path(sys.argv[1]);arms={}
+for arm in ('X-01','X-02','X-03','ETA-QK-1'):
+    value=json.loads((out/f'smoke-{arm}'/'manifest.json').read_text())
+    assert value['status']=='complete' and value['validator']['passed']
+    m=value['metrics']
+    arms[arm]={k:m[k] for k in ('train.steady_step_seconds','train.peak_cuda_bytes',
+       'train.seconds','init_eval.seconds','eval.seconds','calibration.seconds',
+       'params.stored','params.trainable','params.with_grad','init.parameters.sha256','hardware')}
+timing=json.loads((out/'calibration-timing'/'manifest.json').read_text())
+assert timing['status']=='complete' and timing['validator']['passed']
+registration=json.loads((out/'tap-registration.json').read_text());assert registration['passed']
+cal=timing['metrics']['calibration.seconds']
+dev=max(cal/2.048,max(m['init_eval.seconds']*1000/16 for m in arms.values()))
+train_est={arm:m['train.steady_step_seconds']*13115+6*dev+cal+20 for arm,m in arms.items()}
+initial=sum(train_est[a] for a in ('X-01','X-02','X-03'))+5*(train_est['X-01']+train_est['ETA-QK-1'])
+extensions=train_est['X-01']+train_est['ETA-QK-1']
+# MIG is billed at one quarter node. Include baseline, 8 intervention paths
+# plus swap donor forward, the smoke itself (estimated conservatively) and analysis.
+overhead=cal+dev+9*dev+900+120
+cost={'contract':'E-0028@1','cap_node_hours':5.5,'profile_cost_factor':.25,
+  'dev_seconds_estimate':dev,'full_calibration_seconds':cal,'per_training_seconds':train_est,
+  'initial_grid_node_hours':(initial+overhead)/14400,
+  'with_both_extensions_node_hours':(initial+extensions+overhead)/14400,
+  'method':'measured80-step steady training; six dev passes; one full calibration; MIG/4; worst-case two extensions'}
+json.dump(cost,open(out/'cost-estimate.json','w'),indent=2)
+json.dump({'status':'complete','contract':'E-0028@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+  'stage':'smoke','metrics':{'pytest_exit':0,'source_commit':os.environ['SR_CODE_COMMIT'],
+     'arms':arms,'full_calibration_seconds':timing['metrics']['calibration.seconds']},
+  'artifacts':[{'path':str(p),'role':p.name} for p in sorted(out.iterdir()) if p.is_file() and p.name!='manifest.json'],
+  'validator':{'name':'e0028_smoke','passed':True}},open(out/'manifest.json','w'),indent=2)
+PY

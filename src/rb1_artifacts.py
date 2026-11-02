@@ -6,7 +6,7 @@ import re
 import statistics
 from pathlib import Path
 
-from rb_train import FAMILIES, LORA_RANKS, PARAMETERS, WIDTH_ARMS, contract
+from rb_train import E0028_ARMS, FAMILIES, LORA_RANKS, PARAMETERS, WIDTH_ARMS, contract
 
 
 CONTRACT = 'E-0021@1'
@@ -105,9 +105,9 @@ def validate_formal_run(run_dir, arm, source_commit=None):
     """
     if arm not in PARAMETERS:
         raise ValueError(f'unknown RB1 arm {arm}')
-    if arm in WIDTH_ARMS:
+    if arm in (*WIDTH_ARMS,*E0028_ARMS):
         if not isinstance(source_commit, str) or re.fullmatch('[0-9a-f]{40}', source_commit) is None:
-            raise ValueError(f'{arm}: E-0026 validation requires the reviewed training source commit')
+            raise ValueError(f'{arm}: validation requires the reviewed training source commit')
         expected_source = source_commit
     elif source_commit is not None:
         raise ValueError(f'{arm}: RB1 arms are pinned to the accepted E-0021 training source')
@@ -150,7 +150,7 @@ def validate_formal_run(run_dir, arm, source_commit=None):
         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
             raise ValueError(f'{arm}: missing or invalid {key}')
     if metrics['source.commit'] != expected_source:
-        release = 'E-0026' if arm in WIDTH_ARMS else 'RB1'
+        release = run_contract if arm in (*WIDTH_ARMS,*E0028_ARMS) else 'RB1'
         raise ValueError(f'{arm}: source commit differs from covered {release} training release')
     expected_params = PARAMETERS[arm]
     for key in ('params.stored', 'params.trainable', 'params.with_grad'):

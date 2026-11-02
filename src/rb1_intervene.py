@@ -25,7 +25,7 @@ from v5_train import file_sha256, write_json
 
 
 MODES = ('iv_off', 'iv_window1', 'iv_window8', 'iv_strict', 'iv_swap', 'iv_permute')
-INTERVENTION_ARMS = ('RB1-01', 'RB1-02', 'RB1-03', 'RB1-04', 'RB1-08', 'RB1-09', 'W-02')
+INTERVENTION_ARMS = ('RB1-01', 'RB1-02', 'RB1-03', 'RB1-04', 'RB1-08', 'RB1-09', 'W-02', 'X-01')
 # E-0026 registers only these three frozen interventions for the r128 memory arm.
 WIDTH_MODES = ('iv_off', 'iv_swap', 'iv_permute')
 
@@ -177,7 +177,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--arm', choices=INTERVENTION_ARMS, required=True)
     parser.add_argument('--training-run', type=Path, required=True)
-    parser.add_argument('--training-source', help='reviewed training source commit (E-0026 W-02 only)')
+    parser.add_argument('--training-source', help='reviewed training source commit (new experiment arms)')
     parser.add_argument('--data-dir', required=True)
     parser.add_argument('--output', type=Path, required=True)
     run(parser.parse_args())
