@@ -275,3 +275,19 @@ from measured scheduler usage. They have no execution manifests; executable
 attempt accounting uses the submitted -2 attempts. All preparation cancellation
 records remain in the research records. Exact mapping and immutable RunSpec
 digests are in `research/notes/T-0033-training-runs.json` and the central table.
+
+Analysis receipt-audit fix candidate:
+`3ae19740b37cd5db0813c5700a818b16c216c4bc`. It changes only the analysis,
+its new metadata-only audit/tests, and the test list; training remains exactly
+f741952. The audit also accounts for a previous failed analysis attempt
+without misclassifying it as a seed opening, so unchanged engineering reruns
+can still complete after an analysis failure.
+
+Required PBS checks RUN-0391 / ATT-0391-1 are running as `3780768.opbs`,
+debug-mig, 2-minute walltime. Output `research/artifacts/ATT-0391-1/`;
+notification `N-20261103-041429-30ec`. After checking/importing these outputs
+and measured usage, request the coordinator-authorized new review round with
+`--recheck-of RV-0098 --new-round` for the analysis-only fix, then keep those
+files frozen. No lock is written until that review passes and all twelve
+formal runs have valid final results. Both notification listeners belong to
+the coordinator; training notification N-20261103-040731-ab87 remains active.
