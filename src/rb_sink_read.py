@@ -265,6 +265,50 @@ def run(args):
     return result
 
 
+def identity_error(normal, strict, valid):
+    """Max |share0_strict - share0_normal/(1-cw_normal)| over positions t >= 1.
+
+    At the first adapted layer both conditions read identical query/key features,
+    and strict only drops the current slot, so the identity is exact up to rounding.
+    """
+    mask = valid.bool().clone()
+    mask[:, 0] = False
+    expected = normal['share0']/(1-normal['current_weight'])
+    error = (strict['share0'] - expected).abs()[mask]
+    return float(error.max()), int(mask.sum())
+
+
+@torch.no_grad()
+def verify_strict_identity(args):
+    from rb1_artifacts import validate_formal_run
+    _, _, adapter = validate_formal_run(args.training_run, args.arm)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    splits = prepare(args.data_dir)
+    model = make_model(args.arm, phase='R1', seed=0, checkpoint=adapter).eval()
+    layer = min(model.config.layers)
+    worst, positions, rows = 0., 0, 0
+    for task in TASKS:
+        for row in splits['splits'][task]['dev'][:IDENTITY_ROWS]:
+            batch = batch_tensors([encode_candidates(tokenizer, row)[gold_index(row)]], tokenizer.pad_token_id)
+            records = {}
+            for kind in (None, 'iv_strict'):
+                output = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'],
+                               use_cache=False, intervention=None if kind is None else {'kind': kind},
+                               trace_reads=True)
+                records[kind] = next(r for r in output.diagnostics[layer]['read_metrics'] if r['step'] == 1)
+            error, count = identity_error(records[None], records['iv_strict'], batch['attention_mask'])
+            worst, positions, rows = max(worst, error), positions + count, rows + 1
+    result = {'arm': args.arm, 'layer': layer, 'step': 1, 'rows': rows, 'positions': positions,
+              'max_abs_error': worst, 'tolerance': IDENTITY_TOLERANCE,
+              'passed': math.isfinite(worst) and worst <= IDENTITY_TOLERANCE,
+              'hardware': torch.cuda.get_device_name(), 'source_commit': os.environ['SR_CODE_COMMIT']}
+    write_json(args.output, result)
+    if not result['passed']:
+        raise SystemExit('layer-6 strict identity failed')
+    return result
+
+
 def concentrated_layers(reference_normal):
     """DOC-0263 concentration: nonempty answer-position n_eff < 2 under normal."""
     return sorted((r['task'], r['layer'], r['step']) for r in reference_normal['read_diagnostics']
@@ -293,7 +337,14 @@ def interpret(arms):
     return {'cells': cells, 'reading': reading}
 
 
-def consistency(arms):
+IDENTITY_TOLERANCE = 1e-5
+IDENTITY_ROWS = 50
+
+
+def consistency(arms, strict_identity=None):
+    """Implementation checks. D-0051 (made after the preregistered strict bound
+    failed in ATT-0283-1) replaces |strict - normal share0| < 0.01 with the exact
+    layer-6 identity verified per position; the old gap stays descriptive."""
     checks = {}
     for arm, value in arms.items():
         normal = {(r['task'], r['layer'], r['step']): r['question_means']['share0']
@@ -302,7 +353,9 @@ def consistency(arms):
                   for r in value['conditions']['iv_strict']['answer_question_level']}
         gap = max(abs(normal[k]-strict[k]) for k in normal)
         window = value['conditions']['iv_window8']
-        checks[arm] = {'strict_minus_normal_share0_max_abs': gap, 'strict_ok': gap < .01,
+        strict_ok = (strict_identity['passed'] is True) if strict_identity is not None else gap < .01
+        checks[arm] = {'strict_minus_normal_share0_max_abs': gap,
+                       'strict_bound_0.01_ok': gap < .01, 'strict_ok': strict_ok,
                        'window8_share0_max_late': window['window8_share0_max_late'],
                        'window8_answer_positions_before_8': window['window8_answer_positions_before_8'],
                        'window8_ok': window['window8_share0_max_late'] == 0}
@@ -321,22 +374,31 @@ def summarize(args):
                            'hardware': value['provenance']['hardware'],
                            'reference_hardware': value['provenance'].get('reference_hardware')}
         arms[value['arm']] = value
-    report = build_report(arms)
+    identity = json.loads(Path(args.strict_identity).read_text()) if args.strict_identity else None
+    report = build_report(arms, identity)
     write_json(args.output, report)
     if not report['checks_passed']:
         raise SystemExit('E-0024 implementation checks failed; no interpretation recorded')
     return report
 
 
-def build_report(arms):
+def build_report(arms, strict_identity=None):
     if set(arms) != set(ARMS):
         raise ValueError('summary needs exactly the four E-0024 arms')
-    checks = consistency(arms)
+    checks = consistency(arms, strict_identity)
     references = {arm: {c: v['conditions'][c]['reference_check']['passed'] for c in CONDITIONS}
                   for arm, v in arms.items()}
     passed = (all(c['strict_ok'] and c['window8_ok'] for c in checks.values()) and
               all(all(v.values()) for v in references.values()))
-    report = {'contract': 'E-0024@1', 'arms': {arm: {'concentrated': v['concentrated'],
+    amendments = [] if strict_identity is None else [{
+        'check': 'iv_strict implementation check', 'decision': 'D-0051',
+        'made_after_seeing_failure': True, 'failed_attempt': 'ATT-0283-1',
+        'old': '|iv_strict - normal| question-level share0 < 0.01 per task/layer/step',
+        'new': 'layer-6 step-1 identity share0_strict = share0_normal/(1-cw_normal) per position, '
+               f'RB1-02, first {IDENTITY_ROWS} dev rows per task, |error| <= {IDENTITY_TOLERANCE}',
+        'result': strict_identity}]
+    report = {'contract': 'E-0024@1', 'amendments': amendments,
+              'arms': {arm: {'concentrated': v['concentrated'],
               'source': v.get('source'),
               'position0_token': v['position0_token'], 'conditions': {
                   c: {k: v['conditions'][c].get(k) for k in ('answer_question_level', 'reference_check',
@@ -354,16 +416,20 @@ def write_manifest(args):
     """Attempt manifest; success needs every arm and a summary whose checks passed."""
     out = args.output
     # Arms not run in this attempt may come from one earlier attempt of the same source lineage.
-    roots = [out, *([args.arms_from] if getattr(args, 'arms_from', None) else [])]
+    extra = getattr(args, 'arms_from', None) or []
+    roots = [out, *([extra] if isinstance(extra, Path) else extra)]
     artifacts = []
     for arm in ARMS:
         found = next((root/arm/'sink.json' for root in roots if (root/arm/'sink.json').is_file()), None)
         if found is not None:
             artifacts.append({'path': str(found), 'role': f'sink:{arm}'})
     summary = json.loads((out/'summary.json').read_text()) if (out/'summary.json').is_file() else None
+    if (out/'strict_identity.json').is_file():
+        artifacts.append({'path': str(out/'strict_identity.json'), 'role': 'strict_identity'})
     if summary is not None:
         artifacts.append({'path': str(out/'summary.json'), 'role': 'summary'})
-    passed = (len(artifacts) == len(ARMS)+1 and summary['checks_passed'] is True and
+    passed = (sum(a['role'].startswith('sink:') for a in artifacts) == len(ARMS) and summary is not None and
+              summary['checks_passed'] is True and
               summary['interpretation']['reading'] != 'implementation_check_failed')
     manifest = {'status': 'complete' if passed else 'partial', 'contract': 'E-0024@1',
                 'spec_digest': os.environ['SR_SPEC_DIGEST'], 'phase': 'R1', 'seed': 0,
@@ -390,12 +456,20 @@ def main():
     both = sub.add_parser('summarize')
     both.add_argument('--inputs', nargs='+', required=True)
     both.add_argument('--output', type=Path, required=True)
+    both.add_argument('--strict-identity', type=Path, help='D-0051 layer-6 identity result')
+    ident = sub.add_parser('identity')
+    ident.add_argument('--arm', choices=ARMS, default='RB1-02')
+    ident.add_argument('--training-run', type=Path, required=True)
+    ident.add_argument('--data-dir', required=True)
+    ident.add_argument('--output', type=Path, required=True)
     final = sub.add_parser('manifest')
     final.add_argument('--output', type=Path, required=True, help='attempt directory')
     final.add_argument('--elapsed-s', type=float, required=True)
-    final.add_argument('--arms-from', type=Path, help='earlier attempt directory supplying the other arms')
+    final.add_argument('--arms-from', type=Path, nargs='*', default=[],
+                       help='earlier attempt directories supplying the other arms')
     args = parser.parse_args()
-    {'arm': run, 'summarize': summarize, 'manifest': write_manifest}[args.command](args)
+    {'arm': run, 'summarize': summarize, 'manifest': write_manifest,
+     'identity': verify_strict_identity}[args.command](args)
 
 
 if __name__ == '__main__':

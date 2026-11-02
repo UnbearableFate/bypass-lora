@@ -230,3 +230,55 @@ def test_same_allocation_gate_uses_reviewed_evaluator_and_rejects_perturbed_gold
     bad = [dict(r, nonempty_means=dict(r['nonempty_means'])) for r in summaries]
     bad[0]['nonempty_means']['n_eff'] *= 1 + 1e-5
     assert not rb_sink_read.compare_reference(gate, kind, bad, nll)['passed']
+
+
+def test_layer6_strict_identity_holds_for_the_read_distribution_and_detects_errors():
+    from rb_read_diagnostics import prefix_read_metrics
+    from rb_sink_read import IDENTITY_TOLERANCE, identity_error
+    torch.manual_seed(3)
+    query, keys = torch.rand(1, 40, 8)+.1, torch.rand(1, 40, 8)+.1
+    valid = torch.ones(1, 40, dtype=torch.bool)
+    normal = prefix_read_metrics(query, keys, valid)
+    strict = prefix_read_metrics(query, keys, valid, kind='iv_strict')
+    error, count = identity_error(normal, strict, valid)
+    assert count == 39 and error <= IDENTITY_TOLERANCE
+    shifted = dict(strict, share0=strict['share0'] + 1e-4*(torch.arange(40) == 20))
+    assert identity_error(normal, shifted, valid)[0] > IDENTITY_TOLERANCE
+
+
+@pytest.mark.parametrize('passed,reading', [(True, 'sink'), (False, 'implementation_check_failed')])
+def test_d0051_amendment_replaces_the_strict_bound_and_is_labelled(passed, reading):
+    from rb_sink_read import build_report
+    report = build_report(_report_arms(strict_gap=.02), {'passed': passed, 'max_abs_error': 0.})
+    assert report['interpretation']['reading'] == reading
+    assert report['amendments'][0]['decision'] == 'D-0051'
+    assert report['amendments'][0]['made_after_seeing_failure'] is True
+    assert all(c['strict_bound_0.01_ok'] is False for c in report['consistency'].values())
+    # Without the amendment the original bound still applies.
+    assert build_report(_report_arms(strict_gap=.02))['interpretation']['reading'] == 'implementation_check_failed'
+
+
+def test_layer6_identity_on_the_model_forward(rbbase):
+    from transformers import AutoTokenizer
+    from calibrate import MODEL, REVISION
+    from rb_sink_read import IDENTITY_TOLERANCE, gold_index, identity_error
+    from rb_train import adapter_config
+    from test_model import nonzero_exits
+    from test_rb_model import attached
+    from v1_data import encode_candidates
+    from v1_run import batch_tensors
+    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+    tok.pad_token_id = tok.eos_token_id
+    row = {'task': 'boolq', 'id': 0, 'passage': 'A red object is on the table. '*6,
+           'question': 'Is there an object on the table?', 'label': True}
+    batch = batch_tensors([encode_candidates(tok, row)[gold_index(row)]], tok.pad_token_id)
+    with attached(rbbase, adapter_config('RB1-03')) as model, torch.no_grad():
+        model.eval()
+        nonzero_exits(model)
+        records = {}
+        for kind in (None, 'iv_strict'):
+            out = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], use_cache=False,
+                        intervention=None if kind is None else {'kind': kind}, trace_reads=True)
+            records[kind] = {r['step']: r for r in out.diagnostics[6]['read_metrics']}
+    error, count = identity_error(records[None][1], records['iv_strict'][1], batch['attention_mask'])
+    assert count > 10 and error <= IDENTITY_TOLERANCE
