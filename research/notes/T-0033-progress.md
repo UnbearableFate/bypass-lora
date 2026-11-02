@@ -461,3 +461,47 @@ replay discrepancies remain descriptive. Same-profile discrepancy needs
 repair/review/relock before confirmation. Only then report the completed lock
 with the three replay outputs and updated cost to coordinator and await its
 confirming decision. Do not submit an A2 evaluation first.
+
+2026-11-03, after MSG-0986/0987: all three dev-only replays were independently
+checked against their source/spec/lock pins, confirmed compute allocations,
+reported dev check records and task counts. All are complete/unopened, with
+no receipt. Seed 3: mg1099, 2g allocated / 2g trained, zero flips, exact rows.
+Seed 4: mg1104, 2g / 1g, 18 flips and non-identical rows. Seed 5: mg1104,
+2g / 1g, 25 flips and non-identical rows. The latter two exceed the original
+cross-profile gate on these replays, but cross-profile replay results are
+descriptive under D-0072(5). Actual 1g same-profile checkpoint reproduction
+has not yet been shown for either seed.
+
+Results are RES-0368/0369/0370 and measured usages U-0404/0405/0406, respectively
+0.091389/0.103333/0.106389 MIG-hour. Total replay cost is 0.07527775 node-hour,
+and completed measured cost is now 4.232986 node-hour. A registration mistake
+is preserved explicitly: I registered the replay RunSpecs with arm dev-replay
+but the source emits arm A2, so RL retains the imports with mismatch warnings
+and they cannot serve as pre-specified comparisons. The actual checkpoint,
+source, seed, mode, stage and gate checks remain independently pinned
+diagnostics. Do not rewrite historical specs or producer outputs; register
+future A2 runs with arm A2 exactly. No scientific A2 comparison uses replays.
+
+The completed handoff is T-0033-A2-lock-handoff.md, with the refined accounting
+in T-0033-cost-projection-after-replays.json (copies/pinned metadata centrally
+under research/artifacts/T-0033). EV-0173 records diagnostic/valid engineering
+evidence only, with no support/challenge link to H-0029, and retains the arm
+mismatch warnings. The full expected cost without misses is 4.877378;
+successful-job requested-walltime bound is 5.245486 (three 80-minute A2 jobs,
+analysis 90 expected / 180 requested seconds). Twenty misses per seed at one
+to two minutes each adds 0.25–0.5 node-hour across all three seeds; the timing
+projection fits but the full requested-walltime upper bound may exceed 5.5.
+With all successful-job walltimes reserved, current miss headroom is 61.083
+MIG-instance minutes total. Recompute the budget gate before every retry.
+
+MSG-0986 proposes first-attempt profile restrictions and a twenty-miss limit.
+The reviewed code/PBS script can do that without source changes, and analysis
+accepts many partial unopened retry_profile_miss attempts (all must have
+measured terminal accounting, within the global 10,000-directory audit cap).
+But D-0072 and the frozen lock say unrestricted first attempt / five misses;
+an actual confirming decision must explicitly supersede those operational
+fields if retaining the lock hash. Also, only one initial 1g seed job should
+be submitted if the intent is to catch its reproducibility failure before
+any A2 read; simultaneous seed 4/5 jobs would not ensure that. One successful
+1g seed still does not pre-prove the other seed. The later consumed/invalid
+rule stays active. No A2 submission before the coordinator's actual decision.
