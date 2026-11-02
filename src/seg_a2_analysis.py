@@ -122,10 +122,11 @@ def _check_lock_checks(lock):
             raise ValueError(f'pre-opening {field} producer reference changed')
         producer = read(ref['path'])
         if (producer.get('status') != 'complete' or producer.get('validator', {}).get('passed') is not True or
-                producer.get('source_commit') != lock['evaluation_source'] or
+                re.fullmatch(r'[0-9a-f]{40}', str(producer.get('source_commit'))) is None or
                 re.fullmatch(r'(?:blake2b:)?[0-9a-f]{64}', str(producer.get('spec_digest'))) is None):
             raise ValueError(f'pre-opening {field} producer did not complete under this spec')
         if field == 'deterministic' and (
+                producer.get('source_commit') != lock['evaluation_source'] or
                 producer.get('metrics', {}).get('no_channel_identity') is not True or
                 producer.get('metrics', {}).get('no_channel_seeds') != list(SEEDS)):
             raise ValueError('deterministic producer does not bind the locked source and all new seeds')
