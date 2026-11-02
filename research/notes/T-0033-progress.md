@@ -62,3 +62,10 @@ The complete `checks.log` and inspected fixture code establish three causes:
 
 No production threshold, validation requirement or analysis behavior changed
 for these fixes. A fresh PBS preflight is required; no result is assumed.
+
+Replacement preflight RUN-0375 / ATT-0375-1 executes commit
+`967f551ede63b8a7f1850bd395f805ada4b9b7ca` as PBS `3779991.opbs`, one
+debug-mig instance, 15 minutes. Submission observed it running. Results are
+pending under `research/artifacts/ATT-0375-1/`; notification
+`N-20261103-030242-b40e` is sealed and notifyd is running. After it ends,
+resume the validation and training-source registration/review steps above.
