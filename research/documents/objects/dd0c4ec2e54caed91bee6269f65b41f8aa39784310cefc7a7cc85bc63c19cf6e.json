@@ -1,0 +1,13 @@
+{
+  "expected": {
+    "source_commit": "c9f78b9118787e726da001194ddbced735cbbf73",
+    "lr_lock_sha256": "38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d",
+    "base_manifest_sha256": "076a1a0595de6620508a7e99810a96baf979483d805428465807d40beadde196"
+  },
+  "base_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1",
+  "registration": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0294-1/width-registration.json",
+  "training_runs": {"W-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0295-1", "W-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0296-1", "W-03": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0297-1"},
+  "intervention_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0299-1",
+  "reference_runs": {"RB1-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0239-1", "RB1-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1", "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1"},
+  "observations": ["/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0029/costs.json"]
+}
