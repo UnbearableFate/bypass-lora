@@ -1,12 +1,13 @@
-"""Authenticate E-0025 final artifacts before intervention or analysis."""
+"""Authenticate E-0025/E-0027 final artifacts before intervention or analysis."""
 import json
 import math
+import re
 from pathlib import Path
 
 from calibrate import REVISION
 from rb1_artifacts import read, reference, finite_tree, verify_lr_lock
-from seg_data import STEPS, EXAMPLES, ORDER_SHA256
-from seg_model import PARAMETERS, FAMILIES, KEEP, config_for
+from seg_data import STEPS, EXAMPLES, ORDER_SHA256_BY_SEED
+from seg_model import PARAMETERS, FAMILIES, KEEP, config_for, SEED_ARMS, contract
 from v1_run import lr_factor
 
 
@@ -39,17 +40,22 @@ def prediction_rows(path, expected=None):
     return validate_rows(read(path), expected)
 
 
-def validate(root, arm, source_commit):
+def validate(root, arm, source_commit, seed=0):
+    if arm not in SEED_ARMS.get(seed, ()) or ORDER_SHA256_BY_SEED.get(seed) is None:
+        raise ValueError('segmented seed/arm is not registered')
     root = Path(root).resolve()
     manifest = read(root/'manifest.json'); m = manifest['metrics']; cfg = read(root/'config.json')
     finite_tree(manifest)
     stage = 'base' if arm == 'SEG-00' else 'train'
-    if (manifest.get('contract') != 'E-0025@1' or manifest.get('status') != 'complete' or
+    if (manifest.get('contract') != contract(seed) or manifest.get('status') != 'complete' or
         manifest.get('validator', {}).get('passed') is not True or
-        any(manifest.get(k) != v for k, v in {'arm': arm, 'seed': 0, 'phase': 'SEG', 'stage': stage}.items())):
+        any(manifest.get(k) != v for k, v in {'arm': arm, 'seed': seed, 'phase': 'SEG', 'stage': stage}.items())):
         raise ValueError('not a complete final segmented arm')
-    if cfg.get('arm') != arm or cfg.get('stage') != stage or m.get('source.commit') != source_commit:
+    if (cfg.get('arm') != arm or cfg.get('stage') != stage or cfg.get('seed', 0) != seed or
+            m.get('source.commit') != source_commit):
         raise ValueError('segmented arm/config/source binding mismatch')
+    if seed and (m.get('seed') != seed or re.fullmatch('[0-9a-f]{64}', str(m.get('initial.adapter_sha256'))) is None):
+        raise ValueError('new-seed run lacks its seed or initial-parameter digest')
     artifacts = manifest.get('artifacts', [])
     for ref in artifacts:
         if Path(ref['path']).resolve().parent != root:
@@ -70,7 +76,7 @@ def validate(root, arm, source_commit):
         raise ValueError('segmented LR/split pins differ')
     if reference(cfg['split_manifest'])['sha256'] != lock['split_manifest_sha256']:
         raise ValueError('segmented split file changed')
-    if m.get('plan.order_sha256') != ORDER_SHA256 or m.get('plan.steps') != STEPS or m.get('plan.examples') != EXAMPLES:
+    if m.get('plan.order_sha256') != ORDER_SHA256_BY_SEED[seed] or m.get('plan.steps') != STEPS or m.get('plan.examples') != EXAMPLES:
         raise ValueError('segmented RB1 sample plan changed')
     if m.get('params.stored') != PARAMETERS[arm] or m.get('params.trainable') != PARAMETERS[arm]:
         raise ValueError('segmented parameter budget differs')

@@ -8,6 +8,11 @@ from v1_data import _encode, encode_candidates
 
 ORDER_SHA256 = '33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf'
 STEPS, EXAMPLES = 13115, 26230
+# E-0027: seed 0 is E-0025; seeds 1 and 2 use the first STEPS batches of their
+# own R1 stream (same sample/step budget). Their order hashes are registered
+# from the PBS smoke before formal training; None means not yet registered.
+SEEDS = (0, 1, 2)
+ORDER_SHA256_BY_SEED = {0: ORDER_SHA256, 1: None, 2: None}
 
 
 def seam_edits(reference, segmented):
