@@ -26,6 +26,10 @@ mkdir -p "$TMPDIR"
 nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
 cd "$SRC"
 case "$IMPROVE_JOB" in
+  svd-diagnostic)
+    exec "$PY" src/rb_improve_svd_diagnostic.py --output "$OUT" \
+      --split-manifest "$SPLIT" --data-dir "$P/data/v1"
+    ;;
   smoke|tests)
     "$PY" -m pytest -q -p no:cacheprovider src/test_rb_improve.py src/test_rb_improve_analysis.py \
       src/test_rb_improve_lr.py src/test_rb_tap.py src/test_rb_train.py src/test_rb1_artifacts.py \

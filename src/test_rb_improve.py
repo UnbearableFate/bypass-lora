@@ -174,6 +174,28 @@ def test_orthogonality_check_measures_stored_columns_even_when_TF32_is_enabled()
         torch.backends.cuda.matmul.allow_tf32 = previous
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA SVD precision regression')
+def test_ill_conditioned_task_gradient_produces_orthogonal_leading_singular_vectors():
+    torch.manual_seed(413)
+    left = torch.linalg.qr(torch.randn(128, 128, device='cuda', dtype=torch.float64)).Q
+    right = torch.linalg.qr(torch.randn(384, 128, device='cuda', dtype=torch.float64)).Q
+    singular = torch.logspace(0, -12, 128, device='cuda', dtype=torch.float64)
+    gradient = ((left * singular) @ right.T).float()
+    p = torch.randn(200, 128, device='cuda')
+    random_A = torch.randn(128, 32, device='cuda')
+    reader = LatentReader(32).cuda()
+    target = (reader.eta * p @ random_A).double().square().sum().item()
+    value, record = scaled_subspace(gradient, p.T @ p, target, reader, 32)
+    basis = value / record['scale']
+    assert record['svd_input_dtype'] == 'torch.float64' and record['svd_driver'] == 'gesvd'
+    assert record['unscaled_orthogonality_max_error'] < 1e-5
+    assert record['leading_singular_residual_relative'] < 1e-10
+    assert record['condition_number_descriptive'] > 1e8
+    actual_projector = basis.double() @ basis.double().T
+    expected_projector = left[:, :32] @ left[:, :32].T
+    torch.testing.assert_close(actual_projector, expected_projector, rtol=0, atol=2e-5)
+
+
 @pytest.mark.parametrize('rank,expected', [(56, 917504), (48, 786432)])
 def test_up_only_lora_identity_target_counts_and_checkpoint_roundtrip(rank, expected, tmp_path):
     assert 4 * rank * (1024 + 3072) == expected == PARAMETERS[f'L-{rank}']

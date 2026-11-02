@@ -116,8 +116,15 @@ def basis_orthogonality_error(basis):
 def scaled_subspace(gradient, covariance, random_z_sum_squares, reader, rank):
     if not torch.isfinite(gradient).all() or not torch.isfinite(covariance).all():
         raise ValueError('nonfinite initialization statistics')
-    left, singular, _ = torch.linalg.svd(gradient, full_matrices=False)
-    basis = left[:, :rank]
+    # CUDA's default FP32 Jacobi decomposition returned non-orthogonal left
+    # vectors on the observed task gradients. Use the accuracy-oriented QR
+    # driver in FP64, and only then round the retained vectors to storage dtype.
+    decomposition_input = gradient.double()
+    options = {'driver': 'gesvd'} if gradient.is_cuda else {}
+    left, singular, right = torch.linalg.svd(decomposition_input, full_matrices=False, **options)
+    precise_basis = left[:, :rank]
+    precise_orth_error = basis_orthogonality_error(precise_basis)
+    basis = precise_basis.float()
     if not singular.square().sum() > 0:
         raise ValueError('zero I-G task gradient')
     orth_error = basis_orthogonality_error(basis)
@@ -129,6 +136,13 @@ def scaled_subspace(gradient, covariance, random_z_sum_squares, reader, rank):
     scale = (random_z_sum_squares / candidate_sum) ** .5
     energy = singular.square()
     return basis * scale, {'unscaled_orthogonality_max_error': orth_error,
+        'precast_orthogonality_max_error': precise_orth_error,
+        'svd_input_dtype': str(decomposition_input.dtype),
+        'svd_driver': 'gesvd' if gradient.is_cuda else 'CPU LAPACK',
+        'condition_number_descriptive': float(singular[0]/singular[-1]) if singular[-1] > 0 else None,
+        'top_rank_condition_number_descriptive': float(singular[0]/singular[rank-1]) if singular[rank-1] > 0 else None,
+        'leading_singular_residual_relative': float((decomposition_input @ right[:rank].T -
+            precise_basis * singular[:rank]).norm()/decomposition_input.norm()),
         'orthogonality_check_dtype': 'torch.float64',
         'FP32_orthogonality_product_max_error_descriptive': fp32_product_error,
         'singular_values': singular.tolist(), 'top_rank_energy_fraction': float(energy[:rank].sum()/energy.sum()),
@@ -236,6 +250,8 @@ def initialize_gradient(model, examples, tok):
             record['random_Z_rms'] = (stats['Z2']/stats['count']) ** .5
             record['gradient_shape'] = list(stats['G'].shape)
             record['gradient_dtype'] = str(stats['G'].dtype)
+            record['float32_matmul_precision'] = torch.get_float32_matmul_precision()
+            record['cuda_matmul_allow_tf32'] = torch.backends.cuda.matmul.allow_tf32
             record['gradient_frobenius_norm'] = stats['G'].norm().item()
             record['full_value_random_Z_sum_squares'] = stats['direct_Z2']
             record['full_value_relative_L2_error_vs_actual_Z'] = (stats['direct_Z_error2']/stats['Z2']) ** .5
