@@ -9,9 +9,10 @@ rl=/work/xg24i002/x10041/smooth-research/dist/claude/plugins/smooth-research/bin
 page="$root/docs/explanations/hypothesis-tree.html"
 cd "$root"
 mkdir -p "$here/rec"
-n=$(python3 -I -c 'import re,sys; print(re.search(r"range\(1, (\d+)\)", open(sys.argv[1]).read()).group(1))' "$here/build.py")
-for ((i = 1; i < n; i++)); do
-  for k in H E; do
+read -r nh ne < <(python3 -I -c 'import re,sys; m=re.search(r"N_H, N_E = (\d+), (\d+)", open(sys.argv[1]).read()); print(m.group(1), m.group(2))' "$here/build.py")
+for k in H E; do
+  if [ "$k" = H ]; then n=$nh; else n=$ne; fi
+  for ((i = 1; i <= n; i++)); do
     id=$(printf "%s-%04d" "$k" "$i")
     "$rl" --json show "$id" > "$here/rec/$id.json"
   done

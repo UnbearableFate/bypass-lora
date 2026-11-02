@@ -80,7 +80,7 @@ open(os.path.join(HERE, "page-main.js"), "w", encoding="utf-8").write(main_js[0]
 json.dump(data, open(os.path.join(HERE, "page-data-roundtrip.json"), "w", encoding="utf-8"), ensure_ascii=False)
 
 nodes = data["nodes"]
-want = {f"H-{i:04d}" for i in range(1, 30)} | {f"E-{i:04d}" for i in range(1, 30)}
+want = {f"H-{i:04d}" for i in range(1, 30)} | {f"E-{i:04d}" for i in range(1, 31)}
 assert set(nodes) == want, set(nodes) ^ want
 for nid, n in nodes.items():
     for k in ("title", "purpose", "did", "result"):
