@@ -40,8 +40,10 @@ def add128(counts, gain, drop):
 
 
 @pytest.mark.parametrize('g32,g128,drop,outcome', [
-    (9, 9, 0, 'challenges'), (10, 9, 0, 'descriptive'), (20, 0, 0, 'descriptive'),
-    (9, 10, 0, 'descriptive'), (29, 30, 15, 'supports'), (9, 30, 14, 'descriptive')])
+    (9, 9, 0, 'challenges'), (10, 9, 0, 'descriptive_inconclusive_D0044c'),
+    (20, 0, 0, 'descriptive_inconclusive_D0044c'),
+    (9, 10, 0, 'descriptive_inconclusive_D0044c'), (29, 30, 15, 'supports'),
+    (9, 30, 14, 'descriptive_inconclusive_D0044c')])
 def test_D0044_both_ranks_below_one_and_r128_support(g32, g128, drop, outcome):
     report = analyze(add128(grid(g32, 0), g128, drop), CHECKS)
     assert report['direction'] == outcome
@@ -68,6 +70,14 @@ def test_secondary_only_cannot_create_primary_edge_or_release():
     assert report['direction'] == 'inconclusive_secondary_only'
     assert report['eligible_edge'] is None and report['release_r128'] is False
     assert report['rules']['8']['two_new_seed_replications_needed']
+
+
+def test_pending_primary_r128_is_preserved_when_secondary_supports():
+    report = analyze(grid(10, 0, second_gain=30), CHECKS)
+    assert report['direction'] == 'pending_r128' and report['release_r128'] is True
+    assert report['rules']['8']['task_result']['outcome'] == 'supports'
+    assert report['rules']['8']['secondary_only'] is False
+    assert report['rules']['8']['two_new_seed_replications_needed'] is False
 
 
 def test_unlearned_controls_are_diagnostic_and_failed_implementation_blocks_release():

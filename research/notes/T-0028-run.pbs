@@ -43,7 +43,7 @@ case "$SEG_STAGE" in
   analysis)
     : "${SEG_ANALYSIS_INPUT:?locked analysis input required}"
     exec "$SEG_PY" src/seg_analysis.py --input "$SEG_ANALYSIS_INPUT" \
-      --stage "${SEG_ANALYSIS_PHASE:-final}" --output "$SEG_OUT"
+      --output "$SEG_OUT"
     ;;
   *)
     printf 'Unknown registered SEG_STAGE: %s\n' "$SEG_STAGE" >&2

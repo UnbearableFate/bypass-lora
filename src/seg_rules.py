@@ -57,7 +57,7 @@ def analyze(counts, checks, *, require_interventions=True):
                 elif gain32 < PP and gain128 < PP:
                     outcome = 'challenges'
                 else:
-                    outcome = 'descriptive'
+                    outcome = 'descriptive_inconclusive_D0044c'
         per_task[task] = {'informative': informative[task], 'gain32': number(gain32),
             'swap_drop32': None if swap32 is None else number(swap32),
             'gain128': None if gain128 is None else number(gain128),
@@ -78,7 +78,8 @@ def analyze(counts, checks, *, require_interventions=True):
     direction = 'descriptive' if primary is None else per_task[primary]['outcome']
     if primary and release and not r128:
         direction = 'pending_r128'
-    secondary_only = secondary is not None and per_task[secondary]['outcome'] == 'supports' and direction != 'supports'
+    secondary_only = (secondary is not None and per_task[secondary]['outcome'] == 'supports' and
+                      direction not in ('supports', 'pending_r128'))
     if secondary_only:
         direction = 'inconclusive_secondary_only'
     if not implementation_ok:

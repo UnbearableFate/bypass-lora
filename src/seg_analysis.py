@@ -2,6 +2,7 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import time
 
 from rb1_analysis import measured_cost
@@ -26,10 +27,42 @@ def summary(rows):
             'macro_nll': sum(t['nll'] for t in tasks.values())/2}
 
 
-def analyze(inputs, stage='final'):
+def complete_cost(inputs, roots, interventions, check_manifest):
+    """Require all declared terminal task costs, including failed attempts.
+
+    The controller writes accounted_attempts from the task's execution record
+    before each analysis. Independent roots ensure that omitting a mandatory
+    arm, check or smoke from that list cannot hide its usage. The current
+    analysis has no terminal usage yet; delivery appends it after it ends.
+    """
+    declared = inputs.get('accounted_attempts')
+    if (not isinstance(declared, list) or not declared or len(set(declared)) != len(declared) or
+        any(not isinstance(a, str) or re.fullmatch(r'ATT-\d+-\d+', a) is None for a in declared)):
+        raise ValueError('analysis needs the explicit terminal task accounting list')
+    inferred = {Path(p).resolve().name for p in (*roots.values(), *interventions.values())}
+    inferred.add(Path(check_manifest).resolve().parent.name)
+    inferred.add('ATT-0271-1')
+    if any(re.fullmatch(r'ATT-\d+-\d+', a) is None for a in inferred):
+        raise ValueError('all segmented run/check paths must name their registered attempt')
+    if not inferred <= set(declared):
+        raise ValueError('task accounting list omits a required arm/check/smoke attempt')
+    cost = measured_cost(inputs['observations'])
+    measured = {r['attempt'] for r in cost['rows']}
+    if measured != set(declared):
+        raise ValueError('measured cost coverage differs from the complete task accounting list')
+    cost.update({'required_attempts': sorted(declared), 'terminal_coverage_complete': True,
+                 'cap_node_h': 3., 'within_cap': cost['node_h'] <= 3.,
+                 'current_analysis_usage': 'pending; add terminal measured usage in delivery',
+                 'conversion': 'node_h = measured MIG instance hours * 0.25; all declared terminal task attempts included'})
+    return cost
+
+
+def analyze(inputs):
     source = inputs['training_source']
     if len(source) != 40 or any(c not in '0123456789abcdef' for c in source):
         raise ValueError('analysis needs the reviewed immutable training-source pin')
+    if inputs.get('evaluation_source') != source:
+        raise ValueError('intervention evaluation source must equal the reviewed training source')
     roots = inputs['runs']
     required = {f'SEG-{i:02}' for i in range(5)}
     if set(roots) not in (required, required | {'SEG-05', 'SEG-06', 'SEG-07'}):
@@ -58,16 +91,15 @@ def analyze(inputs, stage='final'):
     checked = read(checks['manifest_ref']['path'])
     if checked.get('status') != 'complete' or checked.get('validator', {}).get('passed') is not True:
         raise ValueError('deterministic check run failed')
+    if checked.get('source_commit') != source:
+        raise ValueError('deterministic-check source differs from the reviewed training source')
     no_channel = checked['metrics'].get('no_channel_identity') is True
     initial = all(m['metrics'].get('initial.identical_to_Base_seg') is True for a, m in manifests.items() if a in KEEP)
     reload_ok = all(m['metrics'].get('reload.identical') is True for a, m in manifests.items() if a != 'SEG-00')
     off_ok, provenance = True, {}
     for arm in (a for a in roots if a in KEEP):
         if arm not in inputs.get('interventions', {}):
-            if stage == 'final':
-                raise ValueError('segmented intervention grid missing')
-            off_ok = False
-            continue
+            raise ValueError('segmented intervention grid missing')
         root = Path(inputs['interventions'][arm])
         manifest = read(root/'manifest.json'); m = manifest['metrics']; prov = read(root/'provenance.json')
         if (manifest.get('status') != 'complete' or manifest.get('contract') != 'E-0025@1' or
@@ -100,17 +132,18 @@ def analyze(inputs, stage='final'):
     rule_checks = {'no_channel_identity': no_channel, 'initial_matches_base': initial,
                    'reload_identical': reload_ok, 'off_matches_base': off_ok}
     counts = {a: counts_from_rows(p) for a, p in predictions.items()}
-    rules = apply_rules(counts, rule_checks, require_interventions=stage == 'final')
+    rules = apply_rules(counts, rule_checks)
+    cost = complete_cost(inputs, roots, inputs['interventions'], checks['manifest_ref']['path'])
     binary = {a: {t: [int(r['gold'] == r['prediction']) for r in p if r['task'] == t]
                   for t in ('piqa', 'boolq')} for a, p in predictions.items()}
-    return {**rules, 'contract': 'E-0025@1', 'clarification': 'D-0044', 'stage': stage,
+    return {**rules, 'contract': 'E-0025@1', 'clarification': 'D-0044', 'stage': 'final',
         'summary': {a: summary(p) for a, p in predictions.items()}, 'counts': counts,
         'bootstrap': {'repeats': 10000, 'seed': 20261101, 'pairs': paired_bootstrap(binary),
                       'max_control_gain': gain_intervals(binary)},
         'training': {a: m['metrics'] for a, m in manifests.items()}, 'artifact_refs': refs,
         'intervention_refs': provenance, 'deterministic_checks': checks,
         'full_context_references_descriptive_only': reference_predictions,
-        'cost': measured_cost(inputs.get('observations', [])),
+        'cost': cost,
         'limitations': ['Single trained seed, dev screening; bootstrap conditions on these trained models.',
             'Thresholds are exact point-estimate gates, not interval guarantees.',
             'Intervals are descriptive; not simultaneous; exclude seed and task/width selection uncertainty.',
@@ -135,12 +168,11 @@ def markdown(report):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--input', type=Path, required=True)
-    p.add_argument('--stage', choices=('select', 'final'), default='final')
     p.add_argument('--output', type=Path, required=True)
     args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     passed, start = False, time.monotonic()
     try:
-        report = analyze(read(args.input), args.stage)
+        report = analyze(read(args.input))
         write_json(out/'analysis.json', report)
         (out/'analysis.md').write_text(markdown(report))
         passed = True
