@@ -206,7 +206,8 @@ def analyze(spec):
         performance[label] = check_metrics(condition_rows, condition['metrics'], label)
         conditions[mode]['predictions'] = condition_rows
         if mode != 'Base_same_allocation':
-            validate_read_summary(condition.get('read_diagnostics', []), 'W-02', mode)
+            # W-02 runs on the post-E-0024 producer, whose summaries add the share metrics.
+            validate_read_summary(condition.get('read_diagnostics', []), 'W-02', mode, share_metrics=True)
             rows[label] = condition_rows
             read_tables[label] = condition.get('read_diagnostics', [])
     sources['W-02/interventions'] = {name: reference(root/name) for name in ('manifest.json', 'conditions.json', 'provenance.json')}

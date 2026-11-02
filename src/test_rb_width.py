@@ -1,5 +1,7 @@
 """E-0026 r128 width probe: arm registry, source binding and locked rule boundaries."""
+import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -167,3 +169,118 @@ def test_rule1a_requires_iv_off_to_match_pinned_Base_not_only_same_allocation():
     assert rules['evidence_level'] is None and 'withheld' in evidence_line(rules)
     assert (rules['rule3_H0018']['outcome'], rules['rule4_practical_advantage']['recorded'],
             rules['rule5_history']['reopen_H0014'], rules['rule8_no_further_widening']) == (None,)*4
+
+
+def test_current_read_summary_producer_passes_the_width_validator():
+    """W-02 summaries come from the post-E-0024 ReadSummary (with share metrics)."""
+    import torch
+    from rb1_analysis import validate_read_summary
+    from rb_read_diagnostics import ReadSummary, prefix_read_metrics
+    torch.manual_seed(0)
+    summary = ReadSummary()
+    valid = torch.ones(1, 6, dtype=torch.bool)
+    labels = torch.tensor([[-100, -100, -100, -100, 5, 6]])
+    for task in ('piqa', 'boolq'):
+        diagnostics = {}
+        for layer in (6, 13, 20, 27):
+            query, keys = torch.rand(1, 6, 4), torch.rand(1, 6, 4)
+            diagnostics[layer] = {'read_metrics': [{'step': 1, **prefix_read_metrics(query, keys, valid),
+                                                    'read_vector': torch.rand(1, 6, 4)}]}
+        summary.add(task, diagnostics, valid.long(), labels)
+    records = summary.finish()
+    validate_read_summary(records, 'W-02', 'normal', share_metrics=True)
+    with pytest.raises(ValueError, match='missing normalized read metrics'):
+        validate_read_summary(records, 'W-02', 'normal')
+
+
+def _end_to_end_spec(tmp_path, monkeypatch, shared_off_change=False):
+    """Synthetic formal artifacts for every E-0026 input, built as the producers write them."""
+    import rb_width_analysis as width
+    from rb1_artifacts import read, reference
+    from test_rb1_analysis import metrics, predictions, write
+    source = 'a'*40
+    base = tmp_path/'Base'
+    base.mkdir()
+    base_rows = predictions(700)
+    (base/'manifest.json').write_bytes(Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1/manifest.json').read_bytes())
+    write(base/'predictions.json', base_rows)
+    monkeypatch.setattr(width, '_read_run', lambda *args: (base_rows, {'metrics': metrics(base_rows)}))
+    successes = {'W-01': 750, 'W-02': 760, 'W-03': 755, 'RB1-01': 740, 'RB1-02': 745, 'RB1-07': 770}
+    roots, manifests = {}, {}
+    for arm in successes:
+        root = _width_run(tmp_path/'training', arm, source) if arm.startswith('W') else _formal_run(tmp_path/'training', arm)
+        roots[arm] = str(root)
+        manifest = read(root/'manifest.json')
+        m = manifest['metrics']
+        m['plan.order_sha256'] = 'a'*64
+        tokens, examples = m['train.input_tokens'], m['train.examples']
+        layers = {str(i): {'writes': tokens if arm == 'W-02' else 0, 'reads': tokens if arm == 'W-02' else 0,
+                           'valid_tokens': tokens, 'attention': examples, 'ffn': examples} for i in (6, 13, 20, 27)}
+        m['runtime.accounting'] = {'layers': {} if arm == 'W-03' else layers, 'states': {},
+                                    'state_M_c_bytes': 4*width.STATE_BYTES_PER_LAYER if arm == 'W-02' else 0}
+        m.update({'train.seconds': 10., 'train.steady_step_seconds': .2, 'train.peak_cuda_bytes': 2**30,
+                  'hardware': 'fixture'})
+        rows = predictions(successes[arm])
+        m.update(metrics(rows))
+        write(root/'predictions.json', rows)
+        for step, curve in ((0, base_rows), (489, rows), (977, rows), (1466, rows)):
+            write(root/f'dev-step-{step}.json', {'step': step, 'metrics': metrics(curve), 'predictions': curve})
+        write(root/'manifest.json', manifest)
+        manifests[arm] = reference(root/'manifest.json')
+    registration = tmp_path/'width-registration.json'
+    write(registration, {'contract': 'E-0026@1', 'source_commit': source, 'passed': True, 'lora_rank_nearest_W-02': 31,
+                         'arms': {arm: {'trainable': PARAMETERS[arm]} for arm in ('W-01', 'W-02', 'W-03')}})
+    iv = tmp_path/'IV-W-02'
+    off = copy.deepcopy(base_rows)
+    if shared_off_change:
+        off[0].update(prediction=1, scores=[-2., -1.])
+    def condition(rows, mode):
+        records = [] if mode in ('iv_off', 'Base_same_allocation') else [
+            {'task': task, 'layer': layer, 'step': 1, 'scope': scope, 'count': 1000, 'empty_reads': 0,
+             'means': {'current_weight': .1, 'n_eff': 2., 'entropy': .5, 'relative_n_eff': .2, 'readable_positions': 10.,
+                       'share0': .3, 'share0_2': .4, 'argmax0': .5, 'uniform0': .1, 'uniform0_2': .3}}
+            for task in ('piqa', 'boolq') for layer in (6, 13, 20, 27) for scope in ('all_valid_input', 'answer_prediction')]
+        for record in records:
+            record['nonempty_means'] = dict(record['means'])
+        return {'predictions': rows, 'metrics': metrics(rows), 'read_diagnostics': records}
+    normal = predictions(successes['W-02'])
+    write(iv/'conditions.json', {'normal': condition(normal, 'normal'),
+                                 'Base_same_allocation': condition(copy.deepcopy(off), 'Base_same_allocation'),
+                                 'iv_off': condition(off, 'iv_off'), 'iv_swap': condition(predictions(745), 'iv_swap'),
+                                 'iv_permute': condition(predictions(650), 'iv_permute')})
+    write(iv/'provenance.json', {'training_manifest': {k: manifests['W-02'][k] for k in ('path', 'sha256')},
+                                 'hardware': 'fixture'})
+    write(iv/'manifest.json', {'status': 'complete', 'validator': {'passed': True}, 'contract': 'E-0026@1',
+                               'arm': 'W-02', 'stage': 'intervention', 'seed': 0})
+    return {'expected': {'source_commit': source, 'lr_lock_sha256': width.ACCEPTED_LR_LOCK_SHA256,
+                         'base_manifest_sha256': width.ACCEPTED_BASE_MANIFEST_SHA256},
+            'base_run': str(base), 'registration': str(registration),
+            'training_runs': {arm: roots[arm] for arm in ('W-01', 'W-02', 'W-03')},
+            'reference_runs': {arm: roots[arm] for arm in ('RB1-01', 'RB1-02', 'RB1-07')},
+            'intervention_run': str(iv)}
+
+
+def test_end_to_end_analysis_on_synthetic_formal_artifacts(tmp_path, monkeypatch):
+    import rb_width_analysis as width
+    report = width.analyze(_end_to_end_spec(tmp_path, monkeypatch))
+    assert report['implementation']['passed'] is True
+    rules = report['rules']
+    # predictions(n) has n correct per task: Base 70%, W-01 75%, W-02 76%, W-03 75.5%, swap 74.5%.
+    assert rules['rule3_H0018']['outcome'] == 'supports' and rules['evidence_level'] == 'screening'
+    assert rules['rule3_H0018']['d_L']['percentage_points'] == pytest.approx(.5)
+    assert rules['rule5_history']['d_T']['percentage_points'] == pytest.approx(1.0)
+    assert rules['rule5_history']['iv_swap_drop']['percentage_points'] == pytest.approx(1.5)
+    assert rules['rule5_history']['reopen_H0014'] is True
+    assert report['intervals']['W-02/iv_swap - W-02/normal']['macro_accuracy']['difference'] == pytest.approx(-.015)
+    assert [p['step'] for p in report['learning_curves']['W-02']] == [0, 489, 977, 1466, 1954]
+    assert report['bootstrap']['labels'][-3:] == ['W-02/iv_off', 'W-02/iv_swap', 'W-02/iv_permute']
+    text = width.markdown(report)
+    assert 'Evidence level for rules 3-5: screening.' in text and 'W-02 - W-03' in text
+
+
+def test_end_to_end_shared_iv_off_change_fails_rule1_and_withholds(tmp_path, monkeypatch):
+    import rb_width_analysis as width
+    report = width.analyze(_end_to_end_spec(tmp_path, monkeypatch, shared_off_change=True))
+    assert report['implementation']['passed'] is False
+    assert report['rules']['rule3_H0018']['outcome'] is None
+    assert 'outcomes withheld' in width.markdown(report)

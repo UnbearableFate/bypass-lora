@@ -91,7 +91,14 @@ def check_metrics(rows, metrics, label):
     return summaries
 
 
-def validate_read_summary(records, arm, mode):
+READ_METRICS = frozenset({'current_weight', 'n_eff', 'entropy', 'relative_n_eff', 'readable_positions'})
+# Added by E-0024 (rb_read_diagnostics); all are probabilities or slot fractions.
+SHARE_METRICS = frozenset({'share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2'})
+
+
+def validate_read_summary(records, arm, mode, share_metrics=False):
+    """E-0021 summaries carry READ_METRICS; post-E-0024 producers also carry SHARE_METRICS."""
+    metrics = READ_METRICS | SHARE_METRICS if share_metrics else READ_METRICS
     if arm == 'RB1-01' or mode == 'iv_off':
         if records:
             raise ValueError(f'{arm}/{mode}: disabled/T0 read has no KernelMatrix distribution')
@@ -108,10 +115,10 @@ def validate_read_summary(records, arm, mode):
         if type(record.get('count')) is not int or record['count'] <= 0 or not 0 <= record.get('empty_reads', -1) <= record['count']:
             raise ValueError(f'{arm}/{mode}: invalid read diagnostic denominator')
         means = record.get('means', {})
-        if set(means) != {'current_weight', 'n_eff', 'entropy', 'relative_n_eff', 'readable_positions'}:
+        if set(means) != metrics:
             raise ValueError(f'{arm}/{mode}: missing normalized read metrics')
         finite_tree(means)
-        if any(value < 0 for value in means.values()) or any(means[k] > 1.00001 for k in ('current_weight', 'relative_n_eff')):
+        if any(value < 0 for value in means.values()) or any(means[k] > 1.00001 for k in ('current_weight', 'relative_n_eff', *(metrics & SHARE_METRICS))):
             raise ValueError(f'{arm}/{mode}: invalid normalized read metric range')
         if mode == 'iv_strict' and means['current_weight'] != 0:
             raise ValueError(f'{arm}/{mode}: strict read cannot include current-token weight')
