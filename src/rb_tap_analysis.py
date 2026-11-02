@@ -80,13 +80,19 @@ def selected_arm(tap,eta):
     return ('X-01' if tap=='X' else 'RB1-09') if eta==.25 else f'ETA-{tap}-{eta:g}'
 
 
+def tests_cover_source(smoke,expected):
+    return (smoke.get('status')=='complete' and smoke.get('validator',{}).get('passed') is True
+            and smoke.get('metrics',{}).get('pytest_exit')==0
+            and smoke['metrics'].get('source_commit')==expected)
+
+
 def analyze(spec):
     # Validate the already-written calibration lock before opening any dev file.
     lock_path=Path(spec['eta_lock']);lock_ref=reference(lock_path)
     if lock_ref['sha256']!=spec['eta_lock_sha256']:
         raise ValueError('eta-lock hash differs from registered analysis input')
     lock=read(lock_path)
-    rebuilt=selection(spec['calibration_manifests'],final=True)
+    rebuilt=selection(spec['calibration_manifests'],spec['training_source_commit'],spec['registration'],final=True)
     if lock!=rebuilt:
         raise ValueError('eta-lock no longer reconstructs from its calibration manifests')
     selected={tap:selected_arm(tap,value['eta']) for tap,value in lock['choices'].items()}
@@ -157,6 +163,8 @@ def analyze(spec):
             baseline.get('validator',{}).get('passed') is not True or baseline['metrics'].get('source.commit')!=expected):
         raise ValueError('missing reviewed RB1-09 compatibility evaluation')
     repeated=validate_rows(read(baseline_root/'predictions.json'),'RB1-09 re-eval',rows['Base'])
+    rms['RB1-09']=read(baseline_root/'step0-rms.json')
+    sources['RB1-09_step0_rms']=reference(baseline_root/'step0-rms.json')
     registration=read(spec['registration'])
     if registration.get('contract')!='E-0028@1' or registration.get('source_commit')!=expected:
         raise ValueError('initialization registration is from a different source')
@@ -167,7 +175,7 @@ def analyze(spec):
                           ('params.stored','params.trainable','params.with_grad')) for arm,value in training.items()),
         'e_f_h_init_and_tap':registration.get('passed') is True,
         'g_RB109_dev_unchanged':same_predictions(repeated,rows['RB1-09']),
-        'i_selection_tests':read(spec['smoke_manifest']).get('metrics',{}).get('pytest_exit')==0,
+        'i_selection_tests':tests_cover_source(read(spec['smoke_manifest']),expected),
         'init_digests_match_registration':all(m['metrics'].get('init.parameters.sha256')==registration['arms'][arm]['init_sha256'] for arm,m in training.items())}
     ivroot=Path(spec['intervention_run']);ivmanifest=read(ivroot/'manifest.json')
     provenance=read(ivroot/'provenance.json');conditions=read(ivroot/'conditions.json')

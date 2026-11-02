@@ -60,9 +60,11 @@ def test_untriggered_or_double_endpoint_extension_is_rejected():
 def candidate(tmp_path,failed=False,failure_kind=None,status='complete'):
     import json
     from rb_eta_select import SPLIT_SHA256,ORDER_SHA256
+    tmp_path.mkdir(parents=True,exist_ok=True)
     path=tmp_path/'manifest.json'
     metrics={'split_manifest.sha256':SPLIT_SHA256,'plan.order_sha256':ORDER_SHA256,
              'learning_rate':.001,'failed':failed,'failure_kind':failure_kind,
+             'source.commit':'a'*40,'init.parameters.sha256':'b'*64,
              'train.steps':13115,'train.examples':26230,'reload.identical':True}
     rows=[]
     for task in ('piqa','boolq'):
@@ -74,6 +76,8 @@ def candidate(tmp_path,failed=False,failure_kind=None,status='complete'):
     value={'status':status,'validator':{'passed':True},'arm':'ETA-X-1',
            'seed':0,'phase':'R1','contract':'E-0028@1','stage':'train','metrics':metrics}
     path.write_text(json.dumps(value))
+    (tmp_path/'config.json').write_text(json.dumps({'arm':'ETA-X-1','stage':'train','phase':'R1',
+        'seed':0,'lr':.001,'eval_limit':None,'smoke_steps':None,'three_epochs':False}))
     (tmp_path/'calibration-predictions.json').write_text(json.dumps(rows))
     return path
 
@@ -84,14 +88,15 @@ def test_candidate_validation_uses_calibration_counts_and_binds_input_hashes(tmp
     path=candidate(tmp_path)
     value=json.loads(path.read_text());value['metrics']['dev.piqa.accuracy']=0.
     path.write_text(json.dumps(value))
-    tap,eta,score,record=load_candidate(path)
+    registration={'arms':{'ETA-X-1':{'init_sha256':'b'*64}}}
+    tap,eta,score,record=load_candidate(path,'a'*40,registration)
     assert (tap,eta,score)==('X',1.,F(1))
     assert set(record['inputs'])=={'manifest','calibration_predictions'}
     rows=json.loads((tmp_path/'calibration-predictions.json').read_text())
     rows[1]['id']=rows[0]['id']
     (tmp_path/'calibration-predictions.json').write_text(json.dumps(rows))
     with pytest.raises(ValueError,match='duplicate'):
-        load_candidate(path)
+        load_candidate(path,'a'*40,registration)
 
 
 @pytest.mark.parametrize('status,failed,kind',[
@@ -99,10 +104,57 @@ def test_candidate_validation_uses_calibration_counts_and_binds_input_hashes(tmp
 def test_engineering_failure_is_not_silently_eliminated(tmp_path,status,failed,kind):
     from rb_eta_select import load_candidate
     with pytest.raises(ValueError,match='rerun|only non-finite'):
-        load_candidate(candidate(tmp_path,failed,kind,status))
+        load_candidate(candidate(tmp_path,failed,kind,status),'a'*40,{'arms':{'ETA-X-1':{'init_sha256':'b'*64}}})
 
 
 def test_explicit_nonfinite_training_candidate_is_eliminated(tmp_path):
     from rb_eta_select import load_candidate
-    tap,eta,score,record=load_candidate(candidate(tmp_path,True,'training_nonfinite'))
+    tap,eta,score,record=load_candidate(candidate(tmp_path,True,'training_nonfinite'),'a'*40,{'arms':{'ETA-X-1':{'init_sha256':'b'*64}}})
     assert score is None and record['excluded']=='training_nonfinite'
+
+
+@pytest.mark.parametrize('key,value',[('source.commit','c'*40),('init.parameters.sha256','d'*64)])
+def test_divergent_candidate_must_match_reviewed_source_and_initialization(tmp_path,key,value):
+    import json
+    from rb_eta_select import load_candidate
+    path=candidate(tmp_path,True,'training_nonfinite')
+    manifest=json.loads(path.read_text());manifest['metrics'][key]=value;path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError,match='source commit or initialization'):
+        load_candidate(path,'a'*40,{'arms':{'ETA-X-1':{'init_sha256':'b'*64}}})
+
+
+@pytest.mark.parametrize('key,value',[('eval_limit',16),('smoke_steps',80),('three_epochs',True)])
+def test_divergent_smoke_cannot_eliminate_a_formal_candidate(tmp_path,key,value):
+    import json
+    from rb_eta_select import load_candidate
+    path=candidate(tmp_path,True,'training_nonfinite')
+    config_path=tmp_path/'config.json';config=json.loads(config_path.read_text());config[key]=value
+    config_path.write_text(json.dumps(config))
+    with pytest.raises(ValueError,match='full registered training'):
+        load_candidate(path,'a'*40,{'arms':{'ETA-X-1':{'init_sha256':'b'*64}}})
+
+
+def test_full_calibration_grid_lock_rebuilds_and_requires_paired_membership(tmp_path):
+    import json
+    from rb_eta_select import selection
+    manifests=[];arms={}
+    for tap in ('QK','X'):
+        for eta in GRID:
+            arm=('RB1-09' if tap=='QK' else 'X-01') if eta==.25 else f'ETA-{tap}-{eta:g}'
+            path=candidate(tmp_path/arm)
+            value=json.loads(path.read_text());value['arm']=arm
+            if arm=='RB1-09':value['stage']='checkpoint_evaluation'
+            path.write_text(json.dumps(value));manifests.append(path)
+            arms[arm]={'init_sha256':'b'*64}
+    registration=tmp_path/'registration.json'
+    registration.write_text(json.dumps({'contract':'E-0028@1','source_commit':'a'*40,
+                                        'passed':True,'arms':arms}))
+    value=selection(manifests,'a'*40,registration,final=True)
+    assert {tap:v['eta'] for tap,v in value['choices'].items()}=={'QK':.25,'X':.25}
+    assert json.loads(json.dumps(value))==selection(manifests,'a'*40,registration,final=True)
+    # Same totals and finite scores are insufficient if candidate membership drifts.
+    prediction=manifests[-1].parent/'calibration-predictions.json'
+    rows=json.loads(prediction.read_text());rows[0]['id']=9999
+    prediction.write_text(json.dumps(rows))
+    with pytest.raises(ValueError,match='membership/order/gold'):
+        selection(manifests,'a'*40,registration,final=True)

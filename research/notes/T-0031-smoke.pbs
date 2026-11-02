@@ -44,15 +44,17 @@ for arm in ('X-01','X-02','X-03','ETA-QK-1'):
     value=json.loads((out/f'smoke-{arm}'/'manifest.json').read_text())
     assert value['status']=='complete' and value['validator']['passed']
     m=value['metrics']
-    arms[arm]={k:m[k] for k in ('train.steady_step_seconds','train.peak_cuda_bytes',
+    arms[arm]={k:m.get(k) for k in ('train.steady_step_seconds','train.peak_cuda_bytes',
        'train.seconds','init_eval.seconds','eval.seconds','calibration.seconds',
        'params.stored','params.trainable','params.with_grad','init.parameters.sha256','hardware')}
 timing=json.loads((out/'calibration-timing'/'manifest.json').read_text())
 assert timing['status']=='complete' and timing['validator']['passed']
+assert not (out/'smoke-X-02'/'calibration-predictions.json').exists()
+assert not (out/'smoke-X-03'/'calibration-predictions.json').exists()
 registration=json.loads((out/'tap-registration.json').read_text());assert registration['passed']
 cal=timing['metrics']['calibration.seconds']
 dev=max(cal/2.048,max(m['init_eval.seconds']*1000/16 for m in arms.values()))
-train_est={arm:m['train.steady_step_seconds']*13115+6*dev+cal+20 for arm,m in arms.items()}
+train_est={arm:m['train.steady_step_seconds']*13115+6*dev+(cal if arm in ('X-01','ETA-QK-1') else 0)+20 for arm,m in arms.items()}
 initial=sum(train_est[a] for a in ('X-01','X-02','X-03'))+5*(train_est['X-01']+train_est['ETA-QK-1'])
 extensions=train_est['X-01']+train_est['ETA-QK-1']
 # MIG is billed at one quarter node. Include baseline, 8 intervention paths

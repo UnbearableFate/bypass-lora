@@ -51,3 +51,11 @@ def test_stop_rule_keeps_strict_lora_boundary_and_tap_conjunction():
 def test_invalid_implementation_cannot_produce_scientific_outcome():
     with pytest.raises(ValueError,match='withheld'):
         rule_outcomes(scores(),{'X':'X-01','QK':'RB1-09'},{'X':F(0),'QK':F(0)},False)
+
+
+def test_selection_test_evidence_requires_the_reviewed_source_commit():
+    from rb_tap_analysis import tests_cover_source
+    manifest={'status':'complete','validator':{'passed':True},
+              'metrics':{'pytest_exit':0,'source_commit':'a'*40}}
+    assert tests_cover_source(manifest,'a'*40)
+    assert not tests_cover_source(manifest,'b'*40)

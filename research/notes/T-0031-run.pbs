@@ -63,7 +63,7 @@ from pathlib import Path
 from rb_eta_select import ref,selection
 source,out,mode=sys.argv[1:];out=Path(out)
 spec=json.loads(Path(source).read_text());final=mode=='eta-lock'
-result=selection(spec['manifests'],final=final)
+result=selection(spec['manifests'],spec['training_source_commit'],spec['registration'],final=final)
 path=out/('eta-lock.json' if final else 'eta-plan.json')
 with path.open('x') as handle:
     json.dump(result,handle,indent=2,allow_nan=False);handle.write('\n')

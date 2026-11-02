@@ -308,7 +308,7 @@ def run(args):
             write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
                 'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
                 for name in ('config.json','adapter.pt')})
-            if args.arm in E0028_ARMS:
+            if args.arm=='X-01' or args.arm in ETA_ARMS:
                 tick=time.monotonic()
                 values,calibration=evaluate(model,splits,tok,args.eval_limit,split_names=('calibration',))
                 metrics.update(values)

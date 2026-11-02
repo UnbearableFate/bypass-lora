@@ -87,7 +87,20 @@ def validate_calibration(rows,metrics):
     return sum((Fraction(*counts[t]) for t in TASKS),Fraction())/2,counts,nll
 
 
-def load_candidate(path):
+def validate_candidate_provenance(path,value,expected_source,expected_init):
+    """A divergent run can remove an eta only if it executed this exact design."""
+    m=value.get('metrics',{})
+    if m.get('source.commit')!=expected_source or m.get('init.parameters.sha256')!=expected_init:
+        raise ValueError('candidate source commit or initialization differs from reviewed registration')
+    if m.get('failed'):
+        config=json.loads((Path(path).parent/'config.json').read_text())
+        expected={'arm':value['arm'],'stage':'train','phase':'R1','seed':0,'lr':.001,
+                  'eval_limit':None,'smoke_steps':None,'three_epochs':False}
+        if any(key not in config or config[key]!=wanted for key,wanted in expected.items()):
+            raise ValueError('excluded candidate is not a full registered training run')
+
+
+def load_candidate(path,expected_source,registration):
     path=Path(path).resolve();value=json.loads(path.read_text());m=value.get('metrics',{})
     arm=value.get('arm')
     if arm=='RB1-09':tap,eta='QK',.25
@@ -104,10 +117,12 @@ def load_candidate(path):
         raise ValueError('eta selection requires E-0028 final-checkpoint evaluation')
     if m.get('split_manifest.sha256')!=SPLIT_SHA256 or m.get('plan.order_sha256')!=ORDER_SHA256 or m.get('learning_rate')!=.001:
         raise ValueError('candidate split/order/LR differs from E-0028')
+    validate_candidate_provenance(path,value,expected_source,registration['arms'][arm]['init_sha256'])
     refs={'manifest':ref(path)}
     if m.get('failed') is True:
         if m.get('failure_kind')!='training_nonfinite' or not arm.startswith('ETA-'):
             raise ValueError('only non-finite TRAINING grid candidates may be excluded')
+        refs['run_config']=ref(path.parent/'config.json')
         return tap,eta,None,{'arm':arm,'excluded':'training_nonfinite','inputs':refs}
     if m.get('failed') is not False or m.get('train.steps')!=13115 or m.get('train.examples')!=26230 or m.get('reload.identical') is not True:
         raise ValueError('candidate did not complete the locked training/reload budget')
@@ -120,11 +135,15 @@ def load_candidate(path):
         'identities':[(r['task'],r['id'],r['gold'],r['gold_loss_tokens']) for r in rows]}
 
 
-def selection(manifests,final=True):
+def selection(manifests,source_commit,registration_path,final=True):
+    registration=json.loads(Path(registration_path).read_text())
+    if (registration.get('contract')!='E-0028@1' or registration.get('source_commit')!=source_commit
+            or registration.get('passed') is not True):
+        raise ValueError('eta selection requires initialization registration at the reviewed source')
     groups={tap:{} for tap in ('QK','X')};records={tap:{} for tap in groups}
     paired=None
     for path in manifests:
-        tap,eta,score,record=load_candidate(path)
+        tap,eta,score,record=load_candidate(path,source_commit,registration)
         if eta in groups[tap]:
             raise ValueError('duplicate tap/eta candidate')
         identities=record.pop('identities',None)
@@ -135,6 +154,7 @@ def selection(manifests,final=True):
         groups[tap][eta]=score;records[tap][f'{eta:g}']=record
     choices={tap:choose_eta(scores) if final else {'extension':extension_eta(scores)} for tap,scores in groups.items()}
     return {'contract':'E-0028@1','selection_split':'calibration','selection_metric':'macro_accuracy',
+            'training_source_commit':source_commit,'registration':ref(registration_path),
             'tie_rule':'max accuracy, min abs(log2(eta/0.25)), min eta',
             'split_manifest_sha256':SPLIT_SHA256,'choices':choices,'candidates':records}
 
@@ -143,9 +163,11 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command',choices=('plan','lock'))
     parser.add_argument('--manifests',nargs='+',type=Path,required=True)
+    parser.add_argument('--source-commit',required=True)
+    parser.add_argument('--registration',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args()
-    value=selection(args.manifests,final=args.command=='lock')
+    value=selection(args.manifests,args.source_commit,args.registration,final=args.command=='lock')
     args.output.parent.mkdir(parents=True,exist_ok=True)
     with args.output.open('x') as handle:
         json.dump(value,handle,indent=2,allow_nan=False);handle.write('\n')
