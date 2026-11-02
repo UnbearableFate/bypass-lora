@@ -1,0 +1,24 @@
+{
+  "experiment": "E-0029@1",
+  "source_commit": "df20616cadf870710705aeb5d52c373746aa8d45",
+  "smoke_attempt": "ATT-0338-1",
+  "smoke_job": "3775354.opbs",
+  "source_cost_file": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0338-1/cost-estimate.json",
+  "source_cost_sha256": "9dd40d50fb8092572064276a7dfaeaf3a2be2e9a53628bf2f083458a24929a66",
+  "source_projected_node_hours": 2.4827246181686777,
+  "measured_prior_node_hours": 0.019097,
+  "measured_smoke_mig_instance_hours": 0.183333,
+  "smoke_application_seconds": 637.4747268009814,
+  "measured_smoke_scheduler_seconds": 660,
+  "additional_smoke_scheduler_overhead_node_hours": 0.0015642550832651776,
+  "updated_projected_node_hours": 2.503385873251943,
+  "cap_node_hours": 3.5,
+  "within_cap": true,
+  "accounting": "MIG instance hours / 4. Retains the original conservative 60s check reserve and 120s analysis reserve. Replaces application-only smoke timing with measured PBS walltime and adds all prior E-0029 tests/failed smokes/solver diagnostics.",
+  "remaining_IG_checks": {
+    "G-QN": {"attempt": "ATT-0340-1", "job": "3775515.opbs", "result": "RES-0301", "passed": true, "scheduler_seconds": 62, "application_seconds": 46.25053849502001},
+    "G-N": {"attempt": "ATT-0341-1", "job": "3775518.opbs", "result": "RES-0302", "passed": true, "scheduler_seconds": 62, "application_seconds": 47.51289531699149}
+  },
+  "measured_node_hours_to_date": 0.07354125,
+  "pending_checks": "All three full256 I-G checks passed. G-QN/G-N consume the source estimate's reserved three-I-G allocation rather than an additional unbudgeted run class. Independent review, formal dev step0 identity, final reload, reference reads and analysis remain pending."
+}
