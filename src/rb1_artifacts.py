@@ -150,7 +150,8 @@ def validate_formal_run(run_dir, arm, source_commit=None):
         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
             raise ValueError(f'{arm}: missing or invalid {key}')
     if metrics['source.commit'] != expected_source:
-        raise ValueError(f'{arm}: source commit differs from covered training release')
+        release = 'E-0026' if arm in WIDTH_ARMS else 'RB1'
+        raise ValueError(f'{arm}: source commit differs from covered {release} training release')
     expected_params = PARAMETERS[arm]
     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
         if metrics.get(key) != expected_params:

@@ -60,8 +60,10 @@ def implementation_checks(rows, init_rows, conditions, registration, training):
     params = {arm: {key: training[arm]['metrics'][key] for key in
                     ('params.stored', 'params.trainable', 'params.with_grad')} for arm in WIDTH_ARMS}
     checks = {
-        'a_iv_off_equals_same_allocation_Base':
-            conditions['iv_off']['predictions'] == conditions['Base_same_allocation']['predictions'],
+        # Rule 1(a): iv_off must equal Base both in its own allocation and as pinned (ATT-0024-1).
+        'a_iv_off_equals_Base': (
+            conditions['iv_off']['predictions'] == conditions['Base_same_allocation']['predictions']
+            and same_predictions(conditions['iv_off']['predictions'], base)),
         'b_initial_predictions_equal_Base': all(v['predictions_identical_to_Base'] for v in init.values()),
         'c_reload_identical': all(training[arm]['metrics'].get('reload.identical') is True for arm in WIDTH_ARMS),
         'd_parameters_registered': (registration.get('passed') is True and all(
@@ -70,7 +72,9 @@ def implementation_checks(rows, init_rows, conditions, registration, training):
             and registration.get('lora_rank_nearest_W-02') == LORA_RANKS['W-03']),
     }
     return {'checks': checks, 'passed': all(checks.values()), 'initial_evaluation': init,
-            'iv_off_equals_pinned_Base_predictions': same_predictions(conditions['iv_off']['predictions'], base),
+            'iv_off_rows_identical_to_same_allocation_Base':
+                conditions['iv_off']['predictions'] == conditions['Base_same_allocation']['predictions'],
+            'iv_off_predictions_identical_to_pinned_Base': same_predictions(conditions['iv_off']['predictions'], base),
             'parameters': params}
 
 
@@ -89,18 +93,19 @@ def decide(rows, interventions_normal, passed):
     advantage = d_L >= ONE_PP and all(v >= -ONE_PP for v in per_task_d_L.values())
     reopen = d_T >= ONE_PP and swap_drop >= ONE_PP
     gate = (lambda value: value) if passed else (lambda value: None)
+    # Rule 2: an unlearned LoRA control keeps the comparison but lowers its evidence level.
+    level = gate('screening' if learned['W-03'] else 'diagnostic')
     rules = {
+        'evidence_level': level,
         'rule2_learnability': {arm: {'macro_minus_Base': pp(macro[arm] - base), 'at_least_Base_plus_1': learned[arm]}
-                               for arm in WIDTH_ARMS} | {
-            'lora_control_not_learned': not learned['W-03'],
-            'evidence_level_if_lora_not_learned': 'diagnostic' if not learned['W-03'] else None},
+                               for arm in WIDTH_ARMS} | {'lora_control_not_learned': not learned['W-03']},
         'rule3_H0018': {'W-02_minus_Base': pp(macro['W-02'] - base), 'd_L': pp(d_L),
                         'outcome': gate('supports' if supports else 'challenges'),
-                        'scope': 'screening, r128 only'},
+                        'evidence_level': level, 'scope': 'r128 only'},
         'rule4_practical_advantage': {'d_L': pp(d_L), 'per_task_d_L': {t: pp(v) for t, v in per_task_d_L.items()},
-                                      'recorded': gate(advantage)},
+                                      'recorded': gate(advantage), 'evidence_level': level},
         'rule5_history': {'d_T': pp(d_T), 'iv_swap_drop': pp(swap_drop), 'iv_permute_drop_descriptive': pp(permute_drop),
-                          'reopen_H0014': gate(reopen),
+                          'evidence_level': level, 'reopen_H0014': gate(reopen),
                           'no_measurable_history_contribution': gate(d_T <= 0),
                           'descriptive_only': gate(not reopen and d_T > 0)},
         'rule6_width_effects_descriptive': {f'{arm} - {ref}': pp(macro[arm] - macro[ref]) for arm, ref in REFERENCES.items()},
@@ -233,6 +238,14 @@ def analyze(spec):
     return report
 
 
+def evidence_line(rules):
+    level = rules['evidence_level']
+    if level is None:
+        return 'Evidence level: none (rule 1 failed; outcomes withheld, fix the implementation).'
+    return (f'Evidence level for rules 3-5: {level}' +
+            (' (W-03 LoRA control below Base+1 pp).' if level == 'diagnostic' else '.'))
+
+
 def markdown(report):
     lines = ['# E-0026 r128 width probe analysis', '', report['decision_authority'], '',
              '| Arm | PIQA % | BoolQ % | Macro % | PIQA NLL | BoolQ NLL |', '| --- | ---: | ---: | ---: | ---: | ---: |']
@@ -242,7 +255,7 @@ def markdown(report):
         lines.append(f'| {label} | {row["piqa"]["accuracy"]*100:.2f} | {row["boolq"]["accuracy"]*100:.2f} | '
                      f'{row["macro_accuracy"]*100:.2f} | {row["piqa"]["nll"]:.6f} | {row["boolq"]["nll"]:.6f} |')
     lines += ['', f'Implementation (rule 1): `{json.dumps(report["implementation"]["checks"])}`; '
-              f'passed={report["implementation"]["passed"]}.', '', '## Rules', '']
+              f'passed={report["implementation"]["passed"]}.', '', evidence_line(report['rules']), '', '## Rules', '']
     for name, rule in report['rules'].items():
         lines.append(f'- {name}: `{json.dumps(rule, ensure_ascii=False, sort_keys=True)}`')
     lines += ['', '## Paired differences (pp, descriptive 95% intervals)', '',
@@ -281,6 +294,7 @@ def main():
         (out/'analysis.md').write_text(markdown(report))
         metrics = {'implementation_passed': report['implementation']['passed'],
                    'rule3': report['rules']['rule3_H0018']['outcome'],
+                   'evidence_level': report['rules']['evidence_level'],
                    'rule4': report['rules']['rule4_practical_advantage']['recorded'],
                    'rule5_reopen_H0014': report['rules']['rule5_history']['reopen_H0014'],
                    'bootstrap_repeats': 10000}

@@ -5,7 +5,7 @@ import pytest
 
 from rb1_artifacts import validate_formal_run
 from rb_train import FAMILIES, LORA_RANKS, PARAMETERS, adapter_config, contract
-from rb_width_analysis import decide
+from rb_width_analysis import decide, evidence_line, implementation_checks
 from rb_width_check import nearest_rank
 from test_rb1_latency import _formal_run
 
@@ -122,8 +122,48 @@ def test_failed_implementation_withholds_all_rule_outcomes():
     assert rules['rule3_H0018']['d_L']['percentage_points'] == pytest.approx(5.0)
 
 
-def test_lora_control_not_learned_marks_diagnostic():
-    rows = _labels(**{'W-03': (705, 705)})
+def test_lora_learnability_sets_main_comparison_evidence_level_at_inclusive_boundary():
+    # W-03 one row below Base+1 pp: diagnostic, but the comparison is still computed.
+    rows = _labels(Base=(700, 700), **{'W-03': (709, 710), 'W-02': (750, 750)})
     rules, _ = decide(rows, rows['W-02/normal'], True)
     assert rules['rule2_learnability']['lora_control_not_learned'] is True
-    assert rules['rule2_learnability']['evidence_level_if_lora_not_learned'] == 'diagnostic'
+    assert rules['rule3_H0018']['outcome'] == 'supports'
+    assert {rules[k]['evidence_level'] for k in ('rule3_H0018', 'rule4_practical_advantage', 'rule5_history')} == {'diagnostic'}
+    assert rules['evidence_level'] == 'diagnostic' and 'diagnostic' in evidence_line(rules)
+    # W-03 exactly Base+1 pp: screening.
+    rows = _labels(Base=(700, 700), **{'W-03': (710, 710), 'W-02': (750, 750)})
+    rules, _ = decide(rows, rows['W-02/normal'], True)
+    assert rules['rule2_learnability']['lora_control_not_learned'] is False
+    assert {rules[k]['evidence_level'] for k in ('evidence_level',)} | {
+        rules[k]['evidence_level'] for k in ('rule3_H0018', 'rule4_practical_advantage', 'rule5_history')} == {'screening'}
+    assert evidence_line(rules) == 'Evidence level for rules 3-5: screening.'
+
+
+def _implementation_inputs(shared_off_change=False):
+    base = [dict(r, scores=[0., 0.]) for r in _rows(700, 700)]
+    off = [dict(r) for r in base]
+    same_allocation = [dict(r) for r in base]
+    if shared_off_change:
+        for rows in (off, same_allocation):
+            rows[0]['prediction'] = 1 - rows[0]['prediction']
+    registration = {'passed': True, 'lora_rank_nearest_W-02': 31,
+                    'arms': {arm: {'trainable': PARAMETERS[arm]} for arm in ('W-01', 'W-02', 'W-03')}}
+    training = {arm: {'metrics': {'reload.identical': True, 'params.stored': PARAMETERS[arm],
+                                  'params.trainable': PARAMETERS[arm], 'params.with_grad': PARAMETERS[arm]}}
+                for arm in ('W-01', 'W-02', 'W-03')}
+    init = {arm: [dict(r) for r in base] for arm in ('W-01', 'W-02', 'W-03')}
+    conditions = {'iv_off': {'predictions': off}, 'Base_same_allocation': {'predictions': same_allocation}}
+    return {'Base': base}, init, conditions, registration, training
+
+
+def test_rule1a_requires_iv_off_to_match_pinned_Base_not_only_same_allocation():
+    result = implementation_checks(*_implementation_inputs())
+    assert result['passed'] is True and result['checks']['a_iv_off_equals_Base'] is True
+    result = implementation_checks(*_implementation_inputs(shared_off_change=True))
+    assert result['iv_off_rows_identical_to_same_allocation_Base'] is True
+    assert result['checks']['a_iv_off_equals_Base'] is False and result['passed'] is False
+    rows = _labels(**{'W-02': (800, 800)})
+    rules, _ = decide(rows, rows['W-02/normal'], result['passed'])
+    assert rules['evidence_level'] is None and 'withheld' in evidence_line(rules)
+    assert (rules['rule3_H0018']['outcome'], rules['rule4_practical_advantage']['recorded'],
+            rules['rule5_history']['reopen_H0014'], rules['rule8_no_further_widening']) == (None,)*4
