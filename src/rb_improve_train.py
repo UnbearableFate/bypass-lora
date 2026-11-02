@@ -14,7 +14,7 @@ from bypass_model import BranchModel
 from calibrate import MODEL, REVISION
 from rb1_artifacts import read, reference, verify_lr_lock
 from rb_data import plan_batches
-from rb_improve_init import calibration_examples, initialize_gradient
+from rb_improve_init import InitializationCheckFailed, calibration_examples, initialize_gradient
 from rb_improve_lr import verify_lock
 from rb_improve_read import diagnose
 from rb_tap_check import initial_state
@@ -157,7 +157,11 @@ def run(args):
         if args.stage == 'ig':
             if args.arm not in IG_ARMS:
                 raise ValueError('I-G collection requires a G arm')
-            values = initialize_gradient(model, examples, tok)
+            try:
+                values = initialize_gradient(model, examples, tok)
+            except InitializationCheckFailed as exc:
+                write_json(out/'ig-initialization.json', exc.diagnostics)
+                raise
             write_json(out/'ig-initialization.json', values)
             metrics.update({'ig.collection_seconds': values['collection_seconds'],
                 'ig.total_seconds': values['total_seconds'], 'ig.input_tokens': sample['input_tokens']})
@@ -235,6 +239,7 @@ def run(args):
         passed = True
     finally:
         forward_accounting.close()
+        metrics['failed'] = not passed
         metrics['runtime.total_forward_input_tokens'] = forward_accounting.tokens
         metrics['runtime.total_forward_calls'] = forward_accounting.calls
         metrics['elapsed_s'] = time.monotonic()-tick

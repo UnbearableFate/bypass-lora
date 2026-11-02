@@ -15,6 +15,15 @@ from v1_run import batch_tensors, example_mean_objective, token_losses
 IG_SEED = derive_seed(BASE_SEED, STUDY, 'R1', 'ig', 0)
 
 
+class InitializationCheckFailed(ValueError):
+    def __init__(self, diagnostics):
+        self.diagnostics = diagnostics
+        summary = {index: {'RMS_error': row['relative_RMS_error'],
+            'orthogonality_error': row['unscaled_orthogonality_max_error']}
+            for index, row in diagnostics['layers'].items()}
+        super().__init__(f'I-G scale or orthogonality check failed: {summary}')
+
+
 def calibration_examples(splits, tok, excluded, count=256):
     """One pooled, without-replacement train sample, shared by all three taps."""
     excluded = {(row['task'], row['id']) for row in excluded}
@@ -126,7 +135,8 @@ class GradientCollector:
             value = layer.side.projection.A_v
             width = layer.original.mlp.up_proj.out_features
             self.stats[index] = {'G': value.new_zeros(value.shape[0], width),
-                'covariance': value.new_zeros(value.shape[0], value.shape[0]), 'Z2': 0., 'count': 0}
+                'covariance': value.new_zeros(value.shape[0], value.shape[0]), 'Z2': 0., 'count': 0,
+                'direct_Z2': 0., 'direct_Z_error2': 0.}
             self.handles.extend([
                 layer.side.projection.register_forward_hook(self._projection(index, layer.side.reader)),
                 layer.side.register_forward_hook(self._readout(index)),
@@ -145,6 +155,11 @@ class GradientCollector:
             selected = result[0].detach()[self.valid]
             self.stats[index]['Z2'] += selected.double().square().sum().item()
             self.stats[index]['count'] += selected.numel()
+            side = self.model.adapters()[index].side
+            ideal = side.reader.eta * (self.pending[index] @ side.projection.A_v.detach() @ side.reader.Ro.detach())
+            ideal = ideal[self.valid]
+            self.stats[index]['direct_Z2'] += ideal.double().square().sum().item()
+            self.stats[index]['direct_Z_error2'] += (ideal.double()-selected.double()).square().sum().item()
         return hook
 
     def _up(self, index):
@@ -212,6 +227,13 @@ def initialize_gradient(model, examples, tok):
             record['gradient_shape'] = list(stats['G'].shape)
             record['gradient_dtype'] = str(stats['G'].dtype)
             record['gradient_frobenius_norm'] = stats['G'].norm().item()
+            record['full_value_random_Z_sum_squares'] = stats['direct_Z2']
+            record['full_value_relative_L2_error_vs_actual_Z'] = (stats['direct_Z_error2']/stats['Z2']) ** .5
+            effective = projection.A_v.detach() @ layer.side.reader.Ro.detach()
+            # This uses the newly assigned basis. Record the covariance-implied
+            # scaled energy alongside the independent actual forward check.
+            record['covariance_scaled_Z_sum_squares'] = layer.side.reader.eta ** 2 * (
+                effective * (stats['covariance'] @ effective)).sum().item()
             records[str(index)] = record
         with readout_sums(model) as measured:
             for example in examples:
@@ -221,10 +243,13 @@ def initialize_gradient(model, examples, tok):
         record = records[str(index)]
         record['scaled_Z_rms'] = (values['sum_squares']/values['count']) ** .5
         record['relative_RMS_error'] = abs(record['scaled_Z_rms']/record['random_Z_rms'] - 1)
-        if record['relative_RMS_error'] > 1e-3 or record['unscaled_orthogonality_max_error'] > 1e-4:
-            raise ValueError('I-G scale or orthogonality check failed')
     model.zero_grad(set_to_none=True)
     torch.cuda.synchronize()
-    return {'layers': records, 'collection_seconds': collection_seconds,
+    passed = all(row['relative_RMS_error'] <= 1e-3 and row['unscaled_orthogonality_max_error'] <= 1e-4
+                 for row in records.values())
+    result = {'layers': records, 'collection_seconds': collection_seconds,
         'total_seconds': time.monotonic() - tick, 'optimizer_steps': 0,
-        'gradient_positions': 'all nonpadding; includes indirect prompt gradients', 'passed': True}
+        'gradient_positions': 'all nonpadding; includes indirect prompt gradients', 'passed': passed}
+    if not passed:
+        raise InitializationCheckFailed(result)
+    return result
