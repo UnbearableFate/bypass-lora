@@ -1,0 +1,18 @@
+{
+  "task": "T-0031",
+  "experiment": "E-0028@1",
+  "decision": "D-0060",
+  "review_round": "RV-0087",
+  "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "run": "RUN-0315",
+  "attempt": "ATT-0315-1",
+  "spec_digest": "blake2b:09374c909d877192cdb2a45b53faec7b177ef65182576ca14c4149c83796a1c0",
+  "job_id": "3774971.opbs",
+  "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0315-1",
+  "requested_walltime": "00:18:00",
+  "expected_seconds": 720,
+  "script": "research/notes/T-0031-smoke.pbs",
+  "notification": "N-20261102-182405-df44",
+  "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-182405-df44 --notifier miyabi-g2",
+  "next_action": "Inspect application output and import native observations/usage; update cost table; request RV-0087 one recheck from reviewer-2 only after this exact-source smoke passes. No formal training until review pass and predicted <=5.5 node-hours."
+}
