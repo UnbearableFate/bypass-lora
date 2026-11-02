@@ -428,3 +428,36 @@ Both are below 5.5, and neither assumes free engineering retries. Recompute
 from measured cumulative usage before every subsequent submission/retry.
 MSG-0982 reports this interim accounting and actual profiles to coordinator;
 A2 remains sealed. No A2 evaluation has been submitted.
+
+All twelve validated training results are imported as RES-0355 through
+RES-0366 (arm/seed order in central T-0033/training-imports.json); lock result
+is RES-0367. Lock terminal observation is recorded, usage U-0403 is measured
+0.004722 MIG-hour = 0.0011805 node-hour (17 seconds). Completed cost including
+lock is now 4.15770825 node-hour. Replacing the old lock estimate with this
+measurement reduces full expected cost to approximately 4.900142 node-hour,
+and the full future requested-walltime bound to 5.316042 node-hour.
+
+D-0072's three actual-checkpoint, dev-only replays are now running at 4e6e8df
+under the exact unchanged cfd2e9b0 lock, without unseal, confirmation decision
+or training-profile restriction:
+
+| Seed | Attempt | PBS job |
+| --- | --- | --- |
+| 3 | ATT-0394-1 | 3781728.opbs |
+| 4 | ATT-0395-1 | 3781729.opbs |
+| 5 | ATT-0396-1 | 3781730.opbs |
+
+All registrations are covered by the inherited reviews plus RV-0100. Each
+job requests debug-mig/select=1 for 12 minutes, from 471 expected seconds.
+Central T-0033/dev-replay-submissions.json, dev-replay-jobs.json and initial
+observations preserve exact spec pins and submissions. One notification group
+`N-20261103-064154-f0f6` is sealed, expected=3, early_failure=true; the
+coordinator owns its listener. On resumption, check each complete application
+manifest, unchanged source/lock/spec and opened=false/no receipt; import all
+outputs and measured usage. Report each seed's exact flips and score-row
+identity with actual allocated and training torch profiles, explicitly noting
+whether the cross-profile <=10 gate would pass (MSG-0983). Cross-profile
+replay discrepancies remain descriptive. Same-profile discrepancy needs
+repair/review/relock before confirmation. Only then report the completed lock
+with the three replay outputs and updated cost to coordinator and await its
+confirming decision. Do not submit an A2 evaluation first.
