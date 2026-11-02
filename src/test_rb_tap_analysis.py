@@ -59,3 +59,36 @@ def test_selection_test_evidence_requires_the_reviewed_source_commit():
               'metrics':{'pytest_exit':0,'source_commit':'a'*40}}
     assert tests_cover_source(manifest,'a'*40)
     assert not tests_cover_source(manifest,'b'*40)
+
+
+def test_cross_profile_flips_use_identical_same_allocation_reference_and_report_difference():
+    from rb_tap_identity import reference_check,PINNED_PROFILE
+    old=[{'task':'piqa','id':1,'gold':0,'prediction':0}]
+    current=[dict(old[0],prediction=1)]
+    result=reference_check(current,old,'NVIDIA GH200 120GB MIG 1g.24gb',PINNED_PROFILE,current)
+    assert result['passed'] is True and result['gate_reference']=='same_allocation'
+    assert result['predictions_equal_pinned'] is False
+    assert result['prediction_mismatches_vs_pinned']==1 and result['cross_job_scope']=='descriptive'
+
+
+def test_perturbed_same_allocation_reference_still_fails():
+    from rb_tap_identity import reference_check
+    old=[{'task':'piqa','id':1,'gold':0,'prediction':0}]
+    current=[dict(old[0],prediction=1)]
+    result=reference_check(current,old,'NVIDIA GH200 120GB MIG 1g.24gb',same_allocation=old)
+    assert result['passed'] is False
+
+
+def test_same_2g_profile_prediction_difference_still_fails_even_with_local_match():
+    from rb_tap_identity import reference_check,PINNED_PROFILE
+    old=[{'task':'piqa','id':1,'gold':0,'prediction':0}]
+    current=[dict(old[0],prediction=1)]
+    result=reference_check(current,old,PINNED_PROFILE,same_allocation=current)
+    assert result['passed'] is False and result['gate_reference']=='pinned'
+
+
+def test_different_profile_cannot_skip_same_allocation_reference():
+    from rb_tap_identity import reference_check
+    rows=[{'task':'piqa','id':1,'gold':0,'prediction':0}]
+    with pytest.raises(ValueError,match='same-allocation reference'):
+        reference_check(rows,rows,'NVIDIA GH200 120GB MIG 1g.24gb')

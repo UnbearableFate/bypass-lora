@@ -268,6 +268,7 @@ def run(args):
         metrics['params.trainable']=sum(p.numel() for p in model.parameters() if p.requires_grad)
         if args.arm in E0028_ARMS:
             from rb_tap_check import initial_state, step0_diagnostics
+            metrics['exec.pbs_job_id']=os.environ.get('PBS_JOBID','unknown')
             metrics['init.parameters.sha256']=initial_state(model)[0]
             with preserved_evaluation_state(model):
                 write_json(out/'step0-rms.json',step0_diagnostics(model,batches[0][0],tok))
@@ -280,6 +281,17 @@ def run(args):
             with preserved_evaluation_state(model):
                 monitor(0,model)
             metrics['init_eval.seconds']=time.monotonic()-tick
+            if args.arm in E0028_ARMS:
+                from rb_tap_identity import PINNED_PROFILE
+                if metrics['hardware']!=PINNED_PROFILE:
+                    from rb1_intervene import original_backbone
+                    tick=time.monotonic()
+                    with preserved_evaluation_state(model),original_backbone(model) as backbone:
+                        values,base_rows=evaluate(backbone,splits,tok,args.eval_limit,split_names=('dev',))
+                    metrics['same_allocation_base.seconds']=time.monotonic()-tick
+                    write_json(out/'dev-base-same-allocation.json',{'hardware':metrics['hardware'],
+                        'job_id':metrics['exec.pbs_job_id'],'source_commit':os.environ['SR_CODE_COMMIT'],
+                        'metrics':values,'predictions':base_rows})
         metrics.update(train(model,batches,tok,args.lr,out,monitor if args.stage!='calibration' else None))
         assert metrics['params.with_grad']==PARAMETERS[args.arm]
         if args.stage!='calibration':

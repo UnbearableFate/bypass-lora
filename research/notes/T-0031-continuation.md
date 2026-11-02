@@ -1,5 +1,43 @@
 # T-0031 continuation
 
+## Current checkpoint after RV-0087
+
+The first smoke completed successfully (RES-0283), all99tests and registration
+passed, and native terminal usage0.188333MIGh is imported exactly once.
+Diagnostic EV-0139 records only this pre-review engineering result. See
+`T-0031-cost.md` for observed timings and the initial4.36–5.00node-hour table.
+
+RV-0087 answered issues (1medium,4low). Coordinator decision **D-0060**
+authorizes the reviewer-proposed reference interpretation of sealed rule1:
+same2g profile keeps strict pinned predictions; another profile requires
+same-allocation Base for step0/off and the accepted E-0021 source for RB1-09
+compatibility. Cross-job differences on another profile and intervention
+normal-vs-training agreement are descriptive. Calibration must be written
+before prediction-gate failures. No tolerance or profile restriction.
+
+The code now implements D-0060 and all4low fixes. A new smoke must run on this
+commit before requesting RV-0087's one recheck from reviewer-2. Its tests
+include cross-profile matching local references, perturbed local references,
+strict2g failures, source-bound pytest and excluded-candidate provenance,
+full calibration-grid lock reconstruction/membership, and calibration-before-
+failure ordering. The smoke additionally runs a32-row old/new-source GPU
+compatibility comparison without using its quality scores.
+
+The revised PBS cost estimator reserves a same-allocation Base dev pass for
+EVERY training, an extra legacy-source baseline dev pass, both smokes, both
+possible endpoint trainings, and analysis. X-02/03 no longer get calibration
+passes. Formal release still needs this measured projection<=5.5node-hours
+and a passing recheck. No formal attempt has been registered or executed.
+
+Selection inputs now require `{manifests, training_source_commit,
+registration}`. The registration is SHA256-bound into the eta-lock and every
+candidate's source/init is checked before selection; excluded candidates
+also require a complete formal config with no smoke/partial fields.
+
+The older sections below preserve the initial smoke checkpoint and general
+execution continuation; current facts above supersede its running/pending
+wording and source version.
+
 Task E-0028@1, claimed by researcher-1. Coordinator owns route decisions.
 Source branch `sr/researcher-1/T-0031`, implementation commit
 `a6afccbec614e594ddf3c882787d86b5a2721b94`.

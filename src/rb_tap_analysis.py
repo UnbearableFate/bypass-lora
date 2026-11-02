@@ -11,11 +11,12 @@ import os
 from pathlib import Path
 
 from rb1_analysis import (ACCEPTED_BASE_MANIFEST_SHA256,check_metrics,measured_cost,
-                          validate_read_summary,validate_rows)
+                          normal_training_agreement,validate_read_summary,validate_rows)
 from rb1_artifacts import finite_tree,read,reference,validate_formal_run
 from rb1_intervene import MODES
 from rb1_rules import TASKS,counts_from_rows,paired_bootstrap
 from rb_eta_select import ORDER_SHA256,SPLIT_SHA256,selection
+from rb_tap_identity import LEGACY_COMMIT,PINNED_PROFILE,reference_check
 from rb_train import E0028_ARMS,ETA_ARMS,PARAMETERS,TAP_ARMS
 from v1_analysis import _read_run
 from v5_train import write_json
@@ -113,13 +114,15 @@ def analyze(spec):
     base_rows,base_manifest=_read_run(base_root,'Base','base')
     rows={'Base':validate_rows(base_rows,'Base')}
     performance={'Base':check_metrics(rows['Base'],base_manifest['metrics'],'Base')}
-    sources={'eta_lock':lock_ref};training={};initial={};curves={};rms={};runtime={};formal_sources={}
+    sources={'eta_lock':lock_ref};training={};initial={};initial_checks={};curves={};rms={};runtime={};formal_sources={}
+    reference_hardware={}
     for arm in ('RB1-07','RB1-09'):
         root=Path(spec['reference_runs'][arm])
         manifest,refs,_=validate_formal_run(root,arm)
         rows[arm]=validate_rows(read(root/'predictions.json'),arm,rows['Base'])
         performance[arm]=check_metrics(rows[arm],manifest['metrics'],arm)
         sources[arm]=refs
+        reference_hardware[arm]=manifest['metrics']['hardware']
     expected=spec['training_source_commit']
     for arm,root_name in spec['training_runs'].items():
         if arm not in E0028_ARMS:
@@ -127,6 +130,17 @@ def analyze(spec):
         root=Path(root_name);manifest=read(root/'manifest.json');m=manifest['metrics']
         init=read(root/'dev-step-0.json')
         initial[arm]=validate_rows(init['predictions'],arm+'/init',rows['Base'])
+        local_base=None
+        if m.get('hardware')!=PINNED_PROFILE:
+            local_record=read(root/'dev-base-same-allocation.json')
+            if (local_record.get('hardware')!=m.get('hardware') or local_record.get('source_commit')!=expected
+                    or local_record.get('job_id')!=m.get('exec.pbs_job_id')
+                    or local_record.get('job_id') in (None,'unknown')):
+                raise ValueError('initial Base reference is not from the same allocation/source')
+            local_base=validate_rows(local_record['predictions'],arm+'/Base_same_allocation',rows['Base'])
+            check_metrics(local_base,local_record['metrics'],arm+'/Base_same_allocation')
+        initial_checks[arm]=reference_check(initial[arm],rows['Base'],m.get('hardware'),
+                                            same_allocation=local_base)
         if m.get('failed'):
             if arm not in ETA_ARMS or m.get('failure_kind')!='training_nonfinite':
                 raise ValueError('engineering failure must retry before analysis')
@@ -150,6 +164,8 @@ def analyze(spec):
         curves[arm]['13115']=performance[arm]
         rms[arm]=read(root/'step0-rms.json');refs['step0_rms']=reference(root/'step0-rms.json')
         refs['step0_dev']=reference(root/'dev-step-0.json')
+        if local_base is not None:
+            refs['step0_same_allocation_Base']=reference(root/'dev-base-same-allocation.json')
         sources[arm]=refs;training[arm]=manifest
         runtime[arm]={k:v for k,v in m.items() if k.startswith(('train.','plan.','runtime.','params.','init.')) or
                      k in ('learning_rate','hardware','source.commit','environment.lock_sha256')}
@@ -163,18 +179,38 @@ def analyze(spec):
             baseline.get('validator',{}).get('passed') is not True or baseline['metrics'].get('source.commit')!=expected):
         raise ValueError('missing reviewed RB1-09 compatibility evaluation')
     repeated=validate_rows(read(baseline_root/'predictions.json'),'RB1-09 re-eval',rows['Base'])
+    baseline_hw=baseline['metrics'].get('hardware')
+    legacy_rows=None
+    if baseline_hw!=reference_hardware['RB1-09']:
+        legacy=read(baseline_root/'legacy-source-dev.json')
+        if (legacy.get('source_commit')!=LEGACY_COMMIT or legacy.get('hardware')!=baseline_hw
+                or legacy.get('job_id')!=baseline['metrics'].get('exec.pbs_job_id')
+                or legacy.get('job_id') in (None,'unknown')):
+            raise ValueError('legacy-source compatibility reference is not from the same allocation')
+        legacy_rows=validate_rows(legacy['predictions'],'RB1-09 accepted source / same allocation',rows['Base'])
+        check_metrics(legacy_rows,legacy['metrics'],'RB1-09 accepted source / same allocation')
+        baseline_provenance=read(baseline_root/'provenance.json')
+        expected_legacy=Path('/work/xg24i002/x10041/bypass-lora/snapshots')/LEGACY_COMMIT/'src'
+        expected_names={'rb_train.py','bypass_model.py','bypass_core.py','calibrate.py','v1_run.py','v1_data.py','rb_data.py'}
+        legacy_refs=baseline_provenance.get('legacy_source_files',{})
+        if set(legacy_refs)!=expected_names or any(legacy_refs[name]!=reference(expected_legacy/name) for name in expected_names):
+            raise ValueError('legacy-source file inventory differs from the accepted E-0021 snapshot')
+        sources['legacy_source_dev']=reference(baseline_root/'legacy-source-dev.json')
+        sources['legacy_source_files']=legacy_refs
+    baseline_check=reference_check(repeated,rows['RB1-09'],baseline_hw,
+                                    reference_hardware['RB1-09'],legacy_rows)
     rms['RB1-09']=read(baseline_root/'step0-rms.json')
     sources['RB1-09_step0_rms']=reference(baseline_root/'step0-rms.json')
     registration=read(spec['registration'])
     if registration.get('contract')!='E-0028@1' or registration.get('source_commit')!=expected:
         raise ValueError('initialization registration is from a different source')
     checks={
-        'a_initial_predictions_Base':all(same_predictions(value,rows['Base']) for value in initial.values()),
+        'a_initial_predictions_Base':all(value['passed'] for value in initial_checks.values()),
         'c_reload':all(value['metrics']['reload.identical'] for value in training.values()),
         'd_parameters':all(all(value['metrics'][key]==PARAMETERS[arm] for key in
                           ('params.stored','params.trainable','params.with_grad')) for arm,value in training.items()),
         'e_f_h_init_and_tap':registration.get('passed') is True,
-        'g_RB109_dev_unchanged':same_predictions(repeated,rows['RB1-09']),
+        'g_RB109_dev_unchanged':baseline_check['passed'],
         'i_selection_tests':tests_cover_source(read(spec['smoke_manifest']),expected),
         'init_digests_match_registration':all(m['metrics'].get('init.parameters.sha256')==registration['arms'][arm]['init_sha256'] for arm,m in training.items())}
     ivroot=Path(spec['intervention_run']);ivmanifest=read(ivroot/'manifest.json')
@@ -191,16 +227,21 @@ def analyze(spec):
             rows['X-01/'+kind]=validated
         if kind!='Base_same_allocation':
             validate_read_summary(value.get('read_diagnostics',[]),'X-01',kind,share_metrics=True)
+    off_check=reference_check(conditions['iv_off']['predictions'],rows['Base'],provenance.get('hardware'),
+                              same_allocation=conditions['Base_same_allocation']['predictions'])
     checks['b_off_equals_Base']=(conditions['iv_off']['predictions']==conditions['Base_same_allocation']['predictions']
-                                 and same_predictions(conditions['iv_off']['predictions'],rows['Base']))
-    checks['normal_same_as_final']=same_predictions(conditions['normal']['predictions'],rows['X-01'])
+                                 and off_check['passed'])
+    agreement=normal_training_agreement(conditions['normal']['predictions'],rows['X-01'],
+                                        training['X-01']['metrics']['hardware'],provenance['hardware'])
     if not all(checks.values()):
         raise ValueError(f'implementation checks failed: {checks}')
     score={arm:accuracy(value) for arm,value in rows.items()}
     swap_drop={'X':accuracy(conditions['normal']['predictions'])-accuracy(conditions['iv_swap']['predictions']),
                'QK':Fraction(195,10000)}
     rules=rule_outcomes(score,selected,swap_drop)
-    rules['1_implementation']={'passed':True,'checks':checks}
+    rules['1_implementation']={'passed':True,'checks':checks,'initial_references':initial_checks,
+                                'RB109_compatibility':baseline_check,'iv_off_reference':off_check,
+                                'normal_training_agreement_descriptive':agreement,'decision':'D-0060'}
     rules['5_eta_selection']=lock
     arrays={arm:{task:[int(r['prediction']==r['gold']) for r in value if r['task']==task] for task in TASKS}
             for arm,value in rows.items()}
