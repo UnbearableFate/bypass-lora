@@ -1,0 +1,38 @@
+#!/bin/bash
+# E-0024: all four RB1 arms x {normal, iv_strict, iv_window8}, then the summary.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0027"
+mkdir -p "$TMPDIR"
+# D-0018/D-0019: the MIG profile is metadata for frozen evaluation.
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+start=$(date +%s)
+# The manifest is derived from the files: success only with all four arms and a
+# summary whose implementation checks passed (rb_sink_read.write_manifest).
+trap '"$PY" src/rb_sink_read.py manifest --output "$OUT" --elapsed-s $(( $(date +%s) - start ))' EXIT
+declare -A TRAIN=([RB1-02]=ATT-0240-1 [RB1-03]=ATT-0241-1 [RB1-08]=ATT-0246-1 [RB1-09]=ATT-0247-1)
+declare -A REF=([RB1-02]=ATT-0262-1 [RB1-03]=ATT-0263-1 [RB1-08]=ATT-0264-1 [RB1-09]=ATT-0265-1)
+# RB1-02's E-0021 reference ran on a 1g slice; it goes last so a cross-profile
+# reference mismatch cannot block the other arms.
+for arm in RB1-03 RB1-08 RB1-09 RB1-02; do
+  "$PY" src/rb_sink_read.py arm --arm "$arm" --training-run "$P/runs/${TRAIN[$arm]}" \
+    --reference "$P/runs/${REF[$arm]}" --data-dir "$P/data/v1" --output "$OUT/$arm"
+done
+"$PY" src/rb_sink_read.py summarize --inputs "$OUT"/RB1-0{2,3,8,9}/sink.json --output "$OUT/summary.json"

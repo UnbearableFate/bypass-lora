@@ -1,0 +1,33 @@
+#!/bin/bash
+# D-0051: verify the layer-6 strict identity on RB1-02 (50 dev rows/task), then
+# re-summarize E-0024 from the existing sink.json files with the amended check:
+# RB1-02 from ATT-0283-1, RB1-03/08/09 from ATT-0275-1. No arm is rerun.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0027"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+start=$(date +%s)
+trap '"$PY" src/rb_sink_read.py manifest --output "$OUT" --arms-from "$P/runs/ATT-0283-1" "$P/runs/ATT-0275-1" --elapsed-s $(( $(date +%s) - start ))' EXIT
+"$PY" src/rb_sink_read.py identity --arm RB1-02 --training-run "$P/runs/ATT-0240-1" \
+  --data-dir "$P/data/v1" --output "$OUT/strict_identity.json"
+"$PY" src/rb_sink_read.py summarize --inputs "$P/runs/ATT-0283-1/RB1-02/sink.json" \
+  "$P/runs/ATT-0275-1"/RB1-0{3,8,9}/sink.json --strict-identity "$OUT/strict_identity.json" \
+  --output "$OUT/summary.json"
