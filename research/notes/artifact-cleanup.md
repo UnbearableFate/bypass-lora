@@ -155,3 +155,24 @@ python src/artifact_cleanup.py apply --plan <新目录>/plan.json \
 8. **维护快照**：b09639b、1d0070f、56aea1d、8e9c646 是本次维护作业的快照，没有 attempt 引用，24 h 后会变成候选。如果这些 commit 以后从仓库中消失（例如 squash 合并后被 gc），它们就按 K13 保留，需要人工删除。
 9. **compared_with 不算 hold**。E-0021 compared_with E-0003 用的是 V1 的切分与训练约定、保留下来的结果和证据；它要沿用的 Base 评估 ATT-0024-1 已由 E-0021 契约点名。code_from 和 depends_on 会 hold 被依赖实验的全部 attempt，例如 E-0019 code_from E-0004 会 hold ATT-0034-1。
 10. **不要直接 apply 全项目的 "all" 计划**。"all" 计划等于所有已关闭实验的范围，加上未用的快照和环境。它会把 E-0011、E-0018 的文件也列为候选，而它们属于 H-0005，H-0005 还有 T-0023 未完成。按假说规则，应当逐个范围执行。
+
+## 8. 执行记录（2026-11-02）
+
+用户在 2026-11-02 下午回复“同意清理”，执行第 5 节里等待同意的三份计划。执行前核对了每个范围 confirm.txt 的值等于 plan.reviewed.json 的 sha256，并为三个计划目录各做了一次新的 `rl export`（data_version 4058，放在各自的 records-apply/）。c5b961b 里 03:24 的旧导出改名为 records-apply.stale-0324，没有删除。
+
+PBS 作业 3774200（debug-mig，脚本 `/work/xg24i002/x10041/bypass-lora-maintenance/artifact-cleanup/apply-20261102-all.sh`，用时 1 分 11 秒，0.0197 MIG-h）依次运行三个目录的 apply-job.sh，全部 exit=0：
+
+| 计划目录 | 范围 | 删除项 | 释放 |
+|---|---|---:|---:|
+| 20261102-c5b961b | E-0002+E-0003 | 165 | 0.324 GB |
+| | E-0009+E-0010 | 22 | 0.089 GB |
+| | E-0012 | 10 | 4.983 GB |
+| | E-0014 | 26 | 0.697 GB |
+| | E-0015 | 19 | 0.888 GB |
+| | E-0016 | 28 | 0.616 GB |
+| | E-0017 | 72 | 2.419 GB |
+| 20261102-e0013 | E-0013 | 53 | 0.068 GB |
+| 20261102-h0005 | H-0005 | 484 | 0.669 GB |
+| 合计 | | 879 | 10.753 GB |
+
+每个范围的 deletions.jsonl 都有一条 apply-start、逐项 deleted 与一条 apply-end。之后 `rl doctor` 检查了 322 个封存对象，另报两个未登记对象（6515b817…、8569bc2c…，提示为中断的封存，无害），与这次删除无关。

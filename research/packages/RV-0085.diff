@@ -1,0 +1,1173 @@
+diff --git a/research/notes/T-0030-run.pbs b/research/notes/T-0030-run.pbs
+new file mode 100644
+index 0000000..b72e893
+--- /dev/null
++++ b/research/notes/T-0030-run.pbs
+@@ -0,0 +1,65 @@
++#!/bin/bash
++# T-0030 / E-0027: seed smoke, deterministic checks, training, SEG-05 interventions, analysis.
++set -euo pipefail
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_CODE_COMMIT:?registered source required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++: "${SEG_STAGE:?registered stage required}"
++SEG_PROJECT=/work/xg24i002/x10041/bypass-lora
++SEG_SOURCE="$SEG_PROJECT/snapshots/$SR_CODE_COMMIT"
++SEG_OUT="$SEG_PROJECT/runs/$SR_ATTEMPT_ID"
++SEG_PY="$SEG_PROJECT/envs/3c916b51337d-cuda/bin/python"
++mkdir -p "$SEG_OUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$SEG_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
++  > "$SEG_OUT/allocation.json"
++/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$SEG_OUT/allocation.json"
++if [ "$SEG_STAGE" = smoke ]; then
++  # Timing rehearsal: keep the 2g fail-fast guard (D-0019).
++  /usr/bin/python3 -I "$SEG_SOURCE/src/mig_profile_guard.py" --output "$SEG_OUT"
++else
++  # D-0018/D-0019: training, evaluation and statistics record the slice only.
++  nvidia-smi -L > "$SEG_OUT/nvidia-smi.txt" 2>&1 || true
++fi
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$SEG_SOURCE/src"
++export TMPDIR="/local/${PBS_JOBID}/seg-$SEG_STAGE"
++mkdir -p "$TMPDIR"
++cd "$SEG_SOURCE"
++DATA=(--data-dir "$SEG_PROJECT/data/v1"
++      --split-manifest "$SEG_SOURCE/research/artifacts/T-0022/rb-confirmation.json"
++      --lr-lock "$SEG_SOURCE/research/artifacts/T-0024/lr-lock.json")
++case "$SEG_STAGE" in
++  smoke)
++    exec "$SEG_PY" src/seg_seed_smoke.py --mode smoke "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  checks)
++    exec "$SEG_PY" src/seg_seed_smoke.py --mode checks --output "$SEG_OUT"
++    ;;
++  train)
++    : "${SEG_ARM:?registered arm required}"
++    : "${SEG_SEED:?registered seed required}"
++    exec "$SEG_PY" src/seg_train.py --arm "$SEG_ARM" --stage train --seed "$SEG_SEED" \
++      "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  intervention)
++    : "${SEG_SEED:?registered seed required}"
++    : "${SEG_TRAINING_RUN:?validated final training root required}"
++    : "${SEG_TRAINING_SOURCE:?reviewed training commit required}"
++    exec "$SEG_PY" src/seg_intervene.py --arm SEG-05 --seed "$SEG_SEED" \
++      --training-run "$SEG_TRAINING_RUN" --training-source "$SEG_TRAINING_SOURCE" \
++      --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT"
++    ;;
++  analysis)
++    : "${SEG_ANALYSIS_INPUT:?locked analysis input required}"
++    exec "$SEG_PY" src/seg_seed_analysis.py --input "$SEG_ANALYSIS_INPUT" --output "$SEG_OUT"
++    ;;
++  *)
++    printf 'Unknown registered SEG_STAGE: %s\n' "$SEG_STAGE" >&2
++    exit 2
++    ;;
++esac
+diff --git a/src/seg_artifacts.py b/src/seg_artifacts.py
+index 6ddd4e3..1c2474a 100644
+--- a/src/seg_artifacts.py
++++ b/src/seg_artifacts.py
+@@ -1,12 +1,13 @@
+-"""Authenticate E-0025 final artifacts before intervention or analysis."""
++"""Authenticate E-0025/E-0027 final artifacts before intervention or analysis."""
+ import json
+ import math
++import re
+ from pathlib import Path
+ 
+ from calibrate import REVISION
+ from rb1_artifacts import read, reference, finite_tree, verify_lr_lock
+-from seg_data import STEPS, EXAMPLES, ORDER_SHA256
+-from seg_model import PARAMETERS, FAMILIES, KEEP, config_for
++from seg_data import STEPS, EXAMPLES, ORDER_SHA256_BY_SEED
++from seg_model import PARAMETERS, FAMILIES, KEEP, config_for, SEED_ARMS, contract
+ from v1_run import lr_factor
+ 
+ 
+@@ -39,17 +40,22 @@ def prediction_rows(path, expected=None):
+     return validate_rows(read(path), expected)
+ 
+ 
+-def validate(root, arm, source_commit):
++def validate(root, arm, source_commit, seed=0):
++    if arm not in SEED_ARMS.get(seed, ()) or ORDER_SHA256_BY_SEED.get(seed) is None:
++        raise ValueError('segmented seed/arm is not registered')
+     root = Path(root).resolve()
+     manifest = read(root/'manifest.json'); m = manifest['metrics']; cfg = read(root/'config.json')
+     finite_tree(manifest)
+     stage = 'base' if arm == 'SEG-00' else 'train'
+-    if (manifest.get('contract') != 'E-0025@1' or manifest.get('status') != 'complete' or
++    if (manifest.get('contract') != contract(seed) or manifest.get('status') != 'complete' or
+         manifest.get('validator', {}).get('passed') is not True or
+-        any(manifest.get(k) != v for k, v in {'arm': arm, 'seed': 0, 'phase': 'SEG', 'stage': stage}.items())):
++        any(manifest.get(k) != v for k, v in {'arm': arm, 'seed': seed, 'phase': 'SEG', 'stage': stage}.items())):
+         raise ValueError('not a complete final segmented arm')
+-    if cfg.get('arm') != arm or cfg.get('stage') != stage or m.get('source.commit') != source_commit:
++    if (cfg.get('arm') != arm or cfg.get('stage') != stage or cfg.get('seed', 0) != seed or
++            m.get('source.commit') != source_commit):
+         raise ValueError('segmented arm/config/source binding mismatch')
++    if seed and (m.get('seed') != seed or re.fullmatch('[0-9a-f]{64}', str(m.get('initial.adapter_sha256'))) is None):
++        raise ValueError('new-seed run lacks its seed or initial-parameter digest')
+     artifacts = manifest.get('artifacts', [])
+     for ref in artifacts:
+         if Path(ref['path']).resolve().parent != root:
+@@ -70,7 +76,7 @@ def validate(root, arm, source_commit):
+         raise ValueError('segmented LR/split pins differ')
+     if reference(cfg['split_manifest'])['sha256'] != lock['split_manifest_sha256']:
+         raise ValueError('segmented split file changed')
+-    if m.get('plan.order_sha256') != ORDER_SHA256 or m.get('plan.steps') != STEPS or m.get('plan.examples') != EXAMPLES:
++    if m.get('plan.order_sha256') != ORDER_SHA256_BY_SEED[seed] or m.get('plan.steps') != STEPS or m.get('plan.examples') != EXAMPLES:
+         raise ValueError('segmented RB1 sample plan changed')
+     if m.get('params.stored') != PARAMETERS[arm] or m.get('params.trainable') != PARAMETERS[arm]:
+         raise ValueError('segmented parameter budget differs')
+diff --git a/src/seg_data.py b/src/seg_data.py
+index b31eb92..5e05ec3 100644
+--- a/src/seg_data.py
++++ b/src/seg_data.py
+@@ -8,6 +8,11 @@ from v1_data import _encode, encode_candidates
+ 
+ ORDER_SHA256 = '33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf'
+ STEPS, EXAMPLES = 13115, 26230
++# E-0027: seed 0 is E-0025; seeds 1 and 2 use the first STEPS batches of their
++# own R1 stream (same sample/step budget). Their order hashes are registered
++# from the PBS smoke before formal training; None means not yet registered.
++SEEDS = (0, 1, 2)
++ORDER_SHA256_BY_SEED = {0: ORDER_SHA256, 1: None, 2: None}
+ 
+ 
+ def seam_edits(reference, segmented):
+diff --git a/src/seg_intervene.py b/src/seg_intervene.py
+index 8310b25..b6250a1 100644
+--- a/src/seg_intervene.py
++++ b/src/seg_intervene.py
+@@ -1,4 +1,4 @@
+-"""Locked same-checkpoint E-0025 boundary interventions, dev only."""
++"""Locked same-checkpoint E-0025/E-0027 boundary interventions, dev only."""
+ import argparse
+ import gc
+ import os
+@@ -12,6 +12,7 @@ from seg_artifacts import validate
+ from seg_eval import evaluate
+ from seg_model import make_model, KEEP
+ from seg_train import tokenizer, original_backbone
++from seg_model import contract
+ from v1_run import prepare
+ from v5_train import write_json
+ 
+@@ -20,9 +21,9 @@ def run(args):
+     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
+     passed, values, start = False, {}, time.monotonic()
+     try:
+-        _, refs, adapter = validate(args.training_run, args.arm, args.training_source)
++        _, refs, adapter = validate(args.training_run, args.arm, args.training_source, args.seed)
+         tok = tokenizer(); splits = prepare(args.data_dir)
+-        model = make_model(args.arm, adapter).eval()
++        model = make_model(args.arm, adapter, seed=args.seed).eval()
+         with original_backbone(model) as base:
+             bm, bp, ba = evaluate(base, 'SEG-00', splits, tok)
+         conditions = {'Base_seg': {'metrics': bm, 'predictions': bp, 'audit': ba}}
+@@ -43,8 +44,8 @@ def run(args):
+         passed = True
+     finally:
+         values['elapsed_s'] = time.monotonic()-start
+-        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0025@1',
+-            'arm': args.arm, 'seed': 0, 'phase': 'SEG', 'stage': 'intervention',
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': contract(args.seed),
++            'arm': args.arm, 'seed': args.seed, 'phase': 'SEG', 'stage': 'intervention',
+             'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': values,
+             'artifacts': [{'path': str(p), 'role': p.name} for p in (out/'conditions.json', out/'provenance.json') if p.exists()],
+             'validator': {'name': 'segmented_boundary_interventions', 'passed': passed}})
+@@ -53,6 +54,7 @@ def run(args):
+ def main():
+     p = argparse.ArgumentParser(description=__doc__)
+     p.add_argument('--arm', choices=KEEP, required=True)
++    p.add_argument('--seed', type=int, choices=(0, 1, 2), default=0)
+     p.add_argument('--training-run', type=Path, required=True)
+     p.add_argument('--training-source', required=True)
+     p.add_argument('--data-dir', required=True)
+diff --git a/src/seg_model.py b/src/seg_model.py
+index 80e2181..dba5d18 100644
+--- a/src/seg_model.py
++++ b/src/seg_model.py
+@@ -23,6 +23,12 @@ T0 = ('SEG-01', 'SEG-07')
+ FAMILIES = {**{a: 'RBc-R' for a in (*KEEP, *RESET)}, **{a: 'RBc-T' for a in T0}, 'SEG-04': 'RBc-L'}
+ PARAMETERS = {'SEG-00': 0, **{f'SEG-{i:02}': 663552 for i in (1, 2, 3)},
+               'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)}}
++# E-0027 trains only the r128 triplet and LoRA_seg at new seeds; seed 0 is E-0025.
++SEED_ARMS = {0: ARMS, 1: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'), 2: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')}
++
++
++def contract(seed):
++    return 'E-0025@1' if seed == 0 else 'E-0027@1'
+ 
+ 
+ def config_for(arm):
+@@ -30,11 +36,13 @@ def config_for(arm):
+                    rank=128 if arm in ('SEG-05', 'SEG-06', 'SEG-07') else 32)
+ 
+ 
+-def make_model(arm, checkpoint=None):
++def make_model(arm, checkpoint=None, seed=0):
+     if arm not in ARMS:
+         raise ValueError('unknown segmented arm')
++    if seed not in (0, 1, 2):
++        raise ValueError('segmented seeds are 0 (E-0025) and 1, 2 (E-0027)')
+     base = load_base()
+-    torch.manual_seed(derive_seed(BASE_SEED, STUDY, 'R1', 'init', 0))
++    torch.manual_seed(derive_seed(BASE_SEED, STUDY, 'R1', 'init', seed))
+     if arm == 'SEG-00':
+         if checkpoint is not None:
+             raise ValueError('Base_seg has no adapter checkpoint')
+@@ -55,6 +63,17 @@ def make_model(arm, checkpoint=None):
+     return model
+ 
+ 
++def parameter_digest(model):
++    """SHA256 over the ordered adapter tensors (shape, dtype, bytes); E-0027 rule 1(e)."""
++    import hashlib
++    digest = hashlib.sha256()
++    for p in model.adapter_parameters():
++        x = p.detach().cpu().contiguous()
++        digest.update(repr((tuple(x.shape), str(x.dtype))).encode())
++        digest.update(x.reshape(-1).view(torch.uint8).numpy().tobytes())
++    return digest.hexdigest()
++
++
+ @contextmanager
+ def zero_exits(model, enabled):
+     if enabled and (model.training or torch.is_grad_enabled()):
+diff --git a/src/seg_seed_analysis.py b/src/seg_seed_analysis.py
+new file mode 100644
+index 0000000..7e2c0e0
+--- /dev/null
++++ b/src/seg_seed_analysis.py
+@@ -0,0 +1,234 @@
++"""E-0027 three-seed BoolQ replication: authenticate seeds 1-2, reuse seed 0, apply rules.
++
++Run in PBS. Seed 0 is read from E-0025's locked analysis (ATT-0303-1), bound
++by SHA256, and is not recomputed. Intervals are descriptive per-seed paired
++task-stratified bootstraps (10,000 draws, seed 20261101).
++"""
++import argparse
++from fractions import Fraction
++import os
++from pathlib import Path
++import re
++import time
++
++import numpy as np
++
++from rb1_analysis import measured_cost
++from rb1_artifacts import read, reference
++from rb1_rules import counts_from_rows, paired_bootstrap
++from rb_history import donor_indices
++from seg_analysis import summary
++from seg_artifacts import validate, validate_rows
++from seg_seed_rules import analyze as apply_rules, ARMS, NEW_SEEDS, number
++from v5_train import write_json
++
++CONTRACT = 'E-0027@1'
++SEED0_ANALYSIS_SHA256 = 'a0533c5b28e143a57e498e40d48e5af85a2b3e77802cb86d171fc1d9c7514f6f'
++BASE_SOURCE = '7d8b3464b6145504d155268f4c667fa3ecc53b00'
++CAP_NODE_H = 3.2
++KINDS = ('Base_seg', 'normal', 'iv_off', 'iv_swap', 'iv_reset')
++TASKS = ('piqa', 'boolq')
++
++
++def pinned_source(value, label):
++    if not isinstance(value, str) or re.fullmatch('[0-9a-f]{40}', value) is None:
++        raise ValueError(f'{label} must be an immutable 40-hex commit')
++    return value
++
++
++def seed0(ref):
++    if ref.get('sha256') != SEED0_ANALYSIS_SHA256 or reference(ref['path']) != ref:
++        raise ValueError('seed-0 input is not the locked E-0025 analysis')
++    report = read(ref['path'])
++    if (report.get('contract') != 'E-0025@1' or report.get('stage') != 'final' or
++            report['rules']['1'].get('passed') is not True):
++        raise ValueError('seed-0 analysis is not the passed final E-0025 analysis')
++    labels = (*ARMS, 'SEG-05/normal', 'SEG-05/iv_swap')
++    return report, {label: tuple(report['counts'][label]['boolq']) for label in labels}
++
++
++def max_control_intervals(binary, repeats=10000, seed=20261101, chunk_size=128):
++    """Keep minus the better of Reset/T0, max recomputed per draw (same draws as paired_bootstrap)."""
++    arrays = {a: {t: np.asarray(binary[a][t], dtype=float) for t in TASKS} for a in ('SEG-05', 'SEG-06', 'SEG-07')}
++    sizes = {t: len(arrays['SEG-05'][t]) for t in TASKS}
++    samples = {t: np.empty(repeats) for t in (*TASKS, 'macro')}
++    rng = np.random.default_rng(seed)
++    for start in range(0, repeats, chunk_size):
++        end = min(start+chunk_size, repeats)
++        draws = {t: rng.integers(0, sizes[t], (end-start, sizes[t])) for t in TASKS}
++        scores = {a: {t: arrays[a][t][draws[t]].mean(1) for t in TASKS} for a in arrays}
++        for t in TASKS:
++            samples[t][start:end] = scores['SEG-05'][t]-np.maximum(scores['SEG-06'][t], scores['SEG-07'][t])
++        macro = {a: (scores[a]['piqa']+scores[a]['boolq'])/2 for a in arrays}
++        samples['macro'][start:end] = macro['SEG-05']-np.maximum(macro['SEG-06'], macro['SEG-07'])
++    return {t: {'ci95_pp': [float(v*100) for v in np.quantile(x, [.025, .975])]} for t, x in samples.items()}
++
++
++def descriptive(counts):
++    """PIQA and macro analogues of gain/lora/swap; descriptive only (rule 8)."""
++    s = {a: {t: Fraction(*counts[a][t]) for t in TASKS} for a in counts}
++    for a in s:
++        s[a]['macro'] = (s[a]['piqa']+s[a]['boolq'])/2
++    out = {}
++    for t in (*TASKS, 'macro'):
++        out[t] = {'gain': number(s['SEG-05'][t]-max(s['SEG-06'][t], s['SEG-07'][t])),
++                  'lora': number(s['SEG-05'][t]-s['SEG-04'][t]),
++                  'swap': number(s['SEG-05/normal'][t]-s['SEG-05/iv_swap'][t])}
++    return out
++
++
++def new_seed(seed, runs, intervention, source, evaluation_source, paired):
++    if set(runs) != set(ARMS):
++        raise ValueError(f'seed {seed} needs exactly SEG-04..07')
++    manifests, refs, predictions = {}, {}, {}
++    for arm, root in runs.items():
++        manifests[arm], refs[arm], _ = validate(root, arm, source, seed)
++        predictions[arm] = validate_rows(read(Path(root)/'predictions.json'), paired)
++    root = Path(intervention)
++    manifest = read(root/'manifest.json'); m = manifest['metrics']; prov = read(root/'provenance.json')
++    if (manifest.get('status') != 'complete' or manifest.get('contract') != CONTRACT or
++            manifest.get('seed') != seed or manifest.get('stage') != 'intervention' or
++            manifest.get('arm') != 'SEG-05' or manifest.get('validator', {}).get('passed') is not True or
++            prov.get('training') != refs['SEG-05'] or prov.get('training_source') != source or
++            prov.get('evaluation_source') != evaluation_source):
++        raise ValueError(f'seed {seed} intervention source/checkpoint provenance differs')
++    if prov.get('checkpoint_files') != read(Path(runs['SEG-05'])/'checkpoint.json'):
++        raise ValueError(f'seed {seed} intervention checkpoint inventory differs')
++    conditions = read(root/'conditions.json')
++    if set(conditions) != set(KINDS):
++        raise ValueError(f'seed {seed} intervention condition set differs')
++    for kind, cond in conditions.items():
++        predictions['SEG-05/'+kind] = validate_rows(cond['predictions'], paired)
++    off = conditions['iv_off']['predictions'] == conditions['Base_seg']['predictions']
++    if not off or m.get('off.identical_to_Base_seg') is not True:
++        raise ValueError(f'seed {seed} same-allocation off/Base identity failed')
++    ids = [{'task': t, 'id': i} for t, i, _ in paired]
++    donor = donor_indices(ids, 'R1')
++    expected = [{'task': r['task'], 'recipient': r['id'], 'donor': ids[donor[i]]['id']} for i, r in enumerate(ids)]
++    if conditions['iv_swap']['audit']['donors'] != expected:
++        raise ValueError(f'seed {seed} fixed donor map differs')
++    keep = manifests['SEG-05']['metrics']
++    initial = (keep.get('initial.identical_to_Base_seg') is True and
++               read(Path(runs['SEG-05'])/'initial-base-predictions.json') == read(Path(runs['SEG-05'])/'initial-predictions.json'))
++    digests = {a: manifests[a]['metrics']['initial.adapter_sha256'] for a in ARMS}
++    checks = {'off_matches_base': off, 'initial_matches_base': initial,
++              'reload_identical': all(manifests[a]['metrics'].get('reload.identical') is True for a in ARMS),
++              'initial_parameters_identical': digests['SEG-05'] == digests['SEG-06'] == digests['SEG-07']}
++    flips = sum(a['prediction'] != b['prediction'] for a, b in zip(predictions['SEG-05'], predictions['SEG-05/normal']))
++    meta = {'initial_adapter_sha256': digests, 'normal_training_prediction_flips': flips,
++            'order_sha256': {a: manifests[a]['metrics']['plan.order_sha256'] for a in ARMS},
++            'intervention': {'manifest': reference(root/'manifest.json'), 'provenance': reference(root/'provenance.json'),
++                             'conditions': reference(root/'conditions.json')}}
++    return manifests, refs, predictions, checks, meta
++
++
++def complete_cost(inputs, roots, check_manifest):
++    declared = inputs.get('accounted_attempts')
++    if (not isinstance(declared, list) or not declared or len(set(declared)) != len(declared) or
++            any(not isinstance(a, str) or re.fullmatch(r'ATT-\d+-\d+', a) is None for a in declared)):
++        raise ValueError('analysis needs the explicit terminal task accounting list')
++    inferred = {Path(p).resolve().name for p in roots}
++    inferred.add(Path(check_manifest).resolve().parent.name)
++    if any(re.fullmatch(r'ATT-\d+-\d+', a) is None for a in inferred):
++        raise ValueError('all run/check paths must name their registered attempt')
++    if not inferred <= set(declared):
++        raise ValueError('task accounting list omits a required run/check attempt')
++    cost = measured_cost(inputs['observations'])
++    if {r['attempt'] for r in cost['rows']} != set(declared):
++        raise ValueError('measured cost coverage differs from the complete task accounting list')
++    cost.update({'required_attempts': sorted(declared), 'terminal_coverage_complete': True,
++                 'cap_node_h': CAP_NODE_H, 'within_cap': cost['node_h'] <= CAP_NODE_H,
++                 'current_analysis_usage': 'pending; add terminal measured usage in delivery'})
++    return cost
++
++
++def analyze(inputs):
++    source = pinned_source(inputs['training_source'], 'training_source')
++    if inputs.get('evaluation_source') != source:
++        raise ValueError('intervention evaluation source must equal the reviewed training source')
++    report0, counts0 = seed0(inputs['seed0_analysis'])
++    _, base_ref, _ = validate(inputs['base_run'], 'SEG-00', BASE_SOURCE, 0)
++    base_rows = validate_rows(read(Path(inputs['base_run'])/'predictions.json'))
++    paired = [(r['task'], r['id'], r['gold']) for r in base_rows]
++    if counts_from_rows(base_rows) != {t: tuple(report0['counts']['SEG-00'][t]) for t in TASKS}:
++        raise ValueError('Base_seg run differs from the seed-0 analysis Base_seg')
++    checked = read(inputs['deterministic_checks']['manifest_ref']['path'])
++    if (reference(inputs['deterministic_checks']['manifest_ref']['path']) != inputs['deterministic_checks']['manifest_ref'] or
++            checked.get('status') != 'complete' or checked.get('validator', {}).get('passed') is not True or
++            checked.get('source_commit') != source or checked['metrics'].get('no_channel_identity') is not True or
++            sorted(checked['metrics'].get('no_channel_seeds', [])) != list(NEW_SEEDS)):
++        raise ValueError('deterministic no-channel checks missing at the reviewed source for both seeds')
++    counts, checks, per, roots = {0: counts0}, {}, {}, []
++    for seed in NEW_SEEDS:
++        runs = inputs['runs'][str(seed)]; iv = inputs['interventions'][str(seed)]
++        roots += [*runs.values(), iv]
++        manifests, refs, predictions, check, meta = new_seed(seed, runs, iv, source, inputs['evaluation_source'], paired)
++        checks[seed] = {**check, 'no_channel_identity': True}
++        task_counts = {a: counts_from_rows(p) for a, p in predictions.items()}
++        counts[seed] = {label: task_counts[label]['boolq'] for label in (*ARMS, 'SEG-05/normal', 'SEG-05/iv_swap')}
++        binary = {a: {t: [int(r['gold'] == r['prediction']) for r in p if r['task'] == t] for t in TASKS}
++                  for a, p in predictions.items()}
++        per[str(seed)] = {'summary': {a: summary(p) for a, p in predictions.items()}, 'counts': task_counts,
++            'descriptive': descriptive(task_counts),
++            'bootstrap': {'repeats': 10000, 'seed': 20261101, 'pairs': paired_bootstrap(binary),
++                          'max_control_gain': max_control_intervals(binary)},
++            'training': {a: m['metrics'] for a, m in manifests.items()}, 'artifact_refs': refs, **meta}
++    seed0_counts = {a: {t: tuple(report0['counts'][a][t]) for t in TASKS}
++                    for a in (*ARMS, 'SEG-05/normal', 'SEG-05/iv_swap')}
++    per['0'] = {'summary': {a: report0['summary'][a] for a in (*ARMS, *('SEG-05/'+k for k in KINDS))},
++                'descriptive': descriptive(seed0_counts),
++                'bootstrap': {'max_control_gain': report0['bootstrap']['max_control_gain']['128'],
++                              'pairs': {k: v for k, v in report0['bootstrap']['pairs'].items()
++                                        if k in ('SEG-05 - SEG-04', 'SEG-04 - SEG-05', 'SEG-05/normal - SEG-05/iv_swap')}},
++                'source': inputs['seed0_analysis']}
++    rules = apply_rules(counts, checks, tuple(report0['counts']['SEG-00']['boolq']))
++    cost = complete_cost(inputs, roots, inputs['deterministic_checks']['manifest_ref']['path'])
++    return {**rules, 'contract': CONTRACT, 'hypothesis': 'H-0020@1', 'stage': 'final',
++            'base_seg': {'run': base_ref, 'summary': summary(base_rows)}, 'seeds': per,
++            'deterministic_checks': inputs['deterministic_checks'], 'cost': cost,
++            'limitations': ['Three seeds only; dev both selects and judges; exact point-estimate gates.',
++                'Per-seed intervals are descriptive, condition on each trained model, exclude seed variation.',
++                'RBc LR not recalibrated for r128 or the segmented protocol.',
++                'BoolQ task level only; no confirmation evaluation; no practical or long-context claim.']}
++
++
++def markdown(report):
++    lines = ['# E-0027 BoolQ r128 three-seed replication', '',
++             f"Direction: {report['direction']}; G {report['G']['pp']:.4f} pp, L {report['L']['pp']:.4f} pp, "
++             f"W {report['W']['pp']:.4f} pp.", '',
++             '| Seed | SEG-04 | SEG-05 | SEG-06 | SEG-07 | swap | gain | lora | swap drop |',
++             '|---|---:|---:|---:|---:|---:|---:|---:|---:|']
++    for s, q in report['per_seed'].items():
++        b = q['boolq']
++        lines.append(f"| {s} | {b['SEG-04']['pp']:.1f} | {b['SEG-05']['pp']:.1f} | {b['SEG-06']['pp']:.1f} | "
++                     f"{b['SEG-07']['pp']:.1f} | {b['SEG-05/iv_swap']['pp']:.1f} | {q['gain']['pp']:+.2f} | "
++                     f"{q['lora']['pp']:+.2f} | {q['swap']['pp']:+.2f} |")
++    import json
++    lines += ['', '## Rules', '']
++    for k, rule in report['rules'].items():
++        lines += [f'Rule {k}: `{json.dumps(rule, ensure_ascii=False)}`', '']
++    lines += ['## Limits', '']+['- '+s for s in report['limitations']]
++    return '\n'.join(lines)+'\n'
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--input', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, start = False, time.monotonic()
++    try:
++        report = analyze(read(args.input))
++        write_json(out/'analysis.json', report)
++        (out/'analysis.md').write_text(markdown(report))
++        passed = True
++    finally:
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': CONTRACT,
++            'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': {'elapsed_s': time.monotonic()-start,
++                'bootstrap.repeats': 10000, 'bootstrap.seed': 20261101, 'confirmation_evaluated': False},
++            'artifacts': [{'path': str(f), 'role': f.name} for f in (out/'analysis.json', out/'analysis.md') if f.exists()],
++            'validator': {'name': 'segmented_three_seed_analysis', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_seed_rules.py b/src/seg_seed_rules.py
+new file mode 100644
+index 0000000..a67ae81
+--- /dev/null
++++ b/src/seg_seed_rules.py
+@@ -0,0 +1,98 @@
++"""E-0027@1 preregistered rules 1-9 on exact BoolQ fractions (seeds 0, 1, 2).
++
++Returns rule outcomes only; never changes a hypothesis status or starts work.
++"""
++from fractions import Fraction
++
++SEEDS = (0, 1, 2)
++NEW_SEEDS = (1, 2)
++ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
++LABELS = (*ARMS, 'SEG-05/normal', 'SEG-05/iv_swap')
++PP = Fraction(1, 100)
++# E-0027 Design rule 2: the seed-0 quantities taken from E-0025's locked analysis.
++SEED0 = {'gain': Fraction(11, 250), 'lora': Fraction(17, 1000), 'swap': Fraction(65, 1000)}
++IMPLEMENTATION_CHECKS = ('off_matches_base', 'initial_matches_base', 'no_channel_identity',
++                         'reload_identical', 'initial_parameters_identical')
++
++
++def number(x):
++    return {'numerator': x.numerator, 'denominator': x.denominator, 'pp': float(100*x)}
++
++
++def fraction(counts):
++    correct, total = counts
++    if type(correct) is not int or type(total) is not int or total <= 0 or not 0 <= correct <= total:
++        raise ValueError('invalid exact BoolQ correctness counts')
++    return Fraction(correct, total)
++
++
++def per_seed(counts):
++    """counts: {label: (correct, total)} for one seed, BoolQ only."""
++    if set(counts) != set(LABELS):
++        raise ValueError('each seed needs SEG-04..07 plus the SEG-05 normal/swap intervention pair')
++    totals = {c[1] for c in counts.values()}
++    if len(totals) != 1:
++        raise ValueError('paired BoolQ row counts differ within a seed')
++    s = {k: fraction(v) for k, v in counts.items()}
++    control = 'SEG-06' if s['SEG-06'] >= s['SEG-07'] else 'SEG-07'
++    return {'scores': s, 'better_control': control,
++            'gain': s['SEG-05']-max(s['SEG-06'], s['SEG-07']),
++            'lora': s['SEG-05']-s['SEG-04'],
++            'swap': s['SEG-05/normal']-s['SEG-05/iv_swap']}
++
++
++def analyze(counts, checks, base):
++    """counts: {seed: {label: (correct, total)}} BoolQ; checks: {seed: {check: bool}} for new seeds;
++    base: SEG-00 Base_seg BoolQ (correct, total)."""
++    if set(counts) != set(SEEDS):
++        raise ValueError('rules need seeds 0, 1 and 2')
++    if set(checks) != set(NEW_SEEDS):
++        raise ValueError('implementation checks are required for both new seeds')
++    quantities = {s: per_seed(counts[s]) for s in SEEDS}
++    for name, value in SEED0.items():
++        if quantities[0][name] != value:
++            raise ValueError(f'seed-0 {name} differs from the E-0025 locked analysis')
++    base_score = fraction(base)
++    if any(base[1] != c[1] for s in SEEDS for c in counts[s].values()):
++        raise ValueError('Base_seg row count differs from the arm rows')
++    implementation = {s: {k: checks[s].get(k) is True for k in IMPLEMENTATION_CHECKS} for s in NEW_SEEDS}
++    implementation_ok = all(all(v.values()) for v in implementation.values())
++    G = sum(quantities[s]['gain'] for s in SEEDS)/3
++    L = sum(quantities[s]['lora'] for s in SEEDS)/3
++    W = sum(quantities[s]['swap'] for s in SEEDS)/3
++    gain1, gain2 = quantities[1]['gain'], quantities[2]['gain']
++    supports = G >= 3*PP and gain1 > 0 and gain2 > 0 and W >= G/2 and L >= PP
++    challenges = G < PP or (gain1 <= 0 and gain2 <= 0) or L <= 0
++    assert not (supports and challenges)
++    direction = ('invalid_implementation' if not implementation_ok else
++                 'supports' if supports else 'challenges' if challenges else 'inconclusive')
++    threshold = base_score+PP
++    learned = {s: {a: quantities[s]['scores'][a] >= threshold for a in ARMS} for s in SEEDS}
++    unlearned = {s: not learned[s]['SEG-06'] and not learned[s]['SEG-07'] for s in SEEDS}
++    seeds = {str(s): {'gain': number(q['gain']), 'lora': number(q['lora']), 'swap': number(q['swap']),
++                      'better_control': q['better_control'],
++                      'boolq': {k: number(v) for k, v in q['scores'].items()}} for s, q in quantities.items()}
++    rules = {
++        '1': {'level': 'diagnostic', 'passed': implementation_ok, 'checks': implementation,
++              'action': 'interpret' if implementation_ok else 'repair_no_conclusion'},
++        '2': {'level': 'screening', 'per_seed': seeds,
++              'seed0_source': 'E-0025 locked analysis ATT-0303-1 (not rerun)'},
++        '3': {'level': 'screening', 'G': number(G), 'L': number(L), 'W': number(W), 'weights': 'equal over seeds 0,1,2'},
++        '4': {'level': 'screening', 'supports': bool(implementation_ok and supports),
++              'conditions': {'G>=3': G >= 3*PP, 'gain1>0': gain1 > 0, 'gain2>0': gain2 > 0,
++                             'W>=G/2': W >= G/2, 'L>=1': L >= PP}},
++        '5': {'level': 'screening', 'challenges': bool(implementation_ok and challenges),
++              'conditions': {'G<1': G < PP, 'gain1<=0 and gain2<=0': gain1 <= 0 and gain2 <= 0, 'L<=0': L <= 0}},
++        '6': {'level': 'screening', 'inconclusive': direction == 'inconclusive',
++              'no_more_seeds_width_tap_loop': direction == 'inconclusive'},
++        '7': {'level': 'screening', 'threshold': number(threshold), 'learned': {str(s): v for s, v in learned.items()},
++              'no_history_r128_controls_unlearned': {str(s): v for s, v in unlearned.items()}},
++        '8': {'level': 'screening', 'piqa_macro_nll': 'descriptive_only', 'hypothesis_status_changed': False},
++        '9': {'level': 'screening', 'H-0019': 'remains inconclusive',
++              'stage_report': ('BoolQ task-level supports report' if direction == 'supports' else
++                               'stop side-state line per E-0025 rule 10; mechanistic stage report'
++                               if direction == 'challenges' else None)},
++    }
++    return {'rules': rules, 'direction': direction,
++            'eligible_edge': direction if direction in ('supports', 'challenges') else None,
++            'G': number(G), 'L': number(L), 'W': number(W), 'per_seed': seeds}
+diff --git a/src/seg_seed_smoke.py b/src/seg_seed_smoke.py
+new file mode 100644
+index 0000000..1141622
+--- /dev/null
++++ b/src/seg_seed_smoke.py
+@@ -0,0 +1,184 @@
++"""PBS checks and score-discarding E-0027 smoke for new seeds 1 and 2.
++
++mode=smoke: deterministic tests; seed 0/1/2 plans (seed 0 must reproduce
++E-0025's order hash; seed 1/2 hashes are printed for registration); initial
++parameter digests (SEG-05/06/07 identical within a seed); a 1% uniform-step
++timing rehearsal of SEG-04..07 at seed 1 with 32 dev rows per task; and a
++cost projection against the 3.2 node-h cap. No dev quality is retained.
++mode=checks: deterministic tests only, at the exact formal source.
++"""
++import argparse
++import gc
++import math
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++import numpy as np
++import torch
++
++from seg_data import ORDER_SHA256, ORDER_SHA256_BY_SEED
++from seg_eval import evaluate
++from seg_model import make_model, KEEP, PARAMETERS, FAMILIES, parameter_digest
++from seg_train import tokenizer, prepare_plan, train
++from v5_train import write_json
++
++FILES = ['src/test_seg_seeds.py', 'src/test_seg_rules.py', 'src/test_seg_data.py', 'src/test_seg_model.py',
++         'src/test_seg_artifacts.py', 'src/test_seg_analysis.py', 'src/test_core.py', 'src/test_rb_core.py']
++NEW_ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
++CAP_NODE_H = 3.2
++
++
++def checks(out):
++    with (out/'checks.log').open('w') as log:
++        result = subprocess.run([sys.executable, '-m', 'pytest', *FILES, '-q', '-p', 'no:cacheprovider',
++            '-o', 'junit_family=legacy', '--junitxml='+str(out/'checks.xml')], stdout=log, stderr=subprocess.STDOUT)
++    cases = list(ET.parse(out/'checks.xml').getroot().iter('testcase'))
++    failed = sum(c.find('failure') is not None or c.find('error') is not None for c in cases)
++    skipped = sum(c.find('skipped') is not None for c in cases)
++    if result.returncode != 0 or failed or skipped or not cases:
++        raise RuntimeError('E-0027 PBS deterministic checks failed; see checks.log/checks.xml')
++    # Passing seeded no-channel cases (rule 1(c)); ids carry 'seed1'/'seed2'.
++    seeded = [c.get('name', '') for c in cases if c.get('name', '').startswith('test_no_channel_identity_at_new_seed')]
++    seeds = sorted({s for s in (1, 2) if any(f'seed{s}' in n for n in seeded)})
++    return {'checks.cases': len(cases), 'checks.failed': failed, 'checks.skipped': skipped,
++            'no_channel_identity': seeds == [1, 2], 'no_channel_seeds': seeds,
++            'zero_initialization_identity': True, 'synthetic_rule_boundaries': True}
++
++
++def plans(args, tok):
++    result, kept = {}, None
++    for seed in (0, 1, 2):
++        args.seed = seed
++        splits, batches, metadata, _, lock = prepare_plan(args, tok, require_registered=False)
++        if seed == 1:
++            kept = splits, batches, lock
++        result[seed] = {**metadata,
++            'segment1_tokens_keep': sum(len(e['segment1_ids']) for b in batches for e in b),
++            'segment2_tokens': sum(len(e['input_ids']) for b in batches for e in b),
++            'loss_tokens': sum(sum(x != -100 for x in e['labels'][1:]) for b in batches for e in b),
++            'registered': ORDER_SHA256_BY_SEED[seed]}
++        if ORDER_SHA256_BY_SEED[seed] not in (None, metadata['plan.order_sha256']):
++            raise ValueError(f'seed {seed} order differs from its registered hash')
++    if result[0]['plan.order_sha256'] != ORDER_SHA256:
++        raise ValueError('fixed-step plan does not reproduce E-0025 seed 0')
++    if len({r['plan.order_sha256'] for r in result.values()}) != 3:
++        raise ValueError('seed orders are not distinct')
++    return result, kept
++
++
++def digests():
++    result = {}
++    for seed in (0, 1, 2):
++        result[seed] = {}
++        for arm in NEW_ARMS:
++            model = make_model(arm, seed=seed)
++            result[seed][arm] = parameter_digest(model)
++            del model; gc.collect(); torch.cuda.empty_cache()
++        if not result[seed]['SEG-05'] == result[seed]['SEG-06'] == result[seed]['SEG-07']:
++            raise ValueError(f'seed {seed} r128 initial parameters differ across SEG-05/06/07')
++    if len({result[s]['SEG-05'] for s in result}) != 3 or len({result[s]['SEG-04'] for s in result}) != 3:
++        raise ValueError('new seeds did not change the initialization')
++    return result
++
++
++def timing(tok, out, plan_info, seed1):
++    splits, full_plan, lock = seed1
++    size = math.ceil(len(full_plan)*.01)
++    indices = np.linspace(0, len(full_plan)-1, size, dtype=int).tolist()
++    batches = [full_plan[i] for i in indices]
++    arms = {}
++    for arm in NEW_ARMS:
++        root = out/arm; root.mkdir(parents=True, exist_ok=True)
++        tick = time.monotonic(); model = make_model(arm, seed=1); load = time.monotonic()-tick
++        m = train(model, arm, batches, tok, lock['locked_lrs'][FAMILIES[arm]], root)
++        if m['params.with_grad'] != PARAMETERS[arm]:
++            raise ValueError('smoke parameter-gradient coverage differs')
++        tick = time.monotonic(); _, before, audit = evaluate(model, arm, splits, tok, limit=32)
++        eval_s = time.monotonic()-tick
++        interventions = {}
++        if arm in KEEP:
++            for kind in ('iv_off', 'iv_swap', 'iv_reset'):
++                tick = time.monotonic(); evaluate(model, arm, splits, tok, limit=32, kind=kind)
++                interventions[kind] = time.monotonic()-tick
++        tick = time.monotonic(); model.export_adapter(root/'adapter'); save_s = time.monotonic()-tick
++        del model; gc.collect(); torch.cuda.empty_cache()
++        tick = time.monotonic(); reloaded = make_model(arm, root/'adapter', seed=1)
++        _, after, _ = evaluate(reloaded, arm, splits, tok, limit=32); reload_s = time.monotonic()-tick
++        if before != after:
++            raise ValueError('smoke same-job reload identity failed')
++        arms[arm] = {**m, 'load.seconds': load, 'eval32.seconds': eval_s, 'eval32.forward_seconds': audit['forward_seconds'],
++                     'save.seconds': save_s, 'reload32.seconds': reload_s, 'reload.identical': True,
++                     'interventions32.seconds': interventions}
++        del reloaded, before, after; gc.collect(); torch.cuda.empty_cache()
++    base = make_model('SEG-00')
++    tick = time.monotonic(); evaluate(base, 'SEG-00', splits, tok, limit=32); base_eval = (time.monotonic()-tick)*1000/32
++    del base; gc.collect(); torch.cuda.empty_cache()
++    projected = {}
++    for arm, m in arms.items():
++        eval_full = m['eval32.seconds']*1000/32
++        # Load, steady steps, three curve evals + final + reload, save; R_keep adds
++        # the same-job Base_seg and initial evaluations.
++        cost = 45+m['load.seconds']+m['train.steady_step_seconds']*len(full_plan)+5*eval_full+m['save.seconds']
++        if arm in KEEP:
++            cost += base_eval+eval_full
++        projected[arm] = {'expected_seconds': cost, 'training_step_seconds': m['train.steady_step_seconds'],
++                          'full_dev_seconds': eval_full}
++    keep = arms['SEG-05']
++    intervention = 45+keep['load.seconds']+base_eval+projected['SEG-05']['full_dev_seconds']+sum(
++        v*1000/32 for v in keep['interventions32.seconds'].values())
++    per_seed = sum(p['expected_seconds'] for p in projected.values())+intervention
++    # MIG instance seconds -> node-h at 1/4 (constraints): seconds/3600*0.25.
++    node_h = lambda seconds: seconds/14400
++    total = 2*node_h(per_seed)+node_h(60+90)+.05
++    return {'smoke.steps': size, 'smoke.seed': 1, 'uniform_sample_indices': indices, 'arms': arms,
++            'projection': {'arms_seconds': {a: p['expected_seconds'] for a, p in projected.items()},
++                'arms': projected, 'intervention_seconds': intervention, 'per_seed_node_h': node_h(per_seed),
++                'two_seeds_node_h': 2*node_h(per_seed), 'checks_analysis_reserve_node_h': node_h(150)+.05,
++                'total_before_smoke_usage_node_h': total, 'cap_node_h': CAP_NODE_H, 'cost_gate': total <= CAP_NODE_H,
++                'walltime_rule': '1.5x measured part model, round up to 10 min'},
++            'plans': {str(k): {kk: vv for kk, vv in v.items() if kk != 'plan.epoch_end_steps'} for k, v in plan_info.items()}}
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--mode', choices=('smoke', 'checks'), required=True)
++    p.add_argument('--data-dir')
++    p.add_argument('--split-manifest', type=Path)
++    p.add_argument('--lr-lock', type=Path)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, values, start = False, {}, time.monotonic()
++    try:
++        values.update(checks(out))
++        if not values['no_channel_identity']:
++            raise RuntimeError('seeded no-channel identity tests did not cover both new seeds')
++        if args.mode == 'smoke':
++            tok = tokenizer()
++            plan_info, seed1 = plans(args, tok)
++            values['plans'] = {str(s): {k: v for k, v in r.items()} for s, r in plan_info.items()}
++            write_json(out/'seed-plans.json', values['plans'])
++            values['initial_digests'] = {str(s): d for s, d in digests().items()}
++            write_json(out/'initial-digests.json', values['initial_digests'])
++            smoke = timing(tok, out, plan_info, seed1)
++            write_json(out/'cost-smoke.json', smoke)
++            values.update({'smoke.all_arms': len(smoke['arms']), 'smoke.reload_identical': True,
++                'smoke.no_dev_scores_retained': True, 'projection.node_h': smoke['projection']['total_before_smoke_usage_node_h'],
++                'projection.within_cap_before_actual_smoke': smoke['projection']['cost_gate']})
++        values['confirmation_evaluated'] = False
++        passed = True
++    finally:
++        values['elapsed_s'] = time.monotonic()-start
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0027@1',
++            'spec_digest': os.environ['SR_SPEC_DIGEST'], 'source_commit': os.environ['SR_CODE_COMMIT'],
++            'stage': 'seed_smoke' if args.mode == 'smoke' else 'deterministic_checks', 'metrics': values,
++            'artifacts': [{'path': str(f), 'role': f.name} for f in (out/'checks.xml', out/'checks.log',
++                out/'seed-plans.json', out/'initial-digests.json', out/'cost-smoke.json') if f.exists()],
++            'validator': {'name': 'segmented_seed_checks', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_train.py b/src/seg_train.py
+index 0ea421f..2141d44 100644
+--- a/src/seg_train.py
++++ b/src/seg_train.py
+@@ -1,4 +1,4 @@
+-"""E-0025 training at the RB1 sample/optimizer budget; no confirmation reader."""
++"""E-0025/E-0027 training at the RB1 sample/optimizer budget; no confirmation reader."""
+ import argparse
+ from contextlib import contextmanager
+ import gc
+@@ -15,12 +15,15 @@ from calibrate import MODEL, REVISION
+ from rb_data import plan_batches
+ from rb_train import load_data
+ from rb1_artifacts import verify_lr_lock
+-from seg_data import segment_plan, ORDER_SHA256, STEPS, EXAMPLES
++from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES
+ from seg_eval import evaluate, token_losses
+-from seg_model import make_model, KEEP, FAMILIES, PARAMETERS, state_description
++from seg_model import (make_model, KEEP, FAMILIES, PARAMETERS, state_description, parameter_digest,
++                       SEED_ARMS, contract)
+ from bypass_model import BranchModel
+ from v1_run import lr_factor, preserved_evaluation_state, example_mean_objective, TrainingDiverged
+ from v5_train import file_sha256, write_json, plan_metadata
++from rb_data import BASE_SEED, STUDY
++from v1_data import derive_seed
+ 
+ 
+ def tokenizer():
+@@ -29,16 +32,34 @@ def tokenizer():
+     return tok
+ 
+ 
+-def prepare_plan(args, tok):
++def seed_plan(splits, tok, seed, excluded):
++    """First STEPS batches of the R1 stream for this seed (fixed sample/step budget).
++
++    For seed 0 this is exactly E-0025's 2M-token-budget plan, which stops at
++    STEPS; the registered order hash checks that equivalence.
++    """
++    rb = plan_batches(splits, tok, 'R1', seed, excluded, token_budget=None)
++    if len(rb) < STEPS or any(len(b) != 2 for b in rb[:STEPS]):
++        raise ValueError('R1 stream shorter than the fixed segmented step budget')
++    return rb[:STEPS]
++
++
++def prepare_plan(args, tok, require_registered=True):
++    seed = getattr(args, 'seed', 0)
++    if seed not in ORDER_SHA256_BY_SEED:
++        raise ValueError('unknown segmented seed')
+     lock = verify_lr_lock(args.lr_lock)
+     if file_sha256(args.split_manifest) != lock['split_manifest_sha256']:
+         raise ValueError('segmented split differs from the accepted RBc lock')
+     splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
+-    rb = plan_batches(splits, tok, 'R1', 0, [(e['task'], e['id']) for e in excluded])
++    rb = seed_plan(splits, tok, seed, [(e['task'], e['id']) for e in excluded])
+     metadata = plan_metadata(rb)
+-    if (metadata['plan.order_sha256'] != ORDER_SHA256 or metadata['plan.steps'] != STEPS or
+-            metadata['plan.examples'] != EXAMPLES):
+-        raise ValueError('segmented plan is not the exact RB1 sample budget/order')
++    registered = ORDER_SHA256_BY_SEED[seed]
++    if registered is None and require_registered:
++        raise ValueError('segmented seed order hash is not registered')
++    if ((registered is not None and metadata['plan.order_sha256'] != registered) or
++            metadata['plan.steps'] != STEPS or metadata['plan.examples'] != EXAMPLES):
++        raise ValueError('segmented plan is not the registered RB1 sample budget/order')
+     return splits, segment_plan(rb, splits, tok), metadata, excluded, lock
+ 
+ 
+@@ -154,8 +175,8 @@ def run(args):
+     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
+     values, passed, start = {}, False, time.monotonic()
+     try:
+-        if args.arm not in ('SEG-00', *FAMILIES) or args.stage not in ('train', 'base'):
+-            raise ValueError('unknown segmented arm/stage')
++        if args.arm not in SEED_ARMS.get(args.seed, ()) or args.stage not in ('train', 'base'):
++            raise ValueError('unknown segmented seed/arm/stage')
+         if (args.stage == 'base') != (args.arm == 'SEG-00'):
+             raise ValueError('Base_seg is evaluation only')
+         tok = tokenizer()
+@@ -166,11 +187,15 @@ def run(args):
+             'model_revision': REVISION, 'tokenizer_revision': REVISION,
+             'environment.lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
+             'lr_lock.sha256': file_sha256(args.lr_lock), 'split_manifest.sha256': file_sha256(args.split_manifest),
+-            'hardware': torch.cuda.get_device_name(), 'failed': False})
++            'hardware': torch.cuda.get_device_name(), 'failed': False, 'seed': args.seed,
++            'init_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'init', args.seed),
++            'train_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'train', args.seed)})
+         write_json(out/'config.json', vars(args)); write_json(out/'excluded-train.json', excluded)
+         write_json(out/'seams-train.json', [e['seam'] for b in batches for e in b])
+-        tick = time.monotonic(); model = make_model(args.arm)
++        tick = time.monotonic(); model = make_model(args.arm, seed=args.seed)
+         values['load.seconds'] = time.monotonic()-tick
++        if args.arm != 'SEG-00':
++            values['initial.adapter_sha256'] = parameter_digest(model)
+         values['params.stored'] = PARAMETERS[args.arm]
+         values['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
+         if args.arm in KEEP:
+@@ -197,7 +222,7 @@ def run(args):
+         write_json(out/'predictions.json', p); write_json(out/'evaluation-audit.json', audit)
+         if args.stage == 'train':
+             del model; gc.collect(); torch.cuda.empty_cache()
+-            tick = time.monotonic(); model = make_model(args.arm, out/'adapter')
++            tick = time.monotonic(); model = make_model(args.arm, out/'adapter', seed=args.seed)
+             m2, p2, _ = evaluate(model, args.arm, splits, tok)
+             values['reload.seconds'] = time.monotonic()-tick
+             values['reload.identical'] = p == p2 and all(values[k] == v for k, v in m2.items())
+@@ -211,8 +236,8 @@ def run(args):
+         values['elapsed_s'] = time.monotonic()-start
+         artifacts = [{'path': str(p), 'role': p.name, 'sha256': file_sha256(p), 'bytes': p.stat().st_size}
+                      for p in out.iterdir() if p.is_file() and p.name != 'manifest.json']
+-        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0025@1',
+-            'arm': args.arm, 'seed': 0, 'phase': 'SEG', 'stage': args.stage,
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': contract(args.seed),
++            'arm': args.arm, 'seed': args.seed, 'phase': 'SEG', 'stage': args.stage,
+             'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': values, 'artifacts': artifacts,
+             'validator': {'name': 'segmented_training', 'passed': passed}})
+ 
+@@ -221,6 +246,7 @@ def main():
+     p = argparse.ArgumentParser(description=__doc__)
+     p.add_argument('--arm', choices=('SEG-00', *FAMILIES), required=True)
+     p.add_argument('--stage', choices=('train', 'base'), required=True)
++    p.add_argument('--seed', type=int, choices=(0, 1, 2), default=0)
+     p.add_argument('--data-dir', required=True)
+     p.add_argument('--split-manifest', type=Path, required=True)
+     p.add_argument('--lr-lock', type=Path, required=True)
+diff --git a/src/test_seg_seeds.py b/src/test_seg_seeds.py
+new file mode 100644
+index 0000000..8133501
+--- /dev/null
++++ b/src/test_seg_seeds.py
+@@ -0,0 +1,264 @@
++"""E-0027 new-seed path: initialization, no-channel identity, artifacts, rules, analysis."""
++from contextlib import contextmanager
++import json
++from pathlib import Path
++from unittest.mock import patch
++
++import pytest
++import torch
++
++from bypass_model import BranchModel
++from rb1_artifacts import reference
++from rb_history import donor_indices
++import seg_artifacts
++import seg_seed_analysis
++from seg_model import make_model, forward, parameter_digest
++from seg_seed_rules import analyze, LABELS
++from test_seg_artifacts import formal, seal, predictions, write, SOURCE
++
++SEED0 = {'SEG-04': 642, 'SEG-05': 659, 'SEG-06': 615, 'SEG-07': 612, 'SEG-05/normal': 659, 'SEG-05/iv_swap': 594}
++CHECKS = {k: True for k in ('off_matches_base', 'initial_matches_base', 'no_channel_identity',
++                            'reload_identical', 'initial_parameters_identical')}
++
++
++def seed_counts(gain, lora, swap):
++    keep = 600+gain
++    return {'SEG-06': (600, 1000), 'SEG-07': (590, 1000), 'SEG-05': (keep, 1000), 'SEG-04': (keep-lora, 1000),
++            'SEG-05/normal': (keep, 1000), 'SEG-05/iv_swap': (keep-swap, 1000)}
++
++
++def run_rules(one, two, checks=None):
++    counts = {0: {k: (v, 1000) for k, v in SEED0.items()}, 1: seed_counts(*one), 2: seed_counts(*two)}
++    return analyze(counts, checks or {1: CHECKS, 2: CHECKS}, (609, 1000))
++
++
++@pytest.mark.parametrize('one, two, direction', [
++    ((23, 0, -10), (23, 13, -10), 'supports'),        # G=3, L=1, W=G/2 exactly
++    ((23, 0, -11), (23, 13, -10), 'inconclusive'),    # W just below G/2
++    ((23, 0, -10), (22, 13, -10), 'inconclusive'),    # G just below 3
++    ((23, 0, -10), (23, 12, -10), 'inconclusive'),    # L just below 1
++    ((46, 13, 0), (0, 0, 0), 'inconclusive'),         # gain2 = 0 blocks supports only
++    ((0, 13, 0), (0, 13, 0), 'challenges'),           # both new gains <= 0
++    ((-20, 13, 0), (3, 13, 0), 'challenges'),         # G = 0.9 < 1
++    ((-14, 13, 0), (0, 13, 0), 'challenges'),         # G = 1 is not < 1, but both gains <= 0
++    ((-13, 13, 0), (1, 13, 0), 'inconclusive'),       # G = 32/3000 >= 1, gain2 > 0
++    ((23, -17, 0), (23, 0, 0), 'challenges'),         # L = 0
++])
++def test_exact_three_seed_boundaries(one, two, direction):
++    result = run_rules(one, two)
++    assert result['direction'] == direction
++    assert result['eligible_edge'] == (direction if direction != 'inconclusive' else None)
++
++
++def test_rule_bookkeeping_learnability_and_failed_implementation():
++    result = run_rules((23, 0, -10), (23, 13, -10))
++    assert result['G']['numerator'] * 100 == 3 * result['G']['denominator']
++    assert result['per_seed']['0']['gain']['pp'] == pytest.approx(4.4)
++    # Base 60.9 -> learnability threshold 61.9; seed 1 controls 60.0/59.0 are unlearned.
++    assert result['rules']['7']['no_history_r128_controls_unlearned'] == {'0': True, '1': True, '2': True}
++    assert result['rules']['7']['learned']['0'] == {'SEG-04': True, 'SEG-05': True, 'SEG-06': False, 'SEG-07': False}
++    broken = run_rules((23, 0, -10), (23, 13, -10), {1: CHECKS, 2: {**CHECKS, 'initial_parameters_identical': False}})
++    assert broken['direction'] == 'invalid_implementation' and broken['eligible_edge'] is None
++
++
++def test_seed0_must_equal_locked_E0025_values_and_inputs_are_complete():
++    counts = {0: {k: (v, 1000) for k, v in SEED0.items()}, 1: seed_counts(1, 1, 1), 2: seed_counts(1, 1, 1)}
++    counts[0]['SEG-04'] = (643, 1000)
++    with pytest.raises(ValueError, match='seed-0 lora'):
++        analyze(counts, {1: CHECKS, 2: CHECKS}, (609, 1000))
++    counts[0]['SEG-04'] = (642, 1000)
++    del counts[2]['SEG-05/iv_swap']
++    with pytest.raises(ValueError):
++        analyze(counts, {1: CHECKS, 2: CHECKS}, (609, 1000))
++
++
++# ---- GPU: initialization and no-channel identity at the new seeds ----
++
++@pytest.fixture(scope='module')
++def base():
++    from calibrate import load_base
++    return load_base()
++
++
++@contextmanager
++def seeded(base, arm, seed):
++    with patch('seg_model.load_base', return_value=base):
++        model = make_model(arm, seed=seed)
++    try:
++        yield model
++    finally:
++        if isinstance(model, BranchModel):
++            for i, layer in model.adapters().items():
++                for h in layer.handles: h.remove()
++                base.model.layers[i] = layer.original
++        elif arm == 'SEG-04':
++            from v1_lora import _get_parent
++            for (i, path), target in model._targets.items():
++                parent, name = _get_parent(base.model.layers[i], path)
++                setattr(parent, name, target.base)
++        base.zero_grad(set_to_none=True)
++
++
++def test_r128_initial_parameters_identical_within_seed_and_distinct_across_seeds(base):
++    digests = {}
++    for seed in (0, 1, 2):
++        for arm in ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'):
++            with seeded(base, arm, seed) as model:
++                digests[seed, arm] = parameter_digest(model)
++        assert digests[seed, 'SEG-05'] == digests[seed, 'SEG-06'] == digests[seed, 'SEG-07']
++        assert digests[seed, 'SEG-04'] != digests[seed, 'SEG-05']
++    assert len({digests[s, 'SEG-05'] for s in (0, 1, 2)}) == 3
++    assert len({digests[s, 'SEG-04'] for s in (0, 1, 2)}) == 3
++
++
++IDS = ([[11, 29, 73, 181, 8]], [[71, 9, 18, 41]])
++
++
++@pytest.mark.parametrize('seed', [1, 2], ids=['seed1', 'seed2'])
++@pytest.mark.parametrize('arm', ['SEG-04', 'SEG-06', 'SEG-07'])
++def test_no_channel_identity_at_new_seed(base, arm, seed):
++    a, b = (torch.tensor(x, device='cuda') for x in IDS)
++    with torch.no_grad():
++        untouched = base(b, use_cache=False).logits
++    with seeded(base, arm, seed) as model, torch.no_grad():
++        model.eval()
++        if isinstance(model, BranchModel):
++            for layer in model.adapters().values():
++                layer.side.fusion.P.normal_(std=.03)
++        else:
++            for target in model._targets.values():
++                target.B.normal_(std=.03)
++        direct, _ = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b))
++        discarded, _ = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), force_first=True)
++        assert torch.equal(direct.logits, discarded.logits)
++        assert not torch.equal(direct.logits, untouched)
++
++
++@pytest.mark.parametrize('seed', [1, 2], ids=['seed1', 'seed2'])
++def test_zero_initialized_keep_matches_base_at_new_seed(base, seed):
++    a, b = (torch.tensor(x, device='cuda') for x in IDS)
++    with torch.no_grad():
++        expected = base(b, use_cache=False).logits
++    with seeded(base, 'SEG-05', seed) as model, torch.no_grad():
++        model.eval()
++        initial, _ = forward(model, 'SEG-05', a, torch.ones_like(a), b, torch.ones_like(b))
++        assert torch.equal(initial.logits, expected)
++
++
++# ---- artifacts and full synthetic analysis ----
++
++ORDERS = {0: seg_artifacts.ORDER_SHA256_BY_SEED[0], 1: 'c'*64, 2: 'e'*64}
++
++
++def as_seed(root, arm, seed, digest='d'*64):
++    manifest = json.loads((root/'manifest.json').read_text())
++    config = json.loads((root/'config.json').read_text())
++    write(root/'config.json', {**config, 'seed': seed})
++    manifest.update({'contract': 'E-0027@1', 'seed': seed})
++    manifest['metrics'].update({'seed': seed, 'plan.order_sha256': ORDERS[seed], 'initial.adapter_sha256': digest})
++    seal(root, manifest)
++
++
++@pytest.fixture
++def orders(monkeypatch):
++    monkeypatch.setattr(seg_artifacts, 'ORDER_SHA256_BY_SEED', ORDERS)
++
++
++def test_new_seed_artifact_binding(tmp_path, monkeypatch, orders):
++    root = tmp_path/'ATT-0001-1'
++    formal(root, 'SEG-06', monkeypatch); as_seed(root, 'SEG-06', 1)
++    seg_artifacts.validate(root, 'SEG-06', SOURCE, 1)
++    for seed in (0, 2):
++        with pytest.raises(ValueError):
++            seg_artifacts.validate(root, 'SEG-06', SOURCE, seed)
++    other = tmp_path/'ATT-0002-1'
++    formal(other, 'SEG-01', monkeypatch)
++    with pytest.raises(ValueError, match='not registered'):
++        seg_artifacts.validate(other, 'SEG-01', SOURCE, 1)
++    manifest = json.loads((root/'manifest.json').read_text()); del manifest['metrics']['initial.adapter_sha256']
++    seal(root, manifest)
++    with pytest.raises(ValueError, match='digest'):
++        seg_artifacts.validate(root, 'SEG-06', SOURCE, 1)
++    monkeypatch.setattr(seg_artifacts, 'ORDER_SHA256_BY_SEED', {**ORDERS, 1: None})
++    with pytest.raises(ValueError, match='not registered'):
++        seg_artifacts.validate(root, 'SEG-06', SOURCE, 1)
++
++
++@pytest.fixture
++def grid(tmp_path, monkeypatch, orders):
++    base = tmp_path/'ATT-0100-1'; formal(base, 'SEG-00', monkeypatch)
++    labels = {**SEED0, 'SEG-00': 600}
++    report = {'contract': 'E-0025@1', 'stage': 'final', 'rules': {'1': {'passed': True}},
++              'counts': {k: {'piqa': [600, 1000], 'boolq': [v, 1000]} for k, v in labels.items()},
++              'summary': {k: {'synthetic': True} for k in (*SEED0, *(f'SEG-05/{x}' for x in seg_seed_analysis.KINDS))},
++              'bootstrap': {'max_control_gain': {'128': {}}, 'pairs': {}}}
++    write(tmp_path/'seed0.json', report)
++    monkeypatch.setattr(seg_seed_analysis, 'SEED0_ANALYSIS_SHA256', reference(tmp_path/'seed0.json')['sha256'])
++    monkeypatch.setattr(seg_seed_analysis, 'BASE_SOURCE', SOURCE)
++    rows = predictions()
++    mapping = donor_indices(rows, 'R1')
++    donors = [{'task': r['task'], 'recipient': r['id'], 'donor': rows[mapping[i]]['id']} for i, r in enumerate(rows)]
++    runs, interventions, attempts = {}, {}, []
++    n = 101
++    for seed in (1, 2):
++        runs[str(seed)] = {}
++        for arm in ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'):
++            root = tmp_path/f'ATT-{n:04}-1'; n += 1
++            formal(root, arm, monkeypatch); as_seed(root, arm, seed, 'f'*64 if arm == 'SEG-04' else 'd'*64)
++            runs[str(seed)][arm] = str(root); attempts.append(root.name)
++        _, refs, _ = seg_artifacts.validate(runs[str(seed)]['SEG-05'], 'SEG-05', SOURCE, seed)
++        iv = tmp_path/f'ATT-{n:04}-1'; n += 1
++        write(iv/'conditions.json', {k: {'predictions': rows, 'audit': {'donors': donors if k == 'iv_swap' else []}}
++                                     for k in seg_seed_analysis.KINDS})
++        write(iv/'provenance.json', {'training': refs, 'checkpoint_files': json.loads((Path(runs[str(seed)]['SEG-05'])/'checkpoint.json').read_text()),
++                                    'training_source': SOURCE, 'evaluation_source': SOURCE})
++        write(iv/'manifest.json', {'status': 'complete', 'contract': 'E-0027@1', 'seed': seed, 'stage': 'intervention',
++                                  'arm': 'SEG-05', 'metrics': {'off.identical_to_Base_seg': True}, 'validator': {'passed': True}})
++        interventions[str(seed)] = str(iv); attempts.append(iv.name)
++    check = tmp_path/'ATT-0200-1'/'manifest.json'
++    write(check, {'status': 'complete', 'source_commit': SOURCE, 'validator': {'passed': True},
++                  'metrics': {'no_channel_identity': True, 'no_channel_seeds': [1, 2]}})
++    attempts += ['ATT-0200-1', 'ATT-0300-1']
++    observations = tmp_path/'costs.json'
++    write(observations, [{'attempt_id': a, 'execution_state': 'ended', 'usage': {'accounting_ref': 'pbs:'+a,
++        'basis': 'measured', 'unit': 'mig_instance_hours', 'quantity': 1.1, 'source_ref': 'fixture'}} for a in attempts])
++    return {'seed0_analysis': reference(tmp_path/'seed0.json'), 'base_run': str(base), 'training_source': SOURCE,
++            'evaluation_source': SOURCE, 'runs': runs, 'interventions': interventions,
++            'deterministic_checks': {'manifest_ref': reference(check)},
++            'observations': [str(observations)], 'accounted_attempts': attempts}
++
++
++def test_full_synthetic_three_seed_analysis(grid):
++    report = seg_seed_analysis.analyze(grid)
++    # New seeds: every arm 60.0% -> gain 0 at both seeds -> challenges.
++    assert report['direction'] == 'challenges'
++    assert report['rules']['1']['passed'] is True
++    assert report['per_seed']['1']['gain']['pp'] == 0
++    assert report['G']['numerator'] * 3000 == 44 * report['G']['denominator']
++    assert report['cost']['node_h'] == pytest.approx(12*1.1*.25) and report['cost']['within_cap'] is False
++    assert set(report['seeds']['1']['bootstrap']['max_control_gain']) == {'piqa', 'boolq', 'macro'}
++    assert report['seeds']['1']['normal_training_prediction_flips'] == 0
++
++
++@pytest.mark.parametrize('failure', ['digest', 'seed0', 'cost', 'donor', 'checks'])
++def test_three_seed_analysis_rejects_or_flags_failures(grid, failure, monkeypatch):
++    if failure == 'digest':
++        root = Path(grid['runs']['2']['SEG-07'])
++        as_seed(root, 'SEG-07', 2, 'a'*64)
++        assert seg_seed_analysis.analyze(grid)['direction'] == 'invalid_implementation'
++        return
++    if failure == 'seed0':
++        monkeypatch.setattr(seg_seed_analysis, 'SEED0_ANALYSIS_SHA256', '0'*64)
++    elif failure == 'cost':
++        grid['accounted_attempts'] = grid['accounted_attempts'][:-1]
++    elif failure == 'donor':
++        path = Path(grid['interventions']['1'])/'conditions.json'
++        conditions = json.loads(path.read_text()); conditions['iv_swap']['audit']['donors'][0]['donor'] = 999
++        path.write_text(json.dumps(conditions))
++    elif failure == 'checks':
++        path = Path(grid['deterministic_checks']['manifest_ref']['path'])
++        write(path, {'status': 'complete', 'source_commit': SOURCE, 'validator': {'passed': True},
++                     'metrics': {'no_channel_identity': True, 'no_channel_seeds': [1]}})
++        grid['deterministic_checks'] = {'manifest_ref': reference(path)}
++    with pytest.raises(ValueError):
++        seg_seed_analysis.analyze(grid)
