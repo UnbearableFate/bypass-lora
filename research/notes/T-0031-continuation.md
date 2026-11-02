@@ -1,3 +1,74 @@
+# Current checkpoint: eta locked; X-01 interventions running
+
+All 14 initial formal jobs ended successfully and their application manifests
+passed. All 13 training arms completed 13,115 steps / 26,230 examples and
+same-job export/reload checks. Native terminal observations and usage are
+imported once from T-0031-formal-terminal-observations.json. All result imports
+are in T-0031-initial-result-imports.json (RES-0303..0317, excluding RES-0312,
+which is the eta plan). No Part B dev aggregate was read before the lock.
+
+Calibration-only plan: ATT-0342-1 / PBS3776771 / RES-0312. All 12 calibration
+producers passed source/init/budget/row checks. Neither tap triggered an
+endpoint extension, so NO additional training is authorized by rule 5.
+
+Final calibration-only lock: ATT-0343-1 / PBS3776823 / RES-0318.
+- QK eta*=0.25 (RB1-09).
+- X eta*=1 (ETA-X-1).
+- Neither is an extended boundary.
+- Lock: /work/xg24i002/x10041/bypass-lora/runs/ATT-0343-1/eta-lock.json
+- SHA256: e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60
+- The hash and choices are recorded in T-0031-eta-lock-record.json BEFORE
+  any Part B dev aggregation. Rule 5 screening evidence has been recorded
+  separately; do not create a duplicate rule 5 evidence item later.
+- Plan and lock each used 2 scheduler seconds; native usage is recorded in
+  T-0031-eta-plan-observations.json and T-0031-lock-intervention-observations.json.
+
+X-01's six frozen interventions are RUN-0344 / ATT-0344-1 / PBS3776824.opbs,
+running on verified compute allocation mg1109. Scientific source remains
+exactly 0f22cd60f45674ec20b800fdd455f80c2b6d46dd; passing RV-0088 and the
+scoped inherited coverage release D-0061 apply. Requested 50 minutes from
+the measured ~1,850-second estimate. Output:
+ /work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1/
+Result and terminal usage are pending, not assumed zero.
+
+One sealed notification, expected 1:
+N-20261102-214849-c9e1 / T0031-X01-interventions, notifier miyabi-g2.
+The daemon was ensured running (PID3129003). Coordinator MSG-0881 has:
+ /work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-214849-c9e1 --notifier miyabi-g2
+Coordinator owns waiting and restarts this role. Do not poll in a loop.
+
+On wake:
+1. Verify PBS3776824 and the application manifest/conditions/provenance.
+   Import native terminal observations and usage into NEW note file
+   T-0031-intervention-terminal-observations.json, then import its result.
+2. Final analysis input is already prepared in T-0031-analysis-input.json.
+   It points to the immutable eta-lock/hash, all 13 training producers,
+   baseline ATT-0335-1, X-01 interventions ATT-0344-1, registration/tests
+   ATT-0315-1, and all cost exports. It intentionally names the pending
+   intervention terminal export; create that file before running analysis.
+3. Register a final analysis run before execution with resource miyabi,
+   exact source0f22cd6, reviewed T-0031-run.pbs, TAP_JOB=analysis and
+   TAP_ANALYSIS_INPUT=<absolute path to T-0031-analysis-input.json>. Explicit
+   reviews RV-0076/77/78/79/80/81/82/88 and release D-0061 remain applicable.
+   Source files and original launchers have not changed.
+4. Execute via PBS. The reviewed analysis validates lock reconstruction,
+   final checkpoints/provenance, step0/Base gates, off/Base, reloads, counts,
+   budgets/order/LR, curves, RMS, and all exact preregistered thresholds. It
+   produces paired10k-bootstrap descriptive intervals and rule outcomes.
+5. Record the remaining rule-by-rule evidence (rule1 diagnostic; other
+   rules screening; rule5 already recorded), actual total cost including
+   final analysis, limitations, and deliver. Do NOT set hypothesis status,
+   stop a route or release new seeds: coordinator owns conclusion review.
+
+Before intervention launch, the native ledger reported 15.468888 MIG-hours
+for the 17 initial/preformal jobs, well below the 22-MIG-hour equivalent of
+the 5.5-node-hour cap. Selection adds only 4 measured seconds. The original
+worst-case estimate5.207572029node-hours reserved TWO endpoint trainings,
+which were not needed. Still include every check, selection, intervention
+and final analysis in actual usage. Retain all checkpoints until acceptance.
+
+Older initial-grid/reference details follow for provenance.
+
 # T-0031 continuation: initial formal grid submitted
 
 Task T-0031 owns E-0028@1 (H-0021@1, H-0022@2). Researcher-1 executes;

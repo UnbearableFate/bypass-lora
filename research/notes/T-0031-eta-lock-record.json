@@ -1,0 +1,25 @@
+{
+  "contract": "E-0028@1",
+  "rule": 5,
+  "attempt": "ATT-0343-1",
+  "job_id": "3776823.opbs",
+  "eta_lock": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0343-1/eta-lock.json",
+  "sha256": "e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60",
+  "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "choices": {
+    "QK": {
+      "eta": 0.25,
+      "extension": null,
+      "grid_boundary": false
+    },
+    "X": {
+      "eta": 1,
+      "extension": null,
+      "grid_boundary": false
+    }
+  },
+  "selection_split": "calibration",
+  "pre_dev_aggregation": true,
+  "initial_plan_no_extensions": true,
+  "manifest_count": 12
+}

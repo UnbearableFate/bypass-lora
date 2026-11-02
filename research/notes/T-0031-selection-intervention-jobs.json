@@ -1,0 +1,47 @@
+{
+  "task": "T-0031",
+  "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "eta_plan": {
+    "run": "RUN-0342",
+    "attempt": "ATT-0342-1",
+    "result": "RES-0312",
+    "job_id": "3776771.opbs"
+  },
+  "eta_lock": {
+    "contract": "E-0028@1",
+    "rule": 5,
+    "attempt": "ATT-0343-1",
+    "job_id": "3776823.opbs",
+    "eta_lock": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0343-1/eta-lock.json",
+    "sha256": "e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60",
+    "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+    "choices": {
+      "QK": {
+        "eta": 0.25,
+        "extension": null,
+        "grid_boundary": false
+      },
+      "X": {
+        "eta": 1,
+        "extension": null,
+        "grid_boundary": false
+      }
+    },
+    "selection_split": "calibration",
+    "pre_dev_aggregation": true,
+    "initial_plan_no_extensions": true,
+    "manifest_count": 12,
+    "result": "RES-0318"
+  },
+  "intervention": {
+    "run": "RUN-0344",
+    "attempt": "ATT-0344-1",
+    "spec_digest": "blake2b:b1bc1e1d9cd2b2eb5c9516a3ab2dcc16b6926bd1b15b6dc8753a727c781f1599",
+    "job_id": "3776824.opbs",
+    "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1",
+    "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-intervention-20261102-214848-95076a.log",
+    "notification": "N-20261102-214849-c9e1",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-214849-c9e1 --notifier miyabi-g2",
+    "status": "running; guard verified on mg1109; result pending"
+  }
+}

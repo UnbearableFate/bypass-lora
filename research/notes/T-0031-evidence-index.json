@@ -1,0 +1,31 @@
+{
+  "task": "T-0031",
+  "contract": "E-0028@1",
+  "preformal_diagnostics": [
+    "EV-0139",
+    "EV-0140"
+  ],
+  "rule_evidence": {
+    "5": {
+      "evidence": "EV-0153",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "Calibration-only eta lock: QK0.25, X1; no endpoint extensions; SHA recorded before any PartB dev aggregate.",
+      "attempt": "ATT-0343-1",
+      "result": "RES-0318",
+      "eta_lock_sha256": "e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60"
+    }
+  },
+  "remaining_rules": [
+    1,
+    2,
+    3,
+    4,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "note": "Final implementation/outcome evidence awaits X-01 interventions and locked PBS analysis. No hypothesis status or route decision is recorded by researcher-1."
+}
