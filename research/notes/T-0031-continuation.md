@@ -1,173 +1,132 @@
-# T-0031 continuation
+# T-0031 continuation: initial formal grid submitted
 
-## Current checkpoint: RV-0088 passed; inherited coverage disposition pending
+Task T-0031 owns E-0028@1 (H-0021@1, H-0022@2). Researcher-1 executes;
+coordinator owns route/status decisions. Branch sr/researcher-1/T-0031.
+Local shell is login/control only; ALL tests/evaluation/analysis run through
+miyabi-mcp PBS. No local workload fallback, merge, rebase or push.
 
-RV-0088 passed with0findings. First formal X-01 registration is RUN-0321 /
-ATT-0321-1, prepared only. It has not been submitted; no formal workload has
-run. The explicit inherited reviews plus RV-0088 still give4stale inherited
-paths (bypass_model, rb_sink_read, test_rb_sink_read, test_rb1_artifacts).
-See `T-0031-review-coverage.md` for inspected evidence. The coordinator was
-asked to resolve this remaining flag before costly launch; wait for that
-answer. No code change is needed or authorized just to silence the flag.
+Exact scientific source for EVERY formal training, baseline, intervention,
+selection and final analysis:
+0f22cd60f45674ec20b800fdd455f80c2b6d46dd.
+Its read-only snapshot already exists. Do not use later note-only HEAD commits
+for scientific jobs: init registration/tests and selection require exact0f22.
+Frozen environment envs/3c916b51337d-cuda, cuda/12.8, one committed uv.lock.
 
-Once released, reuse ATT-0321-1 for X-01 and follow the formal-plan JSON for
-the other12trainings plus baseline evaluation. Exact source remains0f22cd6;
-both cost and scientific review gates passed. Add RV-0078/0079 as applicable
-for the unchanged bypass_model file, and record the coordinator disposition
-for any remaining automatic stale tag. Do not run or duplicate ATT-0321-1
-before that disposition.
+RV-0088 passed with zero findings. D-0060 defines hardware-aware strict
+reference gates (pinned on accepted2g; same allocation across profiles).
+D-0061 explicitly authorizes remaining inherited stale flags: unused sink
+diagnostic/test files and test_rb1_artifacts; bypass_model is byte-identical
+to RV-0078/0079's accepted version. All remaining registrations name
+RV-0076/77/78/79/80/81/82/88. ATT-0321-1 predates adding78/79; D-0061 explicitly
+covers it too. Release rationale is recorded per attempt in
+T-0031-release-observations.json. No code was changed to silence a flag.
 
-## Latest checkpoint: waiting for RV-0088
+All13initial new training arms PLUS RB1-09 dev/calibration evaluation are
+registered and SUBMITTED. Exact attempt/job/spec/log map:
+T-0031-formal-jobs.json. Complete registration inventory:
+T-0031-formal-registrations.json. Request keys are sr:<attempt>; reconcile an
+uncertain submission using that key rather than launching a duplicate.
 
-RV-0088 is review2of2 in the RV-0087 round, assigned to reviewer-2. Its exact
-scientific source is0f22cd60f45674ec20b800fdd455f80c2b6d46dd; source and the
-two training/smoke launchers are unchanged. Leave reviewed files unchanged
-until its answer. Later commits contain only task records/notes and a small
-standalone cost-audit PBS wrapper.
+| Arm | Attempt | PBS job |
+|---|---|---|
+| X-01 | ATT-0321-1 | 3775250.opbs |
+| X-02 | ATT-0322-1 | 3775251.opbs |
+| X-03 | ATT-0323-1 | 3775254.opbs |
+| ETA-X-0.0625 | ATT-0324-1 | 3775255.opbs |
+| ETA-X-0.125 | ATT-0325-1 | 3775257.opbs |
+| ETA-X-0.5 | ATT-0326-1 | 3775258.opbs |
+| ETA-X-1 | ATT-0327-1 | 3775260.opbs |
+| ETA-X-2 | ATT-0329-1 | 3775262.opbs |
+| ETA-QK-0.0625 | ATT-0330-1 | 3775264.opbs |
+| ETA-QK-0.125 | ATT-0331-1 | 3775265.opbs |
+| ETA-QK-0.5 | ATT-0332-1 | 3775266.opbs |
+| ETA-QK-1 | ATT-0333-1 | 3775267.opbs |
+| ETA-QK-2 | ATT-0334-1 | 3775268.opbs |
+| RB1-09 eval | ATT-0335-1 | 3775269.opbs |
 
-Recheck smoke ATT-0315-1 is imported as **RES-0284**, ended/success. Native
-usage0.193333MIGh was imported once from the terminal observation. The logged
-nvidia-smi AND torch profile is **1g.24gb**, despite the executor ledger's
-generic2g label. All112tests, full paired initialization/tap/count registry,
-and32-row same-job legacy/new-source GPU comparison passed. NoT0calibration
-artifact was written. The D-0060 Base-reference branch executed on this
-actual1g allocation (mg1097, PBS3774971).
+ATT-0328-1 is NOT part of this task. Initial native scheduler observations
+(queued/running only, no metrics) are imported from
+T-0031-formal-initial-observations.json. Last export had X-01, X-02 and baseline
+running, other trainings queued; status will change. Application results and
+terminal usage are pending, never zero by assumption.
 
-Cost/reference audit ATT-0316-1 / PBS3775143 is imported as **RES-0289**,
-ended/success,1scheduler second /0.000278nativeMIGh. Its compute guard passed
-onmg1097. It verifies all4representative initial predictions exactly equal
-their same-allocation Base predictions. It projects **4.542691585node-hours**
-for the initial grid and **5.207572029node-hours** with both endpoint
-extensions, including fallback passes for every training, baseline legacy
-dev, both measured smokes and120s of other checks/analysis. It uses comparable
-2g timings from ATT-0314-1; the1g short-smoke timings happened slightly faster
-and are descriptive. Cap remains5.5node-hours. See `T-0031-cost.md` and
-`/work/xg24i002/x10041/bypass-lora/runs/ATT-0316-1/cost.json`.
+ONE notification covers all14jobs, sealed:
+N-20261102-185642-d15b, name T0031-initial-grid, notifier miyabi-g2.
+Daemon ensure reports running; completion/early failure reaches coordinator.
+Coordinator was sent the listener:
+ /work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2
+Coordinator owns waiting and restarts this researcher. Do not poll in a loop.
 
-Next: read RV-0088. If it passes, follow `T-0031-formal-plan.json` to register
-and launch the13new initial trainings plus accepted RB1-09 dev/calibration
-re-evaluation at the exact0f22cd6 source. Explicitly name inherited reviews
-and RV-0088; resolve any stale check with coordinator. No formal attempt has
-been registered or submitted yet. If medium-or-higher findings remain after
-RV-0088, coordinator owns the round decision. No PartBdev aggregation until
-the calibration-only eta-lock is written and its SHA256 recorded.
+Cost cap is5.5node-hours. PBS audit ATT-0316-1/RES-0289 passes:
+initial grid4.542691585, worst with both endpoint trainings5.207572029nodeh.
+Planning uses comparable2g timings from ATT-0314-1, reserves same-allocation
+Base for EVERY training, baseline legacy dev, both smokes, interventions,
+up to2extensions and120s other checks/selection/analysis. See T-0031-cost.md
+and runs/ATT-0316-1/cost.json. Retries and extra work must still fit the cap.
+MIG usage converts by native instance-hours*0.25. Import executor usage once
+per accounting_ref; no invented per-run split or usage duplication.
 
-## Current checkpoint after RV-0087
+Preformal records:
+- ATT-0314-1/RES-0283:99tests plus init/timing/full calibration smoke on2g.
+  678scheduler seconds, native0.188333MIGh. EV-0139 diagnostic.
+- ATT-0315-1/RES-0284 at0f22:112tests, all init/tap/config/count checks and
+  32-row same-job accepted/new-source GPU comparison passed on actual1g.
+  696seconds, native0.193333MIGh. Ledger generic2g label is incorrect; both
+  nvidia-smi and torch reported1g. All4representative init predictions match
+  same-allocation Base. No calibration file for X-02/X-03.
+- ATT-0316-1/RES-0289: deterministic PBS cost/reference audit passed onmg1097,
+  1scheduler second/native0.000278MIGh. EV-0140 diagnostic covers revised
+  smoke+audit. All three terminal observations/usage are already imported.
 
-The first smoke completed successfully (RES-0283), all99tests and registration
-passed, and native terminal usage0.188333MIGh is imported exactly once.
-Diagnostic EV-0139 records only this pre-review engineering result. See
-`T-0031-cost.md` for observed timings and the initial4.36–5.00node-hour table.
+When initial jobs finish:
+1. Re-establish context; inspect exact scheduler jobs and application validity,
+   import native terminal observations/usage, and import producer manifests.
+   Register every new attempt BEFORE execution. Keep engineering failure
+   separate from scientific signal. Only explicit nonfinite TRAINING ETA
+   candidates are excluded by rule5; OOM/eval/infrastructure failure requires
+   resolution, not silent exclusion.
+2. NEVER aggregate or read/report PartBdev metrics before eta-lock. Native
+   scheduler records contain no dev metrics. Do not run rl run show E-0028
+   as an aggregate before lock. Importing manifests into records is permitted;
+   selection code reads only calibration fields/predictions.
+3. Build calibration-only input JSON in research/notes:
+   {manifests:[absolute final manifest paths], training_source_commit:0f22...,
+    registration:/work/xg24i002/x10041/bypass-lora/runs/ATT-0315-1/tap-registration.json}.
+   Initial12producers are X-01, ten ETA arms and baseline ATT-0335-1.
+   X-02/X-03 have no calibration and are excluded from this input.
+4. Register/run reviewed T-0031-run.pbs with TAP_JOB=eta-plan and
+   TAP_SELECTION_INPUT=<absolute input JSON> in PBS. If rule5 requests an
+   endpoint, register/train ONLY that endpoint per tap (at most one, eta1/32
+   or4), same source/seed/LR/budget. Check actual cost before releasing it.
+   All endpoint init configs/digests were included in registration.
+5. Once required endpoints complete, run TAP_JOB=eta-lock with all candidate
+   manifests. Writer uses exclusive creation, records hashes and selects
+   accuracy on4096calibration rows with exact tie/extension/nonfinite rules.
+   Import lock, record its SHA256 and provenance BEFORE any PartBdev aggregate.
+6. Run X-01's6frozen interventions via TAP_JOB=intervention,
+   TAP_TRAIN_RUN=/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1 and
+   TAP_TRAIN_SOURCE=0f22... . Can overlap endpoint work after producer checks.
+   Queue/walltime from measured cost, same0f22 source. RB1-09 interventions
+   are inherited (preregistered swap drop1.95pp).
+7. Prepare final analysis input for rb_tap_analysis.py at0f22, using:
+   eta_lock/eta_lock_sha256, calibration_manifests, training_source_commit,
+   training_runs(all13+required endpoints incl explicitly excluded candidates),
+   baseline_eval=ATT-0335-1, registration=ATT-0315-1/tap-registration.json,
+   smoke_manifest=ATT-0315-1/manifest.json, intervention_run,
+   base_run=ATT-0024-1,
+   reference_runs={RB1-07:ATT-0245-1,RB1-09:ATT-0247-1},
+   observations=[all task native exports incl3preformal jobs].
+   Register/run TAP_JOB=analysis with TAP_ANALYSIS_INPUT in PBS.
+8. Record one evidence item per sealed rule (implementation diagnostic, others
+   screening), honest finite/budget/reload/gate outcomes, bootstrap10k seed
+   20261101, limitations and measured total cost. No hypothesis status/route
+   change: coordinator owns conclusion review. Deliver only after all required
+   results/checks/evidence are complete.
 
-RV-0087 answered issues (1medium,4low). Coordinator decision **D-0060**
-authorizes the reviewer-proposed reference interpretation of sealed rule1:
-same2g profile keeps strict pinned predictions; another profile requires
-same-allocation Base for step0/off and the accepted E-0021 source for RB1-09
-compatibility. Cross-job differences on another profile and intervention
-normal-vs-training agreement are descriptive. Calibration must be written
-before prediction-gate failures. No tolerance or profile restriction.
-
-The code now implements D-0060 and all4low fixes. A new smoke must run on this
-commit before requesting RV-0087's one recheck from reviewer-2. Its tests
-include cross-profile matching local references, perturbed local references,
-strict2g failures, source-bound pytest and excluded-candidate provenance,
-full calibration-grid lock reconstruction/membership, and calibration-before-
-failure ordering. The smoke additionally runs a32-row old/new-source GPU
-compatibility comparison without using its quality scores.
-
-The revised PBS cost estimator reserves a same-allocation Base dev pass for
-EVERY training, an extra legacy-source baseline dev pass, both smokes, both
-possible endpoint trainings, and analysis. X-02/03 no longer get calibration
-passes. Formal release still needs this measured projection<=5.5node-hours
-and a passing recheck. No formal attempt has been registered or executed.
-
-Selection inputs now require `{manifests, training_source_commit,
-registration}`. The registration is SHA256-bound into the eta-lock and every
-candidate's source/init is checked before selection; excluded candidates
-also require a complete formal config with no smoke/partial fields.
-
-The older sections below preserve the initial smoke checkpoint and general
-execution continuation; current facts above supersede its running/pending
-wording and source version.
-
-Task E-0028@1, claimed by researcher-1. Coordinator owns route decisions.
-Source branch `sr/researcher-1/T-0031`, implementation commit
-`a6afccbec614e594ddf3c882787d86b5a2721b94`.
-
-The initial implementation adds the X-01/02/03 and ETA-QK/X arm registry,
-fixed eta plumbing, full final-checkpoint calibration scoring, paired-init and
-exact normalized-input checks, step0 vbar/Z RMS, calibration-only eta selection,
-strict endpoint/tie/nonfinite handling, and a locked dev-analysis entrypoint.
-The existing C_up, FeatureTap and LatentReader operators are reused unchanged.
-All new training arms use RBc-C's accepted LR0.001 and R1 seed0 budget/order.
-
-Review RV-0087 was requested against the exact source plus the two PBS scripts;
-the coordinator received MSG-0828. Do not edit the review's files until its
-answer. No formal training and no new dev quality aggregation has occurred.
-The smoke's quality scores are discarded.
-
-Pre-review smoke is RUN-0314 / ATT-0314-1 / PBS3774818.opbs, submitted through
-miyabi-mcp with key `sr:ATT-0314-1`, one debug-mig instance, expected600s,
-requested900s. Immutable snapshot is the implementation commit under
-`/work/xg24i002/x10041/bypass-lora/snapshots/`. Output root is
-`/work/xg24i002/x10041/bypass-lora/runs/ATT-0314-1/`.
-Spec digest:
-`blake2b:5ce7a5130c8058076e159292ac5772b7c40208f756ae4ea5f501e311c959b771`.
-
-The allocation guard returned ok=true on mg1098 with PBS3774818.opbs in R.
-`pytest.txt` reports **99 passed in45.35s**. At this checkpoint the all-arm
-initialization checks and four-arm80-step smoke / full calibration timing
-are still running. Read only timing/implementation summaries before review;
-do not inspect or aggregate smoke quality scores.
-
-Notification N-20261102-175801-602b (`T0031-smoke-v1`) is sealed with one job,
-notifier miyabi-g2. The daemon is running. Coordinator MSG-0829 has the
-listener command and continuation:
-`/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-175801-602b --notifier miyabi-g2`.
-
-Resume steps:
-
-1. Re-establish login/control context. Get PBS3774818 details and application
-   status. Import native executor observations/usage exactly once. The initial
-   running observation is already recorded as OBS-96a4ccdf30ef51d6.
-2. Inspect smoke manifest, pytest, tap-registration and cost-estimate.json;
-   import the manifest and add diagnostic evidence. If the smoke failed,
-   investigate its bounded logs and coordinate review fixes after RV-0087's
-   answer. Never rerun a workload on login.
-3. Read RV-0087, fix concrete findings, commit and request its one recheck.
-   Re-run changed tests and registration in PBS at the final reviewed source.
-4. Update a measured cost table in these task notes before training. Cap is
-   **5.5 node-hours**, including smoke, all13initial trainings, up to2endpoint
-   trainings, every eval/intervention, checks and analysis. MIG conversion is
-   measured instance-seconds/14400. If predicted cost exceeds the cap, ask the
-   coordinator to revise the contract before formal submission.
-5. Register every formal attempt before execution using the immutable reviewed
-   commit, resource miyabi, and explicit inherited reviews RV-0076/0077 and
-   RV-0080/0081/0082 plus the current E-0028 passing review. Resolve any stale
-   coverage with the coordinator. Launch `T-0031-run.pbs` with TAP_JOB=train
-   and TAP_ARM for X-01/02/03 plus10initial ETA arms; final calibration runs in
-   place after the same-job dev export/reload check. TAP_JOB=baseline re-evals
-   the accepted RB1-09 checkpoint on dev (rule1g) and calibration in one job.
-6. After all12initial calibration producers are complete, run eta-plan in
-   PBS using a JSON input `{ "manifests": [absolute manifest paths] }`.
-   Submit only the triggered endpoint per tap, at most once, then eta-lock.
-   The lock contains SHA256 of every calibration producer and prediction file;
-   its writer uses exclusive creation. Record its SHA256 BEFORE opening any
-   PartB dev aggregate. ETA-grid nonfinite training is excluded explicitly;
-   infrastructure/OOM/evaluation failures require engineering resolution.
-7. Run all6X-01 frozen interventions with TAP_JOB=intervention, TAP_TRAIN_RUN
-   and TAP_TRAIN_SOURCE. Inherit accepted RB1-09 interventions; QK swap drop
-   is the preregistered1.95pp. The final analysis entrypoint requires the
-   calibration lock and all producer/provenance bindings before opening dev.
-8. Register/execute locked analysis in PBS, record one evidence item per
-   preregistered rule (implementation diagnostic, outcomes screening), leave
-   hypothesis statuses/route decisions to coordinator conclusion review, then
-   deliver with source/artifacts/actual cost and limitations.
-
-Accepted reference runs remain retained:
-Base ATT-0024-1, RB1-07 ATT-0245-1, RB1-09 ATT-0247-1.
-Model/tokenizer revision da87bfb608c14b7cf20ba1ce41287e8de496c0cd;
-environment envs/3c916b51337d-cuda, cuda/12.8, torch2.10.0+cu128,
-uv.lock SHA25631429457ceece707abf1505af6e6210b44a6e2817d2527241892f0587aca47a3.
-The sealed contract at the project root is authoritative; no A2 confirmation
-or official validation rows may be read.
+Source scripts and constraints:
+- sealed contract /work/xg24i002/x10041/bypass-lora/research/experiments/E-0028.md;
+- constraints at project/docs/constraints.md; no A2 confirmation or official
+  validation rows may be opened;
+- init A=randn/sqrt(fan_in), Cu=0, R=I; only eta scalar differs within tap;
+- full13115steps/26230examples/2000069input tokens/387653loss tokens;
+- R1 seed0/LR0.001, locked order33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf.

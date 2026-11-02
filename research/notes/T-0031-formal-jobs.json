@@ -1,0 +1,741 @@
+{
+  "task": "T-0031",
+  "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "review": "RV-0088",
+  "release": "D-0061",
+  "group_expected": 14,
+  "notification": {
+    "notification": {
+      "id": "N-20261102-185642-d15b",
+      "name": "T0031-initial-grid",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3775250.opbs",
+        "3775251.opbs",
+        "3775254.opbs",
+        "3775255.opbs",
+        "3775257.opbs",
+        "3775258.opbs",
+        "3775260.opbs",
+        "3775262.opbs",
+        "3775264.opbs",
+        "3775265.opbs",
+        "3775266.opbs",
+        "3775267.opbs",
+        "3775268.opbs",
+        "3775269.opbs"
+      ],
+      "expected": 14,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "T-0031 initial13trainings plus RB1-09 dev/calibration eval ended. Resume researcher-1: inspect application validity, import native observations/usage/results; never aggregate PartB dev before calibration-only eta-plan/extensions/eta-lock with SHA256. Keep source0f22cd6, RV0088/D0061 and5.5nodeh cap. See research/notes/T-0031-formal-jobs.json.",
+      "created_at": "2026-11-02T18:56:42+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T18:56:25+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    }
+  },
+  "jobs": [
+    {
+      "arm": "X-01",
+      "eta": 0.25,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "run": "RUN-0321",
+      "attempt": "ATT-0321-1",
+      "spec_digest": "blake2b:50435cdf6fbfd704de4d8fb5b79cb36914af1195af3e5aba6d537b9662f7c2bf",
+      "code_review": {
+        "changed": {
+          "src/bypass_model.py": [
+            "RV-0002",
+            "RV-0009",
+            "RV-0060",
+            "RV-0064"
+          ],
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        },
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "source": "commit 0f22cd60f456",
+        "status": "stale"
+      },
+      "job_id": "3775250.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-x-01-20261102-185641-81d9a9.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775250/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "X-02",
+      "eta": 0.25,
+      "expected_seconds": 4323,
+      "walltime": "01:50:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-X-02.json",
+      "run": "RUN-0322",
+      "attempt": "ATT-0322-1",
+      "spec_digest": "blake2b:f6cefb2721790d9694370508a1f1628a26d60454e531742c5ae97b89b3417715",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775251.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0322-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-x-02-20261102-185645-12fc6a.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775251/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "X-03",
+      "eta": 0.25,
+      "expected_seconds": 4321,
+      "walltime": "01:50:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-X-03.json",
+      "run": "RUN-0323",
+      "attempt": "ATT-0323-1",
+      "spec_digest": "blake2b:d642c77938a16a2c42124466fe2450c7914163e1f74ae4ba5a191de10cf33aaf",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775254.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0323-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-x-03-20261102-185648-c99fc4.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775254/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-X-0.0625",
+      "eta": 0.0625,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-0.0625.json",
+      "run": "RUN-0324",
+      "attempt": "ATT-0324-1",
+      "spec_digest": "blake2b:202e1c262e7f1a6e130517a919f16ee7f332947f451f6ed0497e9e23b80f2e31",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775255.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0324-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-x-0-0625-20261102-185651-3eadbc.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775255/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-X-0.125",
+      "eta": 0.125,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-0.125.json",
+      "run": "RUN-0325",
+      "attempt": "ATT-0325-1",
+      "spec_digest": "blake2b:c07cebd6b5ea9e28268c62913ea359d458a70855dffadc91cd5057c1ef2cca05",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775257.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0325-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-x-0-125-20261102-185749-6d3ff5.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775257/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-X-0.5",
+      "eta": 0.5,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-0.5.json",
+      "run": "RUN-0326",
+      "attempt": "ATT-0326-1",
+      "spec_digest": "blake2b:bab6bac1e1e0d58732622ce0edb2bb83535456a9c62e7fb528ab340cd30fc2b8",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775258.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0326-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-x-0-5-20261102-185753-763221.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775258/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-X-1",
+      "eta": 1,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-1.json",
+      "run": "RUN-0327",
+      "attempt": "ATT-0327-1",
+      "spec_digest": "blake2b:dd5b653b11961817641d74cbe1cfa8bf64e7afff4917a2052f69e95f7f5b81a1",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775260.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0327-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-x-1-20261102-185756-87c002.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775260/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-X-2",
+      "eta": 2,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-2.json",
+      "run": "RUN-0329",
+      "attempt": "ATT-0329-1",
+      "spec_digest": "blake2b:150c8106b4906466d799338c672260b2efd34f858469f9de711f88f78132f8f3",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775262.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0329-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-x-2-20261102-185759-5ba49c.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775262/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-QK-0.0625",
+      "eta": 0.0625,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-0.0625.json",
+      "run": "RUN-0330",
+      "attempt": "ATT-0330-1",
+      "spec_digest": "blake2b:4faf62da4129602863bd73e813cc8f496f97bcbb276049029ba2fac6b2a4fe6f",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775264.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0330-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-qk-0-0625-20261102-185835-bc3234.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775264/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-QK-0.125",
+      "eta": 0.125,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-0.125.json",
+      "run": "RUN-0331",
+      "attempt": "ATT-0331-1",
+      "spec_digest": "blake2b:5179715e137c963468fa450e7f03eb89137a7f9c45e29b0b7dd57353dec84c84",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775265.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0331-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-qk-0-125-20261102-185838-59288a.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775265/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-QK-0.5",
+      "eta": 0.5,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-0.5.json",
+      "run": "RUN-0332",
+      "attempt": "ATT-0332-1",
+      "spec_digest": "blake2b:90cd28512b2aa4b7f89ebf1e5fb79674f9ff1be37296a7f23cf8ff30ee0b5557",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775266.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0332-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-qk-0-5-20261102-185842-c15b0a.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775266/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-QK-1",
+      "eta": 1,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-1.json",
+      "run": "RUN-0333",
+      "attempt": "ATT-0333-1",
+      "spec_digest": "blake2b:4d9232a30e502c75c26fde2dd43236d767fe81c7a85efa1fa3e06484a71b7542",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775267.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0333-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-qk-1-20261102-185845-f0fbaf.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775267/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "ETA-QK-2",
+      "eta": 2,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-2.json",
+      "run": "RUN-0334",
+      "attempt": "ATT-0334-1",
+      "spec_digest": "blake2b:3d1f4012153a24de4d20f6a66aa632c27594b1b053a8cfbdcb517b8881db9693",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775268.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0334-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-eta-qk-2-20261102-185850-fb0b50.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775268/record.json",
+      "submitted_state": "queued",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    },
+    {
+      "arm": "RB1-09",
+      "job_mode": "baseline",
+      "queue": "debug-mig",
+      "expected_seconds": 800,
+      "walltime": "00:20:00",
+      "mode": "baseline",
+      "spec_path": "research/notes/T-0031-spec-RB1-09.json",
+      "run": "RUN-0335",
+      "attempt": "ATT-0335-1",
+      "spec_digest": "blake2b:55428469cd56d0670a3064ccab0c749bfa584c65772d0f3ae518e7eefc68f52d",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      },
+      "job_id": "3775269.opbs",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0335-1",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/t0031-rb1-09-20261102-185853-7d3d5b.log",
+      "ledger_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775269/record.json",
+      "submitted_state": "running",
+      "notification": "N-20261102-185642-d15b",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-185642-d15b --notifier miyabi-g2"
+    }
+  ]
+}

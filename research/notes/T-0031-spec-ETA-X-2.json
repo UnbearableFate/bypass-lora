@@ -1,0 +1,22 @@
+{
+  "code_ref": {
+    "commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd"
+  },
+  "config_ref": "research/notes/T-0031-run.pbs",
+  "data_revision": "RB1 A2 split 34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc; R1 order 33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf; V1 calibration 2048/task",
+  "model_revision": "da87bfb608c14b7cf20ba1ce41287e8de496c0cd",
+  "environment_ref": "uv.lock 3c916b51337d; cuda extra; cuda/12.8; envs/3c916b51337d-cuda",
+  "seed": 0,
+  "arm": "ETA-X-2",
+  "metric": "E0028 full-budget final dev/calibration accuracy and answer NLL; no PartB dev aggregation before calibration eta-lock",
+  "output_spec": "manifest.json, predictions.json, checkpoint.json, adapter/, dev curves, step0-rms.json, accounting.json; calibration-predictions.json",
+  "params": {
+    "job_mode": "train",
+    "phase": "R1",
+    "lr": 0.001,
+    "eta": 2,
+    "tap": "direct_hidden",
+    "steps": 13115,
+    "release_decision": "D-0061"
+  }
+}
