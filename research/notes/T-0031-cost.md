@@ -1,5 +1,50 @@
 # E-0028 measured cost gate
 
+## Final measured usage after all jobs ended
+
+All 21 T-0031 jobs ended and passed their application validators. Native used
+MIG instance-hours total **16.101389**, converted by the registered factor 0.25
+to **4.02534725 node-hours**, below the **5.5 node-hour cap**. This includes
+every smoke, audit, training, evaluation, selection, intervention and final
+analysis job; no endpoint extension or retry training was triggered.
+
+| Work | Attempt | PBS job | Measured MIG-hours | Node-hours |
+|---|---|---|---:|---:|
+| Initial smoke | ATT-0314-1 | 3774818.opbs | 0.188333 | 0.04708325 |
+| Final smoke | ATT-0315-1 | 3774971.opbs | 0.193333 | 0.04833325 |
+| Cost/reference audit | ATT-0316-1 | 3775143.opbs | 0.000278 | 0.00006950 |
+| RB1-09 evaluation | ATT-0335-1 | 3775269.opbs | 0.140278 | 0.03506950 |
+| X-03 | ATT-0323-1 | 3775254.opbs | 0.996389 | 0.24909725 |
+| X-02 | ATT-0322-1 | 3775251.opbs | 1.053889 | 0.26347225 |
+| X-01 | ATT-0321-1 | 3775250.opbs | 1.213889 | 0.30347225 |
+| ETA-X-0.0625 | ATT-0324-1 | 3775255.opbs | 1.136111 | 0.28402775 |
+| ETA-X-0.125 | ATT-0325-1 | 3775257.opbs | 1.145833 | 0.28645825 |
+| ETA-X-0.5 | ATT-0326-1 | 3775258.opbs | 1.207222 | 0.30180550 |
+| ETA-X-1 | ATT-0327-1 | 3775260.opbs | 1.153611 | 0.28840275 |
+| ETA-X-2 | ATT-0329-1 | 3775262.opbs | 1.186389 | 0.29659725 |
+| ETA-QK-0.0625 | ATT-0330-1 | 3775264.opbs | 1.146667 | 0.28666675 |
+| ETA-QK-0.125 | ATT-0331-1 | 3775265.opbs | 1.195000 | 0.29875000 |
+| ETA-QK-0.5 | ATT-0332-1 | 3775266.opbs | 1.189722 | 0.29743050 |
+| ETA-QK-2 | ATT-0334-1 | 3775268.opbs | 1.106111 | 0.27652775 |
+| ETA-QK-1 | ATT-0333-1 | 3775267.opbs | 1.215833 | 0.30395825 |
+| Calibration plan | ATT-0342-1 | 3776771.opbs | 0.000556 | 0.00013900 |
+| Eta lock | ATT-0343-1 | 3776823.opbs | 0.000556 | 0.00013900 |
+| X-01 interventions | ATT-0344-1 | 3776824.opbs | 0.626389 | 0.15659725 |
+| Locked final analysis | ATT-0345-1 | 3777371.opbs | 0.005000 | 0.00125000 |
+| **Total** | **21 jobs** | | **16.101389** | **4.02534725** |
+
+The native terminal exports were imported once per accounting reference.
+[T-0031-final-cost.json](T-0031-final-cost.json) contains the final native
+ledger summary and final-analysis usage. The immutable analysis artifact
+contains the preceding 20 jobs' 4.02409725 node-hours; its own 18 scheduler seconds
+add 0.00125 node-hours. Quantities retain native six-decimal instance-hour
+rounding. Requested walltimes are not measured use.
+
+The pre-release comparable 2g estimate and both-endpoint worst case below are
+preserved as planning history. Actual 1g allocations for the final smoke,
+X-02, ETA-X-2 and ETA-QK-0.125 are recorded from application hardware logs;
+the generic ledger's 2g label is not used to infer their actual slice profile.
+
 ## Revised gate after D-0060 (before formal training)
 
 The deterministic PBS audit ATT-0316-1 / PBS3775143 passed and returned
@@ -87,5 +132,5 @@ exceeds5.5node-hours, the coordinator must revise the contract before training.
 The requested training walltimes will be approximately1.5times the measured
 per-arm estimate; requested walltime never substitutes for charged usage.
 
-No formal training has started. No smoke quality score was read or used for
-selection or a scientific decision.
+At this original pre-review checkpoint, formal training had not started.
+No smoke quality score was read or used for selection or a scientific decision.

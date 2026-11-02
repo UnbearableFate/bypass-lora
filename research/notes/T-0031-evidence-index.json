@@ -6,6 +6,72 @@
     "EV-0140"
   ],
   "rule_evidence": {
+    "1": {
+      "evidence": "EV-0154",
+      "level": "diagnostic",
+      "validity": "valid",
+      "summary": "E-0028 rule 1 passes at exact0f22cd6: all eight grouped implementation checks are true, covering all new step0/Base predictions, Cu-zero/off identity, reloads, registered stored/trainable/with-gradient counts, paired initial parameters, exact input_layernorm X tap, eta-only configuration/init identity, unchanged RB1-09 dev predictions and source-bound selector tests. D-0060 same-allocation gates were used for1g arms; all pinned comparisons also happened to match. X-01 intervention normal equals its final training rows exactly. RV-0088 passed; inherited stale auxiliary paths are covered by D-0061.",
+      "attempts": [
+        "ATT-0345-1",
+        "ATT-0344-1",
+        "ATT-0315-1"
+      ],
+      "results": [
+        "RES-0321",
+        "RES-0320",
+        "RES-0284"
+      ]
+    },
+    "2": {
+      "evidence": "EV-0155",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 2 descriptive learnability: every one of the13new training arms exceeds Base+1pp on dev. Base macro70.15%; new arms range76.90% to78.30%, gains6.75 to8.15pp. This does not establish a tap/history/eta advantage.",
+      "attempts": [
+        "ATT-0345-1"
+      ],
+      "results": [
+        "RES-0321"
+      ]
+    },
+    "3": {
+      "evidence": "EV-0156",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 3 / H-0021: at eta0.25, X-01 macro78.15% minus accepted RB1-09 macro77.50% is exact13/2000=+0.65pp. The preregistered outcome is descriptive (0<gain<1pp), with no support/challenge edge. Descriptive paired95% interval is[-0.25,+1.60]pp; single seed, fixed LR0.001.",
+      "attempts": [
+        "ATT-0345-1",
+        "ATT-0321-1",
+        "ATT-0335-1"
+      ],
+      "results": [
+        "RES-0321",
+        "RES-0303",
+        "RES-0317"
+      ]
+    },
+    "4": {
+      "evidence": "EV-0157",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 4: matched history gains at eta0.25 are X-01-X-02=-0.15pp and RB1-09-X-03=-0.65pp. Swap drops are2.00pp for X (new interventions) and1.95pp for QK (accepted E-0021, preregistered). Neither history gain reaches+1pp, so neither conjunction triggers the request to reopen H-0014. Nonzero swap sensitivity alone does not show a gain over matched T0.",
+      "attempts": [
+        "ATT-0345-1",
+        "ATT-0344-1",
+        "ATT-0321-1",
+        "ATT-0322-1",
+        "ATT-0323-1",
+        "ATT-0335-1"
+      ],
+      "results": [
+        "RES-0321",
+        "RES-0320",
+        "RES-0303",
+        "RES-0304",
+        "RES-0305",
+        "RES-0317"
+      ]
+    },
     "5": {
       "evidence": "EV-0153",
       "level": "screening",
@@ -14,18 +80,88 @@
       "attempt": "ATT-0343-1",
       "result": "RES-0318",
       "eta_lock_sha256": "e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60"
+    },
+    "6": {
+      "evidence": "EV-0158",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 6 / H-0022@2: eta-lock was fixed on calibration before dev aggregation, QK eta*=0.25 and X eta*=1. QK d_eta=0pp by identity; X d_eta=77.90%-78.15%=-0.25pp (descriptive95% interval[-1.15,+0.65]pp). Both tap outcomes are challenges, so the preregistered overall direction is challenges at screening level. This is not a universal no-effect claim; LR is fixed, one seed, and eta-selection uncertainty is excluded. Hypothesis status remains for coordinator conclusion review.",
+      "attempts": [
+        "ATT-0345-1",
+        "ATT-0343-1",
+        "ATT-0321-1",
+        "ATT-0327-1",
+        "ATT-0335-1"
+      ],
+      "results": [
+        "RES-0321",
+        "RES-0318",
+        "RES-0303",
+        "RES-0309",
+        "RES-0317"
+      ],
+      "challenges": "H-0022"
+    },
+    "7": {
+      "evidence": "EV-0159",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 7 descriptive LoRA comparison: accepted same-four-layer LoRA r7 macro78.95%. X-01 eta0.25 is-0.80pp, calibration-selected X eta1 is-1.05pp, and selected QK eta0.25 is-1.45pp relative to LoRA. None is at least+1pp above LoRA; no new-seed advantage replication trigger fires. The side branch additionally searched eta.",
+      "attempts": [
+        "ATT-0345-1"
+      ],
+      "results": [
+        "RES-0321"
+      ]
+    },
+    "8": {
+      "evidence": "EV-0160",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 8 descriptive outputs are retained in analysis.json: X-02-X-03=+0.15pp; selected X(eta1)-QK(eta0.25)=+0.40pp; all PIQA/BoolQ accuracy and answer-NLL results, eta/calibration curves, 25/50/75/100% dev curves and step0 vbar/Z RMS. RMS compares both taps on the same51-token first R1 training candidate; it is descriptive, not a gate or selector.",
+      "attempts": [
+        "ATT-0345-1"
+      ],
+      "results": [
+        "RES-0321"
+      ]
+    },
+    "9": {
+      "evidence": "EV-0161",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 9 evidence scope: implementation evidence is diagnostic and each other rule outcome is screening. PIQA/BoolQ/NLL, curves and interventions are descriptive. Bootstrap uses10000 shared task-stratified draws with seed20261101 on1000dev rows per task, excludes training-seed and eta-selection uncertainty and is not a simultaneous/multiplicity-adjusted guarantee. No confirmation or official validation data was opened; hypothesis status and route actions require coordinator conclusion review.",
+      "attempts": [
+        "ATT-0345-1"
+      ],
+      "results": [
+        "RES-0321"
+      ]
+    },
+    "10": {
+      "evidence": "EV-0162",
+      "level": "screening",
+      "validity": "valid",
+      "summary": "E-0028 rule 10 point-estimate condition is true because calibration-selected X(eta1) macro77.90% is1.05pp below LoRA78.95%, strictly below the-1pp threshold. The alternative H-0021-challenges/d_tap_star conjunction is false. The descriptive selected-X-minus-LoRA95% interval[-2.15,+0.10]pp does not establish confirmed inferiority. This records the preregistered stop-condition trigger only; researcher-1 makes no stop/status decision and leaves conclusion review to the coordinator.",
+      "attempts": [
+        "ATT-0345-1"
+      ],
+      "results": [
+        "RES-0321"
+      ]
     }
   },
-  "remaining_rules": [
-    1,
-    2,
-    3,
-    4,
-    6,
-    7,
-    8,
-    9,
-    10
-  ],
-  "note": "Final implementation/outcome evidence awaits X-01 interventions and locked PBS analysis. No hypothesis status or route decision is recorded by researcher-1."
+  "remaining_rules": [],
+  "note": "All ten preregistered rules are recorded. Rule1 is diagnostic; rules2-10 are screening. Only rule6 has a challenge edge to H-0022; H-0021's +0.65pp outcome is descriptive. Hypothesis statuses and route decisions are left to the coordinator after conclusion review.",
+  "final_analysis": {
+    "attempt": "ATT-0345-1",
+    "result": "RES-0321",
+    "job_id": "3777371.opbs",
+    "artifact": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0345-1/analysis.json"
+  },
+  "intervention_result": {
+    "usable": "RES-0320",
+    "raw_import_rejected": "RES-0319",
+    "reason": "Import-only registration/model-arm label correction; raw producer and science unchanged."
+  }
 }

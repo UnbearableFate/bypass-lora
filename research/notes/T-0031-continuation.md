@@ -1,4 +1,54 @@
-# Current checkpoint: eta locked; X-01 interventions running
+# Current checkpoint: execution complete, ready for coordinator acceptance
+
+T-0031 / E-0028@1 has no pending execution. Final locked analysis
+ATT-0345-1 / RES-0321 / PBS3777371.opbs passed on verified compute allocation
+mg1099, with 18 scheduler seconds / 0.005 native MIG-hours. Application and
+native scheduler outputs were inspected and imported. All ten sealed rules
+are recorded in T-0031-evidence-index.json (EV-0153..EV-0162); implementation
+is diagnostic, other rule outcomes screening.
+
+Delivery: research/notes/T-0031-delivery.md. Final native cost:
+16.101389 MIG-hours = 4.02534725 node-hours across 21 jobs, below 5.5.
+T-0031-final-cost.json and the updated cost table include the final analysis.
+
+Principal observations:
+
+- H-0021: X-01 minus RB1-09=+0.65pp, descriptive under the sealed rule.
+- Eta lock: QK 0.25 / X 1, neither endpoint; no extensions. Dev eta gains 0 pp
+  and -0.25 pp respectively; EV-0158 is screening/challenges H-0022.
+- Matched S1-minus-T0 gains: -0.15 pp X / -0.65 pp QK; no history-reopen trigger.
+- Selected X is 1.05 pp below LoRA, triggering rule 10's point-estimate condition.
+  Its descriptive 95% interval [-2.15,+0.10] pp includes zero. This is a trigger,
+  not a researcher route decision.
+- No new-seed advantage trigger, no confirmation or official validation opened.
+
+X-01 interventions ATT-0344-1/PBS3776824 passed; normal reproduces training
+exactly and iv_off equals Base exactly. RES-0319's first import was rejected
+for the registration/model-arm label mismatch. Import-only envelope
+T-0031-intervention-import-manifest.json preserves the raw producer and
+corrects that optional registration label; usable RES-0320 has no mismatches.
+Raw science is unchanged and independently checked by the final analysis.
+
+All formal scientific execution remains exact
+0f22cd60f45674ec20b800fdd455f80c2b6d46dd, under passing RV-0088,
+D-0060 hardware-aware gates and D-0061 inherited coverage release.
+The locked eta SHA256 is
+e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60;
+it was recorded before Part B dev aggregation. No scientific source or
+training/smoke launcher changed during delivery.
+
+Coordinator next action: conclusion review of H-0021/H-0022 and rule 10, then
+accept/merge this task branch if satisfactory. Researcher-1 has made no
+hypothesis-status or route decision and initiated no further runs. Retain
+all raw artifacts/checkpoints until acceptance.
+
+Key maps: T-0031-final-analysis-job.json, T-0031-initial-result-imports.json,
+T-0031-selection-intervention-jobs.json, T-0031-analysis-input.json,
+T-0031-eta-lock-record.json and T-0031-evidence-index.json.
+All run artifacts remain under the stable project /runs/ATT-* directories.
+The exact analysis JSON and eta-lock are also sealed as task outputs on delivery.
+
+# Historical checkpoint: eta locked; X-01 interventions running
 
 All 14 initial formal jobs ended successfully and their application manifests
 passed. All 13 training arms completed 13,115 steps / 26,230 examples and
@@ -69,7 +119,7 @@ and final analysis in actual usage. Retain all checkpoints until acceptance.
 
 Older initial-grid/reference details follow for provenance.
 
-# T-0031 continuation: initial formal grid submitted
+# Historical checkpoint: initial formal grid submitted
 
 Task T-0031 owns E-0028@1 (H-0021@1, H-0022@2). Researcher-1 executes;
 coordinator owns route/status decisions. Branch sr/researcher-1/T-0031.
