@@ -61,4 +61,3 @@ the exact-source ATT-0276-1 receipt for the no-channel check. Release r128
 once only if the exact primary-task rule fires, subject to updated budget.
 Every rule's evidence cites E-0025/D-0044 and D-0049; hypothesis status and
 route decisions remain the coordinator's. No confirmation set is evaluated.
-
