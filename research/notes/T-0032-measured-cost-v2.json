@@ -34,5 +34,6 @@
     }
   },
   "accounting": "MIG instance hours / 4. Adds all prior measured E-0029 work, replaces application-only smoke time with measured PBS walltime, and retains check/analysis reserves. New G-QN/G-N checks consume the source table's three-initialization allowance.",
-  "formal_training_hold": "MSG-0888: do not submit the eight formal training arms until coordinator explicitly confirms the arm set, after the H-0021 conclusion review. Calibration and LR lock may proceed after code recheck passes."
+  "measured_usage_scope": "Through pre-calibration validation ATT-0346/0347/0348; running calibration usage is unreported until completion.",
+  "formal_training_hold": "Lifted by D-0065 / MSG-0900: exactly all eight sealed E-0029@1 arms are authorized after the LR lock and within3.5nodeh. Cite D-0064/D-0065. No new tap/source variants or follow-up seeds without a fresh coordinator decision addressing E-0028 rule10."
 }
