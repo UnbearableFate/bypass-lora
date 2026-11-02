@@ -21,4 +21,5 @@ export PYTHONPATH="$SEG_SOURCE/src"
 export TMPDIR="/local/${PBS_JOBID}/seg-audit"
 mkdir -p "$TMPDIR"
 cd "$SEG_SOURCE"
-exec "$SEG_PY" src/seg_audit.py --inventory "$SEG_SOURCE/research/notes/T-0028-formal-jobs.json" --output "$SEG_OUT"
+exec "$SEG_PY" src/seg_audit.py \
+  --inventory "${SEG_AUDIT_INVENTORY:-$SEG_SOURCE/research/notes/T-0028-formal-jobs.json}" --output "$SEG_OUT"
