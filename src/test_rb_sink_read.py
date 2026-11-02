@@ -159,3 +159,21 @@ def test_gold_only_forwards_match_the_e0021_path(rbbase, arm, kind):
         (t, s) for t in ('piqa', 'boolq') for s in ((1, 2) if arm == 'RB1-03' else (1,))}
     if kind == 'iv_window8':
         assert acc.window_violation == 0
+
+
+def test_manifest_counts_arms_from_an_earlier_attempt(tmp_path, monkeypatch):
+    import json
+    from argparse import Namespace
+    from rb_sink_read import ARMS, write_manifest
+    monkeypatch.setenv('SR_SPEC_DIGEST', 'blake2b:test')
+    earlier, out = tmp_path/'earlier', tmp_path/'out'
+    for root, arms in ((earlier, ARMS[1:]), (out, ARMS[:1])):
+        for arm in arms:
+            (root/arm).mkdir(parents=True)
+            (root/arm/'sink.json').write_text('{}')
+    (out/'summary.json').write_text(json.dumps({'checks_passed': True, 'interpretation': {'reading': 'mixed'}}))
+    manifest = write_manifest(Namespace(output=out, elapsed_s=1., arms_from=earlier))
+    assert manifest['validator']['passed'] is True
+    assert {a['path'] for a in manifest['artifacts']} == {
+        str(out/ARMS[0]/'sink.json'), *(str(earlier/arm/'sink.json') for arm in ARMS[1:]), str(out/'summary.json')}
+    assert write_manifest(Namespace(output=out, elapsed_s=1., arms_from=None))['validator']['passed'] is False

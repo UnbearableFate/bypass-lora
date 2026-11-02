@@ -221,12 +221,23 @@ def run(args):
         tick = time.monotonic()
         summaries, accumulator, nll = run_condition(model, rows_by_task, encoded_by_task, condition,
                                                     sampled, 1, tokenizer.pad_token_id)
+        gate_reference = reference[condition]
+        e0021_check = None
+        if args.same_allocation_reference:
+            # The reviewed E-0021 batch-one evaluator on this allocation is the gate;
+            # the recorded E-0021 run (another MIG profile) is compared descriptively.
+            from rb1_intervene import evaluate_history
+            _, predictions, reads = evaluate_history(model, splits, tokenizer,
+                                                     None if condition == 'normal' else condition)
+            gate_reference = {'predictions': predictions, 'read_diagnostics': reads}
+            e0021_check = compare_reference(reference[condition], condition, summaries, nll)
         result['conditions'][condition] = {
+            'e0021_record_check': e0021_check,
             'answer_question_level': accumulator.finish(),
             'read_summary': summaries,
             'window8_share0_max_late': accumulator.window_violation if condition == 'iv_window8' else None,
             'window8_answer_positions_before_8': accumulator.window_short_positions if condition == 'iv_window8' else None,
-            'reference_check': compare_reference(reference[condition], condition, summaries, nll),
+            'reference_check': compare_reference(gate_reference, condition, summaries, nll),
             'elapsed_s': time.monotonic()-tick}
         write_json(out/'sink.json', result)
         if not result['conditions'][condition]['reference_check']['passed']:
@@ -237,6 +248,8 @@ def run(args):
         'source_commit': os.environ['SR_CODE_COMMIT'], 'model_revision': REVISION,
         'environment_lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
         'batch_size': 1, 'reference_hardware': reference_provenance.get('hardware'),
+        'gate_reference': 'same-allocation E-0021 evaluate_history' if args.same_allocation_reference
+                          else 'recorded E-0021 run',
         'hardware': torch.cuda.get_device_name()}
     write_json(out/'sink.json', result)
     return result
@@ -323,8 +336,13 @@ def build_report(arms):
 def write_manifest(args):
     """Attempt manifest; success needs every arm and a summary whose checks passed."""
     out = args.output
-    artifacts = [{'path': str(out/arm/'sink.json'), 'role': f'sink:{arm}'} for arm in ARMS
-                 if (out/arm/'sink.json').is_file()]
+    # Arms not run in this attempt may come from one earlier attempt of the same source lineage.
+    roots = [out, *([args.arms_from] if getattr(args, 'arms_from', None) else [])]
+    artifacts = []
+    for arm in ARMS:
+        found = next((root/arm/'sink.json' for root in roots if (root/arm/'sink.json').is_file()), None)
+        if found is not None:
+            artifacts.append({'path': str(found), 'role': f'sink:{arm}'})
     summary = json.loads((out/'summary.json').read_text()) if (out/'summary.json').is_file() else None
     if summary is not None:
         artifacts.append({'path': str(out/'summary.json'), 'role': 'summary'})
@@ -349,6 +367,8 @@ def main():
     one.add_argument('--training-run', type=Path, required=True)
     one.add_argument('--reference', type=Path, required=True, help='E-0021 intervention run of this arm')
     one.add_argument('--data-dir', required=True)
+    one.add_argument('--same-allocation-reference', action='store_true',
+                     help='gate against E-0021 evaluate_history rerun here (other MIG profile reference)')
     one.add_argument('--output', type=Path, required=True)
     both = sub.add_parser('summarize')
     both.add_argument('--inputs', nargs='+', required=True)
@@ -356,6 +376,7 @@ def main():
     final = sub.add_parser('manifest')
     final.add_argument('--output', type=Path, required=True, help='attempt directory')
     final.add_argument('--elapsed-s', type=float, required=True)
+    final.add_argument('--arms-from', type=Path, help='earlier attempt directory supplying the other arms')
     args = parser.parse_args()
     {'arm': run, 'summarize': summarize, 'manifest': write_manifest}[args.command](args)
 
