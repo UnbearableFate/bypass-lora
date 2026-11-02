@@ -1,4 +1,4 @@
-"""Locked same-checkpoint E-0025 boundary interventions, dev only."""
+"""Locked same-checkpoint E-0025/E-0027 boundary interventions, dev only."""
 import argparse
 import gc
 import os
@@ -12,6 +12,7 @@ from seg_artifacts import validate
 from seg_eval import evaluate
 from seg_model import make_model, KEEP
 from seg_train import tokenizer, original_backbone
+from seg_model import contract
 from v1_run import prepare
 from v5_train import write_json
 
@@ -20,9 +21,9 @@ def run(args):
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     passed, values, start = False, {}, time.monotonic()
     try:
-        _, refs, adapter = validate(args.training_run, args.arm, args.training_source)
+        _, refs, adapter = validate(args.training_run, args.arm, args.training_source, args.seed)
         tok = tokenizer(); splits = prepare(args.data_dir)
-        model = make_model(args.arm, adapter).eval()
+        model = make_model(args.arm, adapter, seed=args.seed).eval()
         with original_backbone(model) as base:
             bm, bp, ba = evaluate(base, 'SEG-00', splits, tok)
         conditions = {'Base_seg': {'metrics': bm, 'predictions': bp, 'audit': ba}}
@@ -43,8 +44,8 @@ def run(args):
         passed = True
     finally:
         values['elapsed_s'] = time.monotonic()-start
-        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0025@1',
-            'arm': args.arm, 'seed': 0, 'phase': 'SEG', 'stage': 'intervention',
+        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': contract(args.seed),
+            'arm': args.arm, 'seed': args.seed, 'phase': 'SEG', 'stage': 'intervention',
             'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': values,
             'artifacts': [{'path': str(p), 'role': p.name} for p in (out/'conditions.json', out/'provenance.json') if p.exists()],
             'validator': {'name': 'segmented_boundary_interventions', 'passed': passed}})
@@ -53,6 +54,7 @@ def run(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--arm', choices=KEEP, required=True)
+    p.add_argument('--seed', type=int, choices=(0, 1, 2), default=0)
     p.add_argument('--training-run', type=Path, required=True)
     p.add_argument('--training-source', required=True)
     p.add_argument('--data-dir', required=True)

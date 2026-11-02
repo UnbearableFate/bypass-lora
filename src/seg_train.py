@@ -1,4 +1,4 @@
-"""E-0025 training at the RB1 sample/optimizer budget; no confirmation reader."""
+"""E-0025/E-0027 training at the RB1 sample/optimizer budget; no confirmation reader."""
 import argparse
 from contextlib import contextmanager
 import gc
@@ -15,12 +15,15 @@ from calibrate import MODEL, REVISION
 from rb_data import plan_batches
 from rb_train import load_data
 from rb1_artifacts import verify_lr_lock
-from seg_data import segment_plan, ORDER_SHA256, STEPS, EXAMPLES
+from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES
 from seg_eval import evaluate, token_losses
-from seg_model import make_model, KEEP, FAMILIES, PARAMETERS, state_description
+from seg_model import (make_model, KEEP, FAMILIES, PARAMETERS, state_description, parameter_digest,
+                       SEED_ARMS, contract)
 from bypass_model import BranchModel
 from v1_run import lr_factor, preserved_evaluation_state, example_mean_objective, TrainingDiverged
 from v5_train import file_sha256, write_json, plan_metadata
+from rb_data import BASE_SEED, STUDY
+from v1_data import derive_seed
 
 
 def tokenizer():
@@ -29,16 +32,34 @@ def tokenizer():
     return tok
 
 
-def prepare_plan(args, tok):
+def seed_plan(splits, tok, seed, excluded):
+    """First STEPS batches of the R1 stream for this seed (fixed sample/step budget).
+
+    For seed 0 this is exactly E-0025's 2M-token-budget plan, which stops at
+    STEPS; the registered order hash checks that equivalence.
+    """
+    rb = plan_batches(splits, tok, 'R1', seed, excluded, token_budget=None)
+    if len(rb) < STEPS or any(len(b) != 2 for b in rb[:STEPS]):
+        raise ValueError('R1 stream shorter than the fixed segmented step budget')
+    return rb[:STEPS]
+
+
+def prepare_plan(args, tok, require_registered=True):
+    seed = getattr(args, 'seed', 0)
+    if seed not in ORDER_SHA256_BY_SEED:
+        raise ValueError('unknown segmented seed')
     lock = verify_lr_lock(args.lr_lock)
     if file_sha256(args.split_manifest) != lock['split_manifest_sha256']:
         raise ValueError('segmented split differs from the accepted RBc lock')
     splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
-    rb = plan_batches(splits, tok, 'R1', 0, [(e['task'], e['id']) for e in excluded])
+    rb = seed_plan(splits, tok, seed, [(e['task'], e['id']) for e in excluded])
     metadata = plan_metadata(rb)
-    if (metadata['plan.order_sha256'] != ORDER_SHA256 or metadata['plan.steps'] != STEPS or
-            metadata['plan.examples'] != EXAMPLES):
-        raise ValueError('segmented plan is not the exact RB1 sample budget/order')
+    registered = ORDER_SHA256_BY_SEED[seed]
+    if registered is None and require_registered:
+        raise ValueError('segmented seed order hash is not registered')
+    if ((registered is not None and metadata['plan.order_sha256'] != registered) or
+            metadata['plan.steps'] != STEPS or metadata['plan.examples'] != EXAMPLES):
+        raise ValueError('segmented plan is not the registered RB1 sample budget/order')
     return splits, segment_plan(rb, splits, tok), metadata, excluded, lock
 
 
@@ -154,8 +175,8 @@ def run(args):
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     values, passed, start = {}, False, time.monotonic()
     try:
-        if args.arm not in ('SEG-00', *FAMILIES) or args.stage not in ('train', 'base'):
-            raise ValueError('unknown segmented arm/stage')
+        if args.arm not in SEED_ARMS.get(args.seed, ()) or args.stage not in ('train', 'base'):
+            raise ValueError('unknown segmented seed/arm/stage')
         if (args.stage == 'base') != (args.arm == 'SEG-00'):
             raise ValueError('Base_seg is evaluation only')
         tok = tokenizer()
@@ -166,11 +187,15 @@ def run(args):
             'model_revision': REVISION, 'tokenizer_revision': REVISION,
             'environment.lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
             'lr_lock.sha256': file_sha256(args.lr_lock), 'split_manifest.sha256': file_sha256(args.split_manifest),
-            'hardware': torch.cuda.get_device_name(), 'failed': False})
+            'hardware': torch.cuda.get_device_name(), 'failed': False, 'seed': args.seed,
+            'init_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'init', args.seed),
+            'train_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'train', args.seed)})
         write_json(out/'config.json', vars(args)); write_json(out/'excluded-train.json', excluded)
         write_json(out/'seams-train.json', [e['seam'] for b in batches for e in b])
-        tick = time.monotonic(); model = make_model(args.arm)
+        tick = time.monotonic(); model = make_model(args.arm, seed=args.seed)
         values['load.seconds'] = time.monotonic()-tick
+        if args.arm != 'SEG-00':
+            values['initial.adapter_sha256'] = parameter_digest(model)
         values['params.stored'] = PARAMETERS[args.arm]
         values['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
         if args.arm in KEEP:
@@ -197,7 +222,7 @@ def run(args):
         write_json(out/'predictions.json', p); write_json(out/'evaluation-audit.json', audit)
         if args.stage == 'train':
             del model; gc.collect(); torch.cuda.empty_cache()
-            tick = time.monotonic(); model = make_model(args.arm, out/'adapter')
+            tick = time.monotonic(); model = make_model(args.arm, out/'adapter', seed=args.seed)
             m2, p2, _ = evaluate(model, args.arm, splits, tok)
             values['reload.seconds'] = time.monotonic()-tick
             values['reload.identical'] = p == p2 and all(values[k] == v for k, v in m2.items())
@@ -211,8 +236,8 @@ def run(args):
         values['elapsed_s'] = time.monotonic()-start
         artifacts = [{'path': str(p), 'role': p.name, 'sha256': file_sha256(p), 'bytes': p.stat().st_size}
                      for p in out.iterdir() if p.is_file() and p.name != 'manifest.json']
-        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0025@1',
-            'arm': args.arm, 'seed': 0, 'phase': 'SEG', 'stage': args.stage,
+        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': contract(args.seed),
+            'arm': args.arm, 'seed': args.seed, 'phase': 'SEG', 'stage': args.stage,
             'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': values, 'artifacts': artifacts,
             'validator': {'name': 'segmented_training', 'passed': passed}})
 
@@ -221,6 +246,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--arm', choices=('SEG-00', *FAMILIES), required=True)
     p.add_argument('--stage', choices=('train', 'base'), required=True)
+    p.add_argument('--seed', type=int, choices=(0, 1, 2), default=0)
     p.add_argument('--data-dir', required=True)
     p.add_argument('--split-manifest', type=Path, required=True)
     p.add_argument('--lr-lock', type=Path, required=True)
