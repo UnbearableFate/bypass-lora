@@ -2,6 +2,8 @@
 
 This module reads attempt manifests and ``a2-read.jsonl`` receipts only. It
 does not open condition predictions, evaluation audits, or any A2 text/labels.
+Hard-terminated attempts may lack a manifest. A final truncated receipt then
+counts conservatively as an opening; fields cut before completion stay unknown.
 """
 from datetime import datetime
 import hashlib
@@ -31,36 +33,139 @@ def _lock_name(manifest):
     return metrics.get('lock.sha256') if isinstance(metrics, dict) else None
 
 
-def _parse_receipts(path):
+def _receipt_prefix_fields(line):
+    """Recover only complete JSON key/value pairs before a truncated suffix."""
+    decoder = json.JSONDecoder()
+    text = line.lstrip()
+    if not text.startswith('{'):
+        return {}
+    fields, pos = {}, 1
+    while pos < len(text):
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        try:
+            key, end = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            break
+        if not isinstance(key, str):
+            break
+        pos = end
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        if pos >= len(text) or text[pos] != ':':
+            break
+        pos += 1
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        try:
+            value, end = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            break
+        pos = end
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        # A delimiter proves this value was complete: a terminal digit could
+        # instead be the start of a longer number that was cut by the kill.
+        if pos >= len(text) or text[pos] not in ',}':
+            break
+        fields[key] = value
+        if text[pos] == '}':
+            break
+        pos += 1
+    return fields
+
+
+def _parse_receipts(path, *, allow_truncated=False):
     receipts = []
+    truncated = None
     if path.exists():
-        for line_number, line in enumerate(path.read_text().splitlines(), 1):
-            if not line.strip():
-                continue
+        lines = [(n, line) for n, line in enumerate(path.read_text().splitlines(), 1) if line.strip()]
+        for index, (line_number, line) in enumerate(lines):
             try:
                 value = json.loads(line)
             except json.JSONDecodeError as exc:
+                if allow_truncated and index == len(lines)-1:
+                    truncated = _receipt_prefix_fields(line)
+                    continue
                 raise ValueError(f'{path}: malformed receipt line {line_number}') from exc
             if not isinstance(value, dict):
                 raise ValueError(f'{path}: receipt line {line_number} must be an object')
             receipts.append(value)
-    return receipts
+    return receipts, truncated
 
 
 def _manifest_record(root, attempt_id):
     manifest_path = root / 'manifest.json'
-    if not manifest_path.is_file():
-        raise ValueError(f'accounted attempt {attempt_id} has no manifest.json')
-    manifest = _read_json(manifest_path)
-    if not isinstance(manifest, dict):
+    present = manifest_path.is_file()
+    manifest = _read_json(manifest_path) if present else None
+    if present and not isinstance(manifest, dict):
         raise ValueError(f'accounted attempt {attempt_id} manifest must be an object')
     receipts_path = root / 'a2-read.jsonl'
-    receipts = _parse_receipts(receipts_path)
-    return manifest, manifest_path, receipts, receipts_path if receipts_path.is_file() else None
+    receipts, truncated = _parse_receipts(receipts_path, allow_truncated=manifest is None)
+    return (manifest, manifest_path if present else None, receipts,
+            receipts_path if receipts_path.is_file() else None, truncated)
 
 
-def _audit_record(attempt_id, root, manifest, manifest_path, receipts, receipt_path,
+def _validate_receipt(receipt, attempt_id, expected_decision, *, incomplete=False):
+    if 'seed' in receipt or not incomplete:
+        if type(receipt.get('seed')) is not int or receipt['seed'] not in SEEDS:
+            raise ValueError(f'{attempt_id}: lock-matching receipt must identify seed 3, 4 or 5')
+    if 'confirmation_decision' in receipt or not incomplete:
+        decision = receipt.get('confirmation_decision')
+        if not isinstance(decision, str) or DECISION_RE.fullmatch(decision) is None:
+            raise ValueError(f'{attempt_id}: receipt confirmation decision is invalid')
+        if expected_decision is not None and decision != expected_decision:
+            raise ValueError(f'{attempt_id}: receipt confirmation decision differs from the expected decision')
+    if 'opening_protocol_decision' in receipt or not incomplete:
+        if receipt.get('opening_protocol_decision') != 'D-0072':
+            raise ValueError(f'{attempt_id}: receipt opening protocol must be D-0072')
+    if 'time_utc' in receipt or not incomplete:
+        receipt_time = receipt.get('time_utc')
+        if not isinstance(receipt_time, str):
+            raise ValueError(f'{attempt_id}: receipt time is missing')
+        try:
+            datetime.fromisoformat(receipt_time.replace('Z', '+00:00'))
+        except ValueError as exc:
+            raise ValueError(f'{attempt_id}: receipt time is malformed') from exc
+
+
+def _truncated_matches(truncated, lock_sha256):
+    return truncated is not None and truncated.get('lock_sha256') in (None, lock_sha256)
+
+
+def _without_manifest(attempt_id, root, receipts, receipt_path, truncated,
+                      lock_sha256, expected_decision):
+    matching = [r for r in receipts if r.get('lock_sha256') == lock_sha256]
+    if len(matching) > 1:
+        raise ValueError(f'{attempt_id}: multiple receipts name the same A2 lock')
+    truncated_matches = _truncated_matches(truncated, lock_sha256)
+    known = {}
+    if matching:
+        _validate_receipt(matching[0], attempt_id, expected_decision)
+        known.update(matching[0])
+    if truncated_matches:
+        _validate_receipt(truncated, attempt_id, expected_decision, incomplete=True)
+        for key, value in truncated.items():
+            if key in known and known[key] != value:
+                raise ValueError(f'{attempt_id}: truncated receipt conflicts with preceding receipt')
+            known[key] = value
+    opened = bool(matching) or truncated_matches
+    return {'attempt_id': attempt_id, 'root': str(root.resolve()),
+        'seed': known.get('seed') if opened else None, 'status': None, 'stage': None,
+        'opened': opened, 'lock_associated': opened,
+        'category': 'partial_opened_no_manifest' if opened else 'no_manifest_unopened',
+        'failure_reason': 'manifest_not_written',
+        'confirmation_decision': known.get('confirmation_decision') if opened else None,
+        'manifest_ref': None, 'receipt_ref': _ref(receipt_path) if receipt_path is not None else None,
+        'receipt_count_for_lock': len(matching), 'receipt_truncated': truncated_matches,
+        'recovered_receipt_fields': known if truncated_matches else None}
+
+
+def _audit_record(attempt_id, root, manifest, manifest_path, receipts, receipt_path, truncated,
                   lock_sha256, expected_decision):
+    if manifest is None:
+        return _without_manifest(attempt_id, root, receipts, receipt_path, truncated,
+                                  lock_sha256, expected_decision)
     metrics = manifest.get('metrics')
     if not isinstance(metrics, dict):
         metrics = {}
@@ -80,9 +185,8 @@ def _audit_record(attempt_id, root, manifest, manifest_path, receipts, receipt_p
         raise ValueError(f'{attempt_id}: multiple receipts name the same A2 lock')
     if matching_receipts:
         receipt = matching_receipts[0]
-        receipt_seed = receipt.get('seed')
-        if type(receipt_seed) is not int or receipt_seed not in SEEDS:
-            raise ValueError(f'{attempt_id}: lock-matching receipt must identify seed 3, 4 or 5')
+        _validate_receipt(receipt, attempt_id, expected_decision)
+        receipt_seed = receipt['seed']
         if manifest_matches and receipt_seed != seed:
             raise ValueError(f'{attempt_id}: receipt seed differs from lock-matching manifest')
         if not manifest_matches:
@@ -93,18 +197,6 @@ def _audit_record(attempt_id, root, manifest, manifest_path, receipts, receipt_p
                 receipt.get('confirmation_decision') != metrics.get('confirmation_decision') or
                 receipt.get('opening_protocol_decision') != metrics.get('opening_protocol_decision')):
             raise ValueError(f'{attempt_id}: receipt metadata differs from its evaluation manifest')
-        decision = receipt.get('confirmation_decision')
-        if not isinstance(decision, str) or DECISION_RE.fullmatch(decision) is None:
-            raise ValueError(f'{attempt_id}: receipt confirmation decision is invalid')
-        if expected_decision is not None and decision != expected_decision:
-            raise ValueError(f'{attempt_id}: receipt confirmation decision differs from the expected decision')
-        receipt_time = receipt.get('time_utc')
-        if not isinstance(receipt_time, str):
-            raise ValueError(f'{attempt_id}: receipt time is missing')
-        try:
-            datetime.fromisoformat(receipt_time.replace('Z', '+00:00'))
-        except ValueError as exc:
-            raise ValueError(f'{attempt_id}: receipt time is malformed') from exc
 
     opened = manifest.get('opened') is True or metrics.get('a2.opened') is True or bool(matching_receipts)
     if manifest.get('opened') is not None and manifest.get('opened') is not opened:
@@ -155,6 +247,7 @@ def _audit_record(attempt_id, root, manifest, manifest_path, receipts, receipt_p
         'status': status,
         'stage': stage,
         'opened': opened,
+        'lock_associated': True,
         'category': category,
         'failure_reason': failure_reason,
         'confirmation_decision': (matching_receipts[0].get('confirmation_decision')
@@ -230,27 +323,35 @@ def audit_attempts(accounted_attempts, evaluations, lock_sha256, *,
                     raise ValueError(f'{root.name}: manifest must be an object')
                 matching = _lock_name(candidate) == lock_sha256
             if not matching and receipts_path.is_file():
-                matching = any(r.get('lock_sha256') == lock_sha256 for r in _parse_receipts(receipts_path))
+                receipts, truncated = _parse_receipts(receipts_path, allow_truncated=not manifest_path.is_file())
+                matching = (any(r.get('lock_sha256') == lock_sha256 for r in receipts) or
+                            _truncated_matches(truncated, lock_sha256))
             if matching:
                 raise ValueError(f'unaccounted lock-matching attempt discovered: {root.name}')
 
     records = {}
     for attempt_id, root in accounted_roots.items():
-        manifest, manifest_path, receipts, receipt_path = _manifest_record(root, attempt_id)
+        manifest, manifest_path, receipts, receipt_path, truncated = _manifest_record(root, attempt_id)
         record = _audit_record(attempt_id, root, manifest, manifest_path, receipts,
-                               receipt_path, lock_sha256, confirmation_decision)
+                               receipt_path, truncated, lock_sha256, confirmation_decision)
         if record is not None:
             records[attempt_id] = record
 
     opened_by_seed = {str(seed): [] for seed in SEEDS}
     matching_attempts_by_seed = {str(seed): [] for seed in SEEDS}
+    unknown_seed_openings = []
     decisions = set()
     for record in records.values():
         seed = record['seed']
+        if not record['lock_associated']:
+            continue
         if seed in SEEDS:
             matching_attempts_by_seed[str(seed)].append(record)
         if record['opened']:
-            opened_by_seed[str(seed)].append(record)
+            if seed in SEEDS:
+                opened_by_seed[str(seed)].append(record)
+            else:
+                unknown_seed_openings.append(record)
         if record['confirmation_decision'] is not None:
             decisions.add(record['confirmation_decision'])
 
@@ -269,7 +370,8 @@ def audit_attempts(accounted_attempts, evaluations, lock_sha256, *,
         if len(complete_opened) != 1 or complete_opened[0]['attempt_id'] != selected_id:
             raise ValueError(f'seed {seed} must have exactly one complete opened attempt equal to selected root')
         for record in attempts:
-            if record['opened'] and record['attempt_id'] != selected_id and record['status'] != 'partial':
+            if (record['opened'] and record['attempt_id'] != selected_id and
+                    record['status'] != 'partial' and record['category'] != 'partial_opened_no_manifest'):
                 raise ValueError(f'seed {seed} non-selected opened attempt must be partial')
 
     def sorted_records(values):
@@ -280,10 +382,10 @@ def audit_attempts(accounted_attempts, evaluations, lock_sha256, *,
         manifest_path = root / 'manifest.json'
         receipt_path = root / 'a2-read.jsonl'
         accounted_refs[attempt_id] = {
-            'manifest': _ref(manifest_path),
+            'manifest': _ref(manifest_path) if manifest_path.is_file() else None,
             'receipt': _ref(receipt_path) if receipt_path.is_file() else None,
         }
-    refs = [record['manifest_ref'] for record in records.values()]
+    refs = [record['manifest_ref'] for record in records.values() if record['manifest_ref'] is not None]
     refs.extend(record['receipt_ref'] for record in records.values() if record['receipt_ref'] is not None)
     return {
         'lock_sha256': lock_sha256,
@@ -291,7 +393,10 @@ def audit_attempts(accounted_attempts, evaluations, lock_sha256, *,
         'opened_attempts_per_seed': {seed: sorted_records(values) for seed, values in opened_by_seed.items()},
         'lock_matching_attempts_per_seed': {seed: sorted_records(values)
                                             for seed, values in matching_attempts_by_seed.items()},
-        'other_lock_matching_attempts': sorted_records([r for r in records.values() if r['seed'] not in SEEDS]),
+        'opened_attempts_unknown_seed': sorted_records(unknown_seed_openings),
+        'no_manifest_attempts': sorted_records([r for r in records.values() if r['manifest_ref'] is None]),
+        'other_lock_matching_attempts': sorted_records([r for r in records.values()
+                                                       if r['lock_associated'] and r['seed'] not in SEEDS]),
         'selected_attempts': {str(seed): selected[seed][0] for seed in SEEDS},
         'accounted_attempts': sorted(accounted),
         'metadata_refs': refs,

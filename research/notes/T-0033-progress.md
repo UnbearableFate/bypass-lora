@@ -314,3 +314,30 @@ an empty diff from the passed training source f741952. Resume on RV-0099's
 answer or the formal-training notification. Seed-5 SEG-07 remains under the
 coordinator's queue observation (MSG-0968 estimated start 04:56 JST); no queue
 or resource change is requested.
+
+## RV-0099 hard-termination fix
+
+RV-0099 identified a concrete medium finding: a walltime/host kill need not
+execute Python finally, so a measured attempt can have no manifest, including
+an A2 attempt that already wrote its receipt. Rejecting every missing manifest
+would prevent a locked, unchanged engineering rerun from completing analysis.
+
+The audit now keeps such declared attempts. Without a manifest or receipt,
+it records `no_manifest_unopened`, seed/status unknown and manifest reference
+null. A matching receipt without a manifest is recorded as
+`partial_opened_no_manifest`; it counts as a non-selected opening, and one
+complete selected result is still required for every seed. Known receipt
+seed, confirmation decision, D-0072 and time are validated. The last truncated
+line in a manifest-less directory is conservatively an opening: only completed
+JSON key/value pairs are recovered; missing seed/decision/time remain unknown
+and unattributed partial openings are explicitly listed. No record invents
+those fields. A matching or unattributable truncated receipt in an unaccounted
+directory still rejects the analysis. Complete-manifest receipts and non-final
+malformed lines remain strict.
+
+Regression cases replace the incorrect missing-manifest rejection and cover
+absent/empty directories, receipt-only partial openings, missing complete
+results, undeclared receipts, truncated known/unknown-seed receipts, invalid
+known metadata and strict complete/non-final receipt validation. Only the
+analysis audit and its tests change; training remains f741952. Next: PBS
+checks at the fix commit, then the second review of RV-0099's round before lock.

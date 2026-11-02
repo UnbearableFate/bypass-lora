@@ -90,11 +90,136 @@ def test_audit_rejects_unaccounted_replay_or_profile_miss(tmp_path, stage, failu
                        confirmation_decision=DECISION)
 
 
-def test_audit_requires_every_accounted_attempt_manifest(tmp_path):
+@pytest.mark.parametrize('directory_exists', [False, True])
+def test_audit_accounts_for_unopened_attempt_without_manifest(tmp_path, directory_exists):
     artifacts = tmp_path / 'artifacts'
     attempts, selected = _fixture(artifacts)
-    attempts.append('ATT-0099-1')
-    with pytest.raises(ValueError, match='manifest.json'):
+    missing = 'ATT-0099-1'
+    if directory_exists:
+        (artifacts/missing).mkdir()
+    attempts.append(missing)
+    report = audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                            confirmation_decision=DECISION)
+    record = report['no_manifest_attempts'][0]
+    assert record['category'] == 'no_manifest_unopened'
+    assert record['seed'] is None and record['opened'] is False
+    assert record['lock_associated'] is False
+    assert report['accounted_metadata_refs'][missing] == {'manifest': None, 'receipt': None}
+
+
+def _receipt_only(root, seed):
+    _write_attempt(root, seed, status='partial')
+    (root/'manifest.json').unlink()
+
+
+def test_receipt_only_attempt_is_partial_and_cannot_replace_complete_result(tmp_path):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    partial = 'ATT-0097-1'
+    _receipt_only(artifacts/partial, 3)
+    attempts.append(partial)
+    report = audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                            confirmation_decision=DECISION)
+    record = next(r for r in report['opened_attempts_per_seed']['3'] if r['attempt_id'] == partial)
+    assert record['category'] == 'partial_opened_no_manifest'
+    assert record['status'] is None and record['opened'] is True
+    assert record['manifest_ref'] is None
+    assert report['accounted_metadata_refs'][partial]['manifest'] is None
+    assert report['accounted_metadata_refs'][partial]['receipt'] is not None
+    assert report['selected_attempts']['3'] == 'ATT-0003-1'
+
+
+def test_receipt_only_selected_attempt_still_needs_a_complete_result(tmp_path):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    (artifacts/'ATT-0003-1'/'manifest.json').unlink()
+    with pytest.raises(ValueError, match='exactly one complete opened'):
+        audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                       confirmation_decision=DECISION)
+
+
+def test_unaccounted_receipt_only_attempt_is_rejected(tmp_path):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    _receipt_only(artifacts/'ATT-0097-1', 3)
+    with pytest.raises(ValueError, match='unaccounted lock-matching attempt'):
+        audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                       confirmation_decision=DECISION)
+
+
+def test_unaccounted_unattributable_truncated_receipt_cannot_be_ignored(tmp_path):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    root = artifacts/'ATT-0097-1'; root.mkdir()
+    (root/'a2-read.jsonl').write_text('{"confirmation_decision": "D-1234", "hardware": "NVIDIA')
+    with pytest.raises(ValueError, match='unaccounted lock-matching attempt'):
+        audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                       confirmation_decision=DECISION)
+
+
+@pytest.mark.parametrize('seed_recoverable', [True, False])
+def test_truncated_receipt_is_conservatively_opened_without_inventing_fields(tmp_path, seed_recoverable):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    partial = 'ATT-0097-1'
+    root = artifacts/partial
+    _receipt_only(root, 3)
+    path = root/'a2-read.jsonl'
+    if seed_recoverable:
+        full = json.dumps(json.loads(path.read_text()), sort_keys=True)
+        prefix = full[:full.index('"time_utc"')]+ '"time_utc": "2026-11'
+    else:
+        prefix = '{"confirmation_decision": "D-1234", "hardware": "NVIDIA'
+    path.write_text(prefix)
+    attempts.append(partial)
+    report = audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                            confirmation_decision=DECISION)
+    record = next(r for r in report['no_manifest_attempts'] if r['attempt_id'] == partial)
+    assert record['opened'] is True and record['receipt_truncated'] is True
+    assert record['category'] == 'partial_opened_no_manifest'
+    assert record['seed'] == (3 if seed_recoverable else None)
+    if not seed_recoverable:
+        assert report['opened_attempts_unknown_seed'][0]['attempt_id'] == partial
+    # Even an unattributed partial opening cannot become the selected result.
+    assert report['selected_attempts']['3'] == 'ATT-0003-1'
+
+
+@pytest.mark.parametrize('field,value', [('seed', 6), ('confirmation_decision', 'D-9999'),
+                                       ('opening_protocol_decision', 'D-0000'), ('time_utc', 'bad-time')])
+def test_receipt_only_attempt_still_validates_known_metadata(tmp_path, field, value):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    partial = 'ATT-0097-1'
+    root = artifacts/partial
+    _receipt_only(root, 3)
+    path = root/'a2-read.jsonl'
+    receipt = json.loads(path.read_text()); receipt[field] = value
+    path.write_text(json.dumps(receipt)+'\n')
+    attempts.append(partial)
+    with pytest.raises(ValueError):
+        audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                       confirmation_decision=DECISION)
+
+
+def test_complete_manifest_does_not_allow_a_truncated_receipt(tmp_path):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    (artifacts/'ATT-0003-1'/'a2-read.jsonl').write_text('{"seed": 3,')
+    with pytest.raises(ValueError, match='malformed receipt'):
+        audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
+                       confirmation_decision=DECISION)
+
+
+def test_only_the_last_manifestless_receipt_line_may_be_truncated(tmp_path):
+    artifacts = tmp_path/'artifacts'
+    attempts, selected = _fixture(artifacts)
+    partial = 'ATT-0097-1'
+    root = artifacts/partial
+    _receipt_only(root, 3)
+    path = root/'a2-read.jsonl'
+    path.write_text('{"seed": 3,\n'+path.read_text())
+    attempts.append(partial)
+    with pytest.raises(ValueError, match='malformed receipt'):
         audit_attempts(attempts, selected, LOCK_SHA, artifacts_root=artifacts,
                        confirmation_decision=DECISION)
 
