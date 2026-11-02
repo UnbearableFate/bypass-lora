@@ -206,3 +206,12 @@ The new required real-checkpoint dev replays add an estimated 0.1 node-hour;
 the conservative full projection is about 4.41 node-hour before the next check,
 within the 5.5 cap. Per MSG-0954, run final-source PBS checks before requesting
 RV-0097's recheck; no formal training until that review passes.
+
+The D-0072 implementation is committed at
+`f7419525d12ff511845a11fae7ae0fae5100e8f7`. Required final-source PBS checks
+RUN-0378 / ATT-0378-1 are running as `3780390.opbs`, debug-mig, 2-minute
+walltime (earlier full suite 72-73 seconds). Outputs:
+`research/artifacts/ATT-0378-1/`; notification `N-20261103-034013-d893`.
+Prior ATT-0377-1 is imported as RES-0351 with measured usage U-0386. The
+RV-0097 recheck will be requested only after these D-0072 checks pass and
+their actual outputs are inspected, as MSG-0954 requires.
