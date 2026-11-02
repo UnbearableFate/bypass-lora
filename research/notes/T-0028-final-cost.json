@@ -1,0 +1,170 @@
+{
+  "experiment": "E-0025@1",
+  "task": "T-0028",
+  "attempts": [
+    {
+      "attempt": "ATT-0271-1",
+      "accounting_ref": "miyabi-pbs:3770096.opbs",
+      "quantity": 0.1325,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:07:57 x nvnodes-mig=1",
+      "node_h": 0.033125,
+      "scheduler_seconds": 477
+    },
+    {
+      "attempt": "ATT-0276-1",
+      "accounting_ref": "miyabi-pbs:3770216.opbs",
+      "quantity": 0.015278,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:00:55 x nvnodes-mig=1",
+      "node_h": 0.0038195,
+      "scheduler_seconds": 55
+    },
+    {
+      "attempt": "ATT-0277-1",
+      "accounting_ref": "miyabi-pbs:3770249.opbs",
+      "quantity": 0.049722,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:02:59 x nvnodes-mig=1",
+      "node_h": 0.0124305,
+      "scheduler_seconds": 179
+    },
+    {
+      "attempt": "ATT-0278-1",
+      "accounting_ref": "miyabi-pbs:3770250.opbs",
+      "quantity": 0.989444,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:59:22 x nvnodes-mig=1",
+      "node_h": 0.247361,
+      "scheduler_seconds": 3562
+    },
+    {
+      "attempt": "ATT-0280-1",
+      "accounting_ref": "miyabi-pbs:3770252.opbs",
+      "quantity": 1.073889,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=01:04:26 x nvnodes-mig=1",
+      "node_h": 0.26847225,
+      "scheduler_seconds": 3866
+    },
+    {
+      "attempt": "ATT-0281-1",
+      "accounting_ref": "miyabi-pbs:3770253.opbs",
+      "quantity": 1.071389,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=01:04:17 x nvnodes-mig=1",
+      "node_h": 0.26784725,
+      "scheduler_seconds": 3857
+    },
+    {
+      "attempt": "ATT-0279-1",
+      "accounting_ref": "miyabi-pbs:3770251.opbs",
+      "quantity": 2.053611,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=02:03:13 x nvnodes-mig=1",
+      "node_h": 0.51340275,
+      "scheduler_seconds": 7393
+    },
+    {
+      "attempt": "ATT-0286-1",
+      "accounting_ref": "miyabi-pbs:3771591.opbs",
+      "quantity": 0.004722,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:00:17 x nvnodes-mig=1",
+      "node_h": 0.0011805,
+      "scheduler_seconds": 17
+    },
+    {
+      "attempt": "ATT-0287-1",
+      "accounting_ref": "miyabi-pbs:3771652.opbs",
+      "quantity": 0.437778,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:26:16 x nvnodes-mig=1",
+      "node_h": 0.1094445,
+      "scheduler_seconds": 1576
+    },
+    {
+      "attempt": "ATT-0288-1",
+      "accounting_ref": "miyabi-pbs:3771942.opbs",
+      "quantity": 0.004444,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:00:16 x nvnodes-mig=1",
+      "node_h": 0.001111,
+      "scheduler_seconds": 16
+    },
+    {
+      "attempt": "ATT-0292-1",
+      "accounting_ref": "miyabi-pbs:3772013.opbs",
+      "quantity": 0.945278,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:56:43 x nvnodes-mig=1",
+      "node_h": 0.2363195,
+      "scheduler_seconds": 3403
+    },
+    {
+      "attempt": "ATT-0291-1",
+      "accounting_ref": "miyabi-pbs:3772012.opbs",
+      "quantity": 0.991111,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:59:28 x nvnodes-mig=1",
+      "node_h": 0.24777775,
+      "scheduler_seconds": 3568
+    },
+    {
+      "attempt": "ATT-0290-1",
+      "accounting_ref": "miyabi-pbs:3772011.opbs",
+      "quantity": 2.132222,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=02:07:56 x nvnodes-mig=1",
+      "node_h": 0.5330555,
+      "scheduler_seconds": 7676
+    },
+    {
+      "attempt": "ATT-0301-1",
+      "accounting_ref": "miyabi-pbs:3773187.opbs",
+      "quantity": 0.004722,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:00:17 x nvnodes-mig=1",
+      "node_h": 0.0011805,
+      "scheduler_seconds": 17
+    },
+    {
+      "attempt": "ATT-0302-1",
+      "accounting_ref": "miyabi-pbs:3773252.opbs",
+      "quantity": 0.472778,
+      "unit": "mig_instance_hours",
+      "source_ref": "resources_used.walltime=00:28:22 x nvnodes-mig=1",
+      "node_h": 0.1181945,
+      "scheduler_seconds": 1702
+    },
+    {
+      "attempt": "ATT-0303-1",
+      "accounting_ref": "miyabi-pbs:3773604.opbs",
+      "quantity": 0.005,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=00:00:18 x nvnodes-mig=1",
+      "node_h": 0.00125,
+      "scheduler_seconds": 18
+    }
+  ],
+  "terminal_attempt_count": 16,
+  "all_terminal_usage_imported_once": true,
+  "exact_scheduler_mig_seconds": 37382,
+  "exact_scheduler_mig_hours": 10.383888888888889,
+  "exact_node_h": 2.595972222222222,
+  "native_six_decimal_mig_h": 10.383888,
+  "native_node_h": 2.595972,
+  "cap_node_h": 3,
+  "within_cap": true,
+  "failed_compute_attempts": [],
+  "prior_cost_validated_by": {
+    "attempt": "ATT-0303-1",
+    "result": "RES-0280",
+    "terminal_coverage_complete": true
+  },
+  "final_analysis_terminal_export": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/ATT-0303-terminal-observations.json",
+  "conversion": "node_h = MIG instance hours * 0.25; scheduler seconds include every task compute attempt, both preflights, both audits, both analyses and both intervention jobs"
+}
