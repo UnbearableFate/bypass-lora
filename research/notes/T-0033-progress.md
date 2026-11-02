@@ -351,3 +351,23 @@ owns the listener and resumes this role on completion. After validating and
 importing the outputs and measured usage, request RV-0099's recheck. No
 training, evaluation, lock or primary-statistic path has changed in this fix;
 the twelve formal runs remain at f741952 under N-20261103-040731-ab87.
+
+ATT-0392-1 has been validated and imported as RES-0354, with usage U-0390
+(0.02 measured MIG-hour = 0.005 node-hour; 72 scheduler seconds). Exact
+candidate 4e6e8df passed 434 tests, zero failures/errors/skips, actual torch
+2g.24gb on confirmed allocation mg1099. Source/RunSpec pins and log/XML agree;
+the prior metadata reference checks also pass. Completed diagnostic usage is
+0.055139 node-hour; formal-run usage is still pending. The conservative full
+projection is about 4.43 node-hour before future measured adjustments.
+
+Manifest SHA256:
+`4a05664cece7d733d3c9eba92738f6309bbe241a367ae678284a31c3a5f3992f`.
+checks.xml SHA256:
+`6e0969ea19c8aff98894a8a744be8476f4845e8fd24132f31d4096b4e080cd4f`.
+
+RV-0100 is requested and assigned to reviewer-2 as the second and final
+review in RV-0099's round. The four scoped analysis/audit/test-list files
+remain frozen. Resume on its answer or a formal-training notification. A
+remaining medium finding after this second review needs the coordinator's
+disposition. No lock or A2 evaluation before passing analysis review and valid
+completion of all twelve trained checkpoints.
