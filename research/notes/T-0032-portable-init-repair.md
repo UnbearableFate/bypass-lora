@@ -33,7 +33,7 @@ Source-matched PBS validation:
 
 | Attempt | PBS | Scope | Current evidence |
 |---|---|---|---|
-| ATT-0354-1 |3778174.opbs|126 tests, full G-T I-G, all8 train-only timings|126 tests passed17.28s; full smoke running |
+| ATT-0354-1 |3778174.opbs|126 tests, full G-T I-G, all8 train-only timings|passed, RES-0330;687s, U-0363=.190833 MIG-h;2g on mg1104 |
 | ATT-0355-1 |3778175.opbs|full256 G-QN I-G|passed, RES-0328;57s, U-0361=.015833 MIG-h; runtime1g on mg1100 |
 | ATT-0356-1 |3778176.opbs|full256 G-N I-G|passed, RES-0329;60s, U-0362=.016667 MIG-h; runtime2g on mg1104 |
 
@@ -50,9 +50,12 @@ CPU-base and CUDA-base up-only models, then compare every A/B and the exact
 state digest for ranks48/56. They passed in the PBS job.
 
 N-20261102-235003-e198 /T0032-cpu-init-checks covers these three jobs.
-After ATT-0354 application success and terminal usage import, update the
-measured projection from its eight timings (all old failed/diagnostic work
-counts), then run three NEW L-56 candidates1e-4,3e-4,1e-3 on dc82cfc.
+ATT-0354 application success and terminal usage are imported, and the measured
+projection is updated from its eight timings (all old failed/diagnostic work
+counts). Three NEW L-56 candidates1e-4,3e-4,1e-3 on dc82cfc are submitted as
+ATT-0357/0358/0359, PBS3778348/3778349/3778351. Notification
+N-20261103-000608-66da is sealed3; MSG-0915 sent the listener to coordinator.
+Fresh input list: T-0032-up-lr-grid-portable-input.json.
 No slice pinning. Require identical initial digest, source, environment,
 split, order,1096 steps/2192 examples/200229 tokens and full4096 calibration
 membership. Run lr-plan in PBS. Apply only its one prescribed endpoint,
@@ -60,9 +63,13 @@ then artifact-bound lr-lock, and only then dev/formal training.
 
 Measured prior cost before these three checks:0.24152725 node-h, including
 0.019097 earlier node-h and every recorded failed/diagnostic attempt. The
-two terminal I-G checks add0.008125 node-h. Main smoke accounting is pending.
-The old v2 cost table is historical and must be replaced for current-source
-formal-run approval; cap remains3.5node-h.
+two terminal I-G checks add0.008125 node-h; main smoke adds0.04770825.
+Measured total is0.2973605 node-h. Current-source v3 cost table includes this
+total, all8 future formal arms, worst-case4 fresh calibration candidates,
+reference diagnostics,180s check/analysis allowance and360s scheduler reserve:
+2.8555888954 node-h within3.5 cap. The three current-source I-G initializations
+are reused, with no further collection cost forecast. G-T maximum errors:
+orth1.080e-8, relativeRMS3.408e-8; all8 finite80-step timings passed.
 
 D-0065 authorizes exactly all8 sealed E-0029@1 formal arms after LR lock.
 No new ordinary tap/source variants or follow-up seeds are authorized; report

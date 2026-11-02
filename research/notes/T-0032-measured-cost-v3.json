@@ -1,0 +1,23 @@
+{
+  "experiment": "E-0029@1",
+  "source_commit": "dc82cfc6c1f642f9380596a6be3244dafd4147a4",
+  "smoke_attempt": "ATT-0354-1",
+  "smoke_result": "RES-0330",
+  "smoke_job": "3778174.opbs",
+  "source_cost_file": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0354-1/cost-estimate.json",
+  "measured_prior_node_hours": 0.24152725,
+  "measured_current_validation_mig_hours": 0.223333,
+  "measured_node_hours_to_date": 0.2973605,
+  "future_formal_training_seconds": 34012.96928532362,
+  "future_worst_case_four_LR_seconds": 2253.6478597434107,
+  "future_reference_diagnostic_seconds": 31.871749212034047,
+  "checks_analysis_seconds_reserved": 180,
+  "future_projected_node_hours": 2.533228395436046,
+  "updated_projected_node_hours": 2.830588895436046,
+  "additional_scheduler_reserve_seconds": 360,
+  "projected_with_scheduler_reserve_node_hours": 2.8555888954360458,
+  "cap_node_hours": 3.5,
+  "within_cap": true,
+  "accounting": "All measured old diagnostics/failures/invalid calibration and planner count. Current validation uses actual PBS walltime; current G-T/G-QN/G-N initializations reused, so no future IG collection allowance. Future includes all8 formal arms, worst-case4 NEW LR candidates, reference diagnostics,180s checks/analysis, plus360s conservative scheduler/startup reserve for18jobs. MIGh/4.",
+  "authority": "D-0064,D-0065,MSG-0907,RV-0090,RV-0092,RV-0094,RV-0095"
+}
