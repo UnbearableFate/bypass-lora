@@ -1,0 +1,36 @@
+const fs = require('fs'), vm = require('vm');
+const dir = process.argv[2];
+const js = fs.readFileSync(dir + '/page-main.js', 'utf8');
+const data = JSON.parse(fs.readFileSync(dir + '/page-data-roundtrip.json', 'utf8'));
+const ctx = {};
+vm.createContext(ctx);
+vm.runInContext(js, ctx);
+const HT = ctx.HT;
+if (!HT || typeof ctx.htInit !== 'function') throw new Error('HT or htInit missing');
+const tree = HT.treeHTML(data), ov = HT.overviewHTML(data);
+fs.writeFileSync(dir + '/smoke-tree.html', tree);
+fs.writeFileSync(dir + '/smoke-ov.html', ov);
+const ids = [...tree.matchAll(/ id="([^"]+)"/g)].map(m => m[1]);
+const uniq = new Set(ids);
+if (uniq.size !== ids.length) throw new Error('duplicate DOM ids in tree');
+const controls = [...tree.matchAll(/aria-controls="([^"]+)"/g)].map(m => m[1]);
+controls.forEach(c => { if (!uniq.has(c)) throw new Error('aria-controls target missing: ' + c); });
+const rowIds = [...tree.matchAll(/<li class="node [he]" data-id="([^"]+)"/g)].map(m => m[1]);
+const selIds = [...tree.matchAll(/<button type="button" class="sel" data-id="([^"]+)"/g)].map(m => m[1]);
+const lines = [...tree.matchAll(/<li class="line" data-line="([^"]+)"/g)].map(m => m[1]);
+const chips = [...ov.matchAll(/class="ov-chip" data-id="([^"]+)"/g)].map(m => m[1]);
+const names = HT.lineNames(data);
+const all = Object.keys(data.nodes);
+all.forEach(id => {
+  if (!rowIds.includes(id)) throw new Error('no row for ' + id);
+  if (!names[id]) throw new Error('no line for ' + id);
+  const b = HT.badgesHTML(data.nodes[id]);
+  if (/undefined/.test(b)) throw new Error('bad badge for ' + id);
+});
+if (/undefined|NaN|\[object/.test(tree + ov)) throw new Error('undefined text in output');
+const hChips = new Set(chips);
+if (chips.length !== 29 || hChips.size !== 29) throw new Error('overview chips: ' + chips.length);
+const counts = data.lines.map(l => l.name + ' ' + HT.countLine(l).join('/'));
+console.log('lines', lines.length, 'rows', rowIds.length, 'unique row ids', new Set(rowIds).size,
+  'select buttons', selIds.length, 'toggles', controls.length, 'DOM ids', ids.length, 'overview chips', chips.length);
+console.log(counts.join(' | '));

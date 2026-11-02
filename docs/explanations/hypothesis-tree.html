@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>假说探索树</title>
+<meta name="description" content="bypass-lora 项目全部假说与实验，按研究线组织成可折叠的树；点击条目查看目的、做法与结果。">
+<script>try{var t=localStorage.getItem('ht-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}</script>
+<style>
+:root{
+  --bg:#f7f6f2;--surface:#ffffff;--surface-2:#efede7;--text:#1c1e21;--text-dim:#575c63;
+  --border:#e0ddd4;--border-bright:#8a8f97;--accent:#0b6680;--accent-bg:#e2eff3;
+  --ok:#2c7548;--ok-bg:#e3f1e8;--risk:#b42318;--risk-bg:#fbe8e5;--warn:#965800;--warn-bg:#faefda;
+  --neutral:#686d75;--neutral-bg:#eeedea;
+  --font-sans:"Source Han Sans SC","Noto Sans CJK SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue","Segoe UI",sans-serif;
+  --font-serif:"Source Han Serif SC","Noto Serif CJK SC","Songti SC","STSong","Noto Serif",Georgia,serif;
+  --font-mono:"JetBrains Mono","SFMono-Regular","Menlo","Consolas","Liberation Mono",monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121417;--surface:#1a1d21;--surface-2:#23272c;--text:#e8e6e1;--text-dim:#a5aab1;
+    --border:#2d3137;--border-bright:#6f757e;--accent:#62bad4;--accent-bg:#15313a;
+    --ok:#64c690;--ok-bg:#162e20;--risk:#f28b7f;--risk-bg:#3b1d1a;--warn:#e5ab42;--warn-bg:#382a12;
+    --neutral:#9ba1aa;--neutral-bg:#262a30;color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121417;--surface:#1a1d21;--surface-2:#23272c;--text:#e8e6e1;--text-dim:#a5aab1;
+  --border:#2d3137;--border-bright:#6f757e;--accent:#62bad4;--accent-bg:#15313a;
+  --ok:#64c690;--ok-bg:#162e20;--risk:#f28b7f;--risk-bg:#3b1d1a;--warn:#e5ab42;--warn-bg:#382a12;
+  --neutral:#9ba1aa;--neutral-bg:#262a30;color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 var(--font-sans)}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1200px;margin:0 auto;padding:0 16px}
+.mono{font-family:var(--font-mono)}
+.top{padding:28px 0 4px}
+.kicker{font:12px/1.4 var(--font-mono);color:var(--text-dim);margin:0 0 6px}
+h1{font-family:var(--font-serif);font-weight:700;font-size:30px;line-height:1.25;margin:0 0 10px}
+.lede{max-width:62ch;margin:0;font-size:16px}
+.overview{margin:20px 0 28px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px}
+.ov-legend{display:flex;flex-wrap:wrap;gap:4px 16px;list-style:none;margin:0 0 8px;padding:0;font-size:13px;color:var(--text-dim)}
+.ov-legend li{display:inline-flex;align-items:center;gap:6px}
+.ov-legend b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.ov-row{display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr);gap:4px 14px;align-items:start;padding:8px 0;border-top:1px solid var(--border)}
+.ov-name{font-size:13px;color:var(--text-dim);padding-top:2px}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ov-chip{display:inline-flex;align-items:center;gap:5px;padding:1px 7px 1px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);font:12px/1.6 var(--font-mono);cursor:pointer;font-variant-numeric:tabular-nums}
+.ov-chip:hover{border-color:var(--border-bright)}
+.ov-chip[aria-current="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.sw{display:inline-block;width:14px;height:14px;border:1.5px solid;border-radius:2px;flex:none}
+.sw.supported{background:var(--ok);border-color:var(--ok)}
+.sw.challenged{border-color:var(--risk);background:repeating-linear-gradient(135deg,var(--risk) 0 2px,transparent 2px 5px)}
+.sw.inconclusive{border-color:var(--warn);background:linear-gradient(90deg,var(--warn) 50%,transparent 50%)}
+.sw.untested{border-color:var(--neutral);background:transparent}
+.sw.cand{border-style:dashed}
+.overview figcaption{margin-top:10px;font-size:14px;max-width:65ch}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.btn{padding:4px 12px;border:1px solid var(--border-bright);border-radius:4px;background:var(--surface);cursor:pointer;font-size:14px}
+.btn:hover{background:var(--surface-2)}
+.filter{display:flex;align-items:center;gap:6px;flex:1 1 230px;min-width:0;font-size:14px;color:var(--text-dim)}
+.filter input{flex:1;min-width:0;padding:4px 8px;border:1px solid var(--border-bright);border-radius:4px;background:var(--surface);color:var(--text);font-size:14px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 20px;font-size:12.5px;color:var(--text-dim);margin:0 0 16px;padding:8px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.legend .grp{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center}
+.legend .grp-name{margin-right:2px}
+.legend .en{font-family:var(--font-mono);font-size:11px;color:var(--text-dim)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
+.tree,.kids{list-style:none;margin:0;padding:0}
+.kids{padding-left:14px;margin-left:11px;border-left:1px solid var(--border)}
+.kids.top{margin-left:11px}
+.line{margin:0 0 14px}
+.line-tog{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;width:100%;text-align:left;padding:4px 2px;border:0;background:transparent;cursor:pointer}
+.line-tog svg{align-self:center;flex:none;color:var(--text-dim);transition:transform .15s}
+.line-tog[aria-expanded="true"] svg{transform:rotate(90deg)}
+.lname{font-weight:700;font-size:16px}
+.count{font-size:12.5px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.line-desc{margin:0 0 6px 22px;font-size:13px;color:var(--text-dim);max-width:65ch}
+.row{display:flex;align-items:flex-start;gap:2px}
+.tog{flex:none;width:24px;height:30px;padding:0;border:0;background:transparent;cursor:pointer;color:var(--text-dim);display:grid;place-items:center;border-radius:4px}
+.tog:hover{background:var(--surface-2)}
+.tog svg{transition:transform .15s}
+.tog[aria-expanded="true"] svg{transform:rotate(90deg)}
+.spacer{flex:none;width:24px;height:30px;display:grid;place-items:center}
+.spacer::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--border-bright)}
+.sel{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;text-align:left;padding:3px 6px;border:1px solid transparent;border-radius:4px;background:transparent;cursor:pointer}
+.sel:hover{background:var(--surface-2)}
+.sel[aria-current="true"]{background:var(--accent-bg);border-color:var(--accent)}
+.nid{font:12.5px/1.7 var(--font-mono);color:var(--text-dim);font-variant-numeric:tabular-nums}
+.node.h>.row .nid{color:var(--text);font-weight:600}
+.ttl{flex:1 1 12em;min-width:0;overflow-wrap:anywhere}
+.node.e>.row .ttl{color:var(--text-dim)}
+.badges{display:inline-flex;flex-wrap:wrap;gap:4px}
+.b{display:inline-flex;align-items:center;gap:3px;padding:0 6px;border:1px solid var(--border-bright);border-radius:4px;font-size:12px;line-height:20px;white-space:nowrap;background:var(--surface);color:var(--text)}
+.b .g{font-size:11px;line-height:1}
+.b.ev-supported{border-color:var(--ok);background:var(--ok-bg)}.b.ev-supported .g{color:var(--ok)}
+.b.ev-challenged{border-color:var(--risk);background:var(--risk-bg)}.b.ev-challenged .g{color:var(--risk)}
+.b.ev-inconclusive{border-color:var(--warn);background:var(--warn-bg)}.b.ev-inconclusive .g{color:var(--warn)}
+.b.ev-untested{border-color:var(--neutral);background:var(--neutral-bg)}.b.ev-untested .g{color:var(--neutral)}
+.b.disp{border-color:var(--border);background:transparent;color:var(--text-dim)}
+.b.disp-active .g{color:var(--accent)}
+.b.disp-candidate{border-style:dashed}
+.b.stage{border-color:var(--border);background:transparent;color:var(--text-dim)}
+.b.stage .mono{color:var(--text);font-size:11.5px}
+.b.run-done{border-color:var(--border);background:transparent;color:var(--text-dim)}
+.b.run-running{border-color:var(--accent);background:var(--accent-bg)}.b.run-running .g{color:var(--accent)}
+.b.run-notstarted{border-style:dashed;border-color:var(--border-bright);background:transparent;color:var(--text-dim)}
+.detail{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 18px}
+.detail .hint{margin:0;color:var(--text-dim);font-size:14px}
+.d-id{font:12.5px/1.5 var(--font-mono);color:var(--text-dim);margin:0 0 4px;overflow-wrap:anywhere}
+.d-title{font-family:var(--font-serif);font-size:21px;line-height:1.4;margin:0 0 8px}
+.d-title:focus{outline:none}
+.d-title:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.d-badges{display:flex;flex-wrap:wrap;gap:4px}
+.d-rel{font-size:13px;color:var(--text-dim);margin:8px 0 0}
+.d-rel button{font:12.5px/1.6 var(--font-mono);border:1px solid var(--border-bright);border-radius:4px;background:transparent;padding:0 6px;cursor:pointer;margin:0 4px 2px 0}
+.d-rel button:hover{background:var(--surface-2)}
+.detail section{margin-top:18px}
+.detail h3{font-size:13.5px;letter-spacing:.06em;color:var(--accent);margin:0 0 4px;font-weight:700}
+.detail section p{margin:0;max-width:65ch;overflow-wrap:anywhere}
+.back{margin-top:18px}
+.no-match{color:var(--text-dim);font-size:14px}
+.glossary{margin:36px 0 0;border-top:1px solid var(--border);padding-top:12px}
+.glossary summary{cursor:pointer;font-weight:700;font-size:16px}
+.glossary dl{display:grid;grid-template-columns:minmax(0,1fr);gap:2px 18px;margin:14px 0 0}
+.glossary dt{font-weight:600;overflow-wrap:anywhere}
+.glossary dd{margin:0 0 10px;max-width:65ch;overflow-wrap:anywhere}
+.foot{padding-top:24px;padding-bottom:40px;color:var(--text-dim);font-size:13px}
+.foot p{margin:0;max-width:80ch}
+@media (min-width:760px){.glossary dl{grid-template-columns:minmax(0,15em) minmax(0,1fr)}}
+@media (max-width:640px){.ov-row{grid-template-columns:minmax(0,1fr)}h1{font-size:26px}}
+@media (min-width:900px){
+  .cols{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+  .detail{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+  .back{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;scroll-behavior:auto !important}}
+</style>
+</head>
+<body>
+<header class="top">
+<div class="wrap">
+<p class="kicker">bypass-lora · smooth-research 研究记录</p>
+<h1>假说探索树</h1>
+<p class="lede">29 个假说、29 个实验分属 7 条研究线。得到支持的只有 3 个（两项实现检查与 M 线的单独编码写入）；在已完成的普通设置比较中，侧支组的宏平均都低于参数相近的 LoRA。</p>
+</div>
+</header>
+<main class="wrap">
+<figure class="overview" aria-labelledby="ov-cap">
+<ul class="ov-legend" aria-label="证据状态计数"><li><span class="sw supported" aria-hidden="true"></span>支持 <b>3</b></li><li><span class="sw challenged" aria-hidden="true"></span>受挑战 <b>9</b></li><li><span class="sw inconclusive" aria-hidden="true"></span>无定论 <b>6</b></li><li><span class="sw untested" aria-hidden="true"></span>未检验 <b>11</b></li><li><span class="sw untested cand" aria-hidden="true"></span>虚线框为候选假说 <b>3</b></li></ul>
+<div id="ov-grid"></div>
+<figcaption id="ov-cap">受挑战的 9 个假说有 7 个在 M 线与 RB 线；未检验的 11 个有 8 个在 RB1-09 改进线，这条线的 E-0028、E-0029 正在进行。点击格子查看该假说的详情。</figcaption>
+</figure>
+<section aria-label="假说与实验">
+<div class="toolbar">
+<button type="button" class="btn" id="expand-all">全部展开</button>
+<button type="button" class="btn" id="collapse-all">全部折叠</button>
+<label class="filter"><span>筛选</span><input id="filter" type="search" placeholder="编号或标题，如 H-0012、LoRA" autocomplete="off"></label>
+<button type="button" class="btn" id="theme">配色：自动</button>
+</div>
+<div class="legend" aria-label="图例">
+<div class="grp"><span class="grp-name">证据状态</span><span class="b ev ev-supported"><span class="g" aria-hidden="true">■</span>支持</span><span class="en">supported</span><span class="b ev ev-challenged"><span class="g" aria-hidden="true">▨</span>受挑战</span><span class="en">challenged</span><span class="b ev ev-inconclusive"><span class="g" aria-hidden="true">◧</span>无定论</span><span class="en">inconclusive</span><span class="b ev ev-untested"><span class="g" aria-hidden="true">□</span>未检验</span><span class="en">untested</span></div>
+<div class="grp"><span class="grp-name">处置</span><span class="b disp disp-active"><span class="g" aria-hidden="true">●</span>活跃</span><span class="en">active</span><span class="b disp disp-paused"><span class="g" aria-hidden="true">‖</span>暂停</span><span class="en">paused</span><span class="b disp disp-retired"><span class="g" aria-hidden="true">×</span>已关闭</span><span class="en">retired</span><span class="b disp disp-candidate"><span class="g" aria-hidden="true">◌</span>候选</span><span class="en">candidate</span></div>
+<div class="grp"><span class="grp-name">实验阶段</span><span class="b stage"><span class="mono">E0</span>实现</span><span class="b stage"><span class="mono">E1</span>机制</span><span class="b stage"><span class="mono">E2</span>真实模型</span><span class="b stage"><span class="mono">E3</span>确认</span></div>
+<div class="grp"><span class="grp-name">实验进度</span><span class="b run run-done"><span class="g" aria-hidden="true">✓</span>已完成</span><span class="b run run-running"><span class="g" aria-hidden="true">◐</span>进行中</span><span class="b run run-notstarted"><span class="g" aria-hidden="true">○</span>未开始</span></div>
+</div>
+<div class="cols">
+<nav aria-label="假说探索树">
+<ul class="tree" id="tree"></ul>
+<p class="no-match" id="no-match" hidden>没有匹配的条目。</p>
+</nav>
+<aside class="detail" id="detail" aria-label="详情">
+<p class="sr" id="sr-status" aria-live="polite"></p>
+<p class="hint" id="detail-empty">点击左侧任一条目，这里显示它的目的、做了什么与结果。窄屏时详情显示在树的下方。</p>
+<article id="detail-card" hidden>
+<header>
+<p class="d-id" id="d-id"></p>
+<h2 class="d-title" id="d-title" tabindex="-1"></h2>
+<div class="d-badges" id="d-badges"></div>
+<p class="d-rel" id="d-rel"></p>
+</header>
+<section><h3>目的</h3><p id="d-purpose"></p></section>
+<section><h3>做了什么</h3><p id="d-did"></p></section>
+<section><h3>结果</h3><p id="d-result"></p></section>
+<button type="button" class="btn back" id="back-to-tree">回到树</button>
+</article>
+</aside>
+</div>
+</section>
+<details class="glossary">
+<summary>术语表</summary>
+<dl>
+<dt>Base</dt><dd>冻结的 Qwen3-0.6B-Base。所有方法都不改它的权重，只训练外加的小模块。</dd>
+<dt>侧支与 r</dt><dd>挂在冻结主干旁边的小模块（也叫侧分支），先把特征压到 r 维（如 r32、r128）再处理，输出再接回主干。</dd>
+<dt>tap</dt><dd>侧支取特征的位置。qknorm_pre_rope 取 attention 中经过 QKNorm、尚未加 RoPE 的 q 与 k，以及 v_proj 的输出；direct_hidden、X 或 N 指该层 input_layernorm 的输出。</dd>
+<dt>KernelMatrix</dt><dd>正核线性注意力。把前文各位置的 kᵀv 累加成一个 r×r 的小矩阵 M，读取时用当前位置的 q 乘 M 再归一化，只看得到当前及之前的位置。</dd>
+<dt>SoftmaxSlot</dt><dd>把每条事实存成一个槽位，读取时对槽位做 softmax 加权。KernelSlot 是与 KernelMatrix 等价的槽位写法，只用于恒等检查。</dd>
+<dt>T0</dt><dd>同参数、无历史的对照。只用当前 token 做非线性门控 SiLU(norm(z)Rq + norm(k)) ⊙ v，不读任何前文状态；它不是去掉历史的同一种注意力。</dd>
+<dt>S1、S2、S4 与 η</dt><dd>S 是侧支读取的次数。S 大于 1 时按 z ← z + η·a·Ro 累加多次读取；η 是侧支输出比例，默认 0.25。</dd>
+<dt>R_res</dt><dd>块输出残差旁路，Y = B(X) + Z·P_R，把侧支输出加到原 Transformer 块的输出上。</dd>
+<dt>F_out、F_pre</dt><dd>加法写回。F_out 把 ZP 加在 FFN 的输出上，F_pre 加在 FFN 的输入上。</dd>
+<dt>C_gate、C_up、C_dual</dt><dd>条件融合（concat 族）。把投影后的 Z 加进冻结 FFN 的 gate 或 up 分支（C_dual 两处都加），让侧支调制 FFN 的计算。</dd>
+<dt>LoRA rN、all-7</dt><dd>标准低秩适配器，rank 为 N；all-7 指 q、k、v、o、gate、up、down 七个投影都加。LoRA4、LoRA28 指加在 4 层或全部 28 层上，up-only LoRA 只加在 up_proj 上。</dd>
+<dt>冻结干预</dt><dd>训练后不改权重，只改侧支状态。iv_off 关掉侧支，iv_swap 换成同任务另一样本的历史，iv_permute 打乱 key 与 value 的配对，iv_reset 在段界清空状态。</dd>
+<dt>F 线、M 线、分段协议</dt><dd>F 线中主干能看到全部输入，也叫普通设置；M 线在问答时丢掉事实部分的主干 KV，只剩侧支的低维记忆；分段协议把输入拆成两段，主干在第 2 段看不到第 1 段，只有侧支状态跨段。</dd>
+<dt>单独编码写入</dt><dd>每条事实不带前文、单独经过主干编码，再写进记忆；与之相对的是在完整上下文中编码。</dd>
+<dt>H3 门槛</dt><dd>M 线单跳读取的锁定门槛：正常记忆的 EM 比清空记忆（zero）与打乱记忆（shuffled）中较高者至少高 10 pp，NLL 更低，目标事实的平均读权重至少 0.125。</dd>
+<dt>E、T1、T2</dt><dd>E 是每个样本的事实数，如 E=16。T1 是单跳问答；T2 是沿关系链走 1 至 3 跳的链终点问答。</dd>
+<dt>oracle 对照</dt><dd>评估时直接换入正确事实的 value（oracle_value）或 key（oracle_key），看下游解码本身能否答对。</dd>
+<dt>n_eff 与 sink</dt><dd>n_eff 是读权重的有效项数，越小表示读取越集中。位置 0 的 sink 指读权重集中在每个样本都相同的首个 token 上。</dd>
+<dt>EM、NLL</dt><dd>EM 是答案完全匹配的比例；NLL 是答案的负对数似然，越低越好。</dd>
+<dt>dev、calibration、确认集</dt><dd>calibration 用来选学习率等超参数；dev 用于筛选与判定；确认集（官方 validation 或 A2）封存，只开封一次。</dd>
+<dt>diagnostic、screening、confirmatory</dt><dd>证据级别。diagnostic 只说明实现或现象；screening 是单 seed、在 dev 上的筛选；confirmatory 是在封存确认集上按预登记规则做的确认。</dd>
+<dt>E0 至 E3</dt><dd>实验阶段。E0 实现检查，E1 孤立机制或合成数据，E2 真实模型上的最小实验，E3 有限确认。</dd>
+<dt>pp、node·h</dt><dd>pp 是百分点。node·h 是计算用量，一个节点运行一小时，MIG 切片按 1/4 计。</dd>
+</dl>
+</details>
+</main>
+<footer class="wrap foot">
+<p>数据来自本项目的 smooth-research 记录（rl graph、rl show 与 research/experiments 下的实验契约）。数据版本 data_version 4481（rl status），生成于 2026-11-02 22:19 JST。</p>
+</footer>
+<script type="application/json" id="tree-data">{"lines":[{"key":"v0","name":"V0 实现与旧资产诊断","desc":"训练任何模型之前，先确认侧支代码正确，并决定能否复用旧项目的资产。","tree":[["H-0001",[["E-0001",[]],["E-0004",[]]]],["H-0007",[]]]},{"key":"v1","name":"V1 融合接口筛选","desc":"不带记忆，先比较把低维信号接回冻结主干的几种接口。","tree":[["H-0002",[["E-0002",[]],["E-0003",[]]]]]},{"key":"m","name":"M 线：记忆读取、修复与 V3","desc":"问答时主干看不到事实，只能靠侧支的低维记忆。先测单跳读取，失败后修复训练配方，再测多次读取。","tree":[["H-0003",[["E-0005",[]],["E-0006",[]],["E-0007",[]],["E-0008",[]],["E-0009",[]],["E-0010",[]],["E-0012",[]],["H-0004",[["E-0010",[]]]],["H-0005",[["E-0011",[]],["E-0018",[]],["E-0022",[]],["E-0023",[]]]],["H-0009",[["E-0014",[]],["E-0015",[]],["E-0017",[]],["H-0010",[["E-0016",[]]]],["H-0011",[["E-0016",[]]]],["H-0012",[["E-0016",[]],["E-0017",[]]]]]]]]]},{"key":"v5","name":"V5 实用比较（缩减版）","desc":"记忆路线停止后，实用比较收缩为 tokenwise 简单接口对强 LoRA，在官方 validation 上做了唯一一次确认。","tree":[["H-0006",[["H-0008",[["E-0013",[]]]]]]]},{"key":"rb","name":"RB 残差旁路线（plan2）","desc":"在主干能看到全部输入的普通设置下，给四层各加一个因果低维 linear attention 旁路，与同参数无历史的 T0 和近预算 LoRA 比较。","tree":[["H-0017",[["E-0019",[]]]],["H-0013",[["E-0020",[]],["E-0021",[]],["H-0014",[["E-0021",[]],["E-0024",[]]]],["H-0015",[["E-0021",[]]]],["H-0016",[["E-0021",[]]]],["H-0018",[["E-0026",[]]]]]]]},{"key":"seg","name":"分段信息访问线","desc":"主干看不到第 1 段，只有侧支状态能跨段，用来单独测侧支历史带来的信息。","tree":[["H-0019",[["E-0025",[]],["H-0020",[["E-0027",[]],["H-0029",[]]]]]]]},{"key":"rb109","name":"RB1-09 改进线（用户方案）","desc":"以 RB1 中最好的侧支 RB1-09（C_up + KernelMatrix S1，77.50%）为起点，在普通设置下试换 tap、调 η、改初始化，并加同接口 LoRA 对照。","tree":[["H-0021",[["E-0028",[]],["H-0026",[["E-0029",[]]]]]],["H-0022",[["E-0028",[]]]],["H-0023",[["E-0029",[]],["H-0027",[]]]],["H-0024",[["E-0029",[]],["H-0028",[]]]],["H-0025",[["E-0029",[]]]]]}],"nodes":{"H-0001":{"kind":"H","title":"V0 侧分支实现正确","purpose":"在训练任何模型之前，先确认新写的侧分支代码语义正确：出口为零时与 Base 输出一致，梯度只流向侧支参数，因果、缓存、填充与 M 线的信息隔离都按定义工作。实现若有错，后面所有训练结果都无法解读。","did":"两个 E0 实验。E-0001 按 plan §6.3 列出的风险写针对性检查（函数保持、两步梯度启动、同核恒等、约束融合恒等、因果、cache、padding 与 reset 等）；E-0004 补查记忆路径的分块缓存与写入容量保护。FP32 用严格阈值，GPU BF16 的容差事先用 Base 的重复测量锁定，失败后不放宽。","result":"E-0001 修复后 85/85 项通过（EV-0005），E-0004 130/130 项通过（EV-0023），分块（chunk3）记忆状态在 FP32 下的最大误差为 0 与 3.8e-6。按 D-0003 记为 supported，证据级别 diagnostic，范围只是实现正确，不涉及任何性能结论。之后 V1 与 V2 都在这套实现上进行（D-0002、D-0005）。","ev":"supported","disp":"active","derived":[]},"E-0001":{"kind":"E","title":"V0 实现与不变量检查","purpose":"检验 H-0001：新侧分支实现能否通过 plan §6.3 的针对性检查，从而可以进入训练。","did":"在 GH200 的 MIG 切片上运行检查，覆盖出口全零时等于 Base、两步梯度启动且主干不更新、KernelMatrix 与 KernelSlot 的输出和梯度一致、约束下 C_dual 与 F_pre 恒等、因果、cache、padding、reset 与 M 线信息访问。代码审核 RV-0001 之后又加了正对照，证明这些检查确实能发现错误。","result":"首轮 54/60 通过，6 项失败出在后缀因果比较中的填充行（EV-0002）；Base 诊断确认来自填充位置的 query logits，之后 61/61 通过（EV-0003）。新增正对照起初效应太小，低于 BF16 检测阈值（79/85，EV-0004）；只加大测试用的非零出口后 85/85 通过，锁定容差没有改（EV-0005）。证据级别 diagnostic，D-0002 据此进入 V1。","stage":"E0","run":"done","tests":["H-0001"]},"H-0002":{"kind":"H","title":"FFN gate/up 条件融合优于加法写回","purpose":"侧支的输出 Z 怎样接回主干最有效？这条假说认为，把 Z 注入冻结 FFN 的 gate 或 up 分支（C_gate、C_up、C_dual）比直接加到 FFN 的输出或输入上（F_out、F_pre）更好，而且优势不能由线性退化组或参数相近的 LoRA 解释。V1 先用不带记忆的 tokenwise 代理 Z = SiLU(UA) 单独筛选接口。","did":"E-0002 先确认 PIQA+BoolQ 切片没有饱和，并为三个家族校准学习率。E-0003 在 F 线、4 层 [6,13,20,27]、r32 下训练八组：五种接口、线性退化组（Z = UA 加 C_dual）、4 层 all-7 LoRA r10 与 28 层 all-7 LoRA r2，seed 0，每组约 200 万 token，在每任务 1,000 条 dev 上比较。","result":"最好的 concat 组 C_dual（78.15%）只比 F_out（77.80%）高 0.35 pp，不到 +1 pp；非线性对线性退化组只高 0.15 pp [-0.70, 1.00]；选定的 C_up（77.70%）比两个 LoRA 低 1.50 与 1.35 pp（EV-0048）。D-0004 记为 challenged（screening）并暂停。按契约，V2 用 F*=F_out 与 C*=C_up，保留 C_dual 作交互探针；这个结论不否定带记忆的 concat。","ev":"challenged","disp":"paused","derived":[]},"E-0002":{"kind":"E","title":"V1 任务切片与学习率校准","purpose":"为 H-0002 的接口比较做准备：确认从 PIQA 与 BoolQ 官方 train 切出的 train、dev、calibration 处在可学习、未饱和的区间，并为 LoRA、tokenwise 加法、tokenwise concat 三个家族选学习率。","did":"Base 只评估；三个家族各试 1e-4 与 3e-4，每个 run 训练 20 万非 padding 输入 token（seed 0），按 calibration NLL 选择。另外审计训练集中的超长样本。","result":"Base 的 dev 准确率为 PIQA 72.3%、BoolQ 68.0%，LoRA 在 3e-4 下升到 73.3% 与 78.0%，切片可用。三个家族都选 3e-4，正好是网格上端（EV-0017）。训练集中有 1 条 PIQA 样本（id 5528）超长，经授权在 E-0003 中排除（EV-0017、EV-0018）。证据级别 diagnostic，锁定的学习率用于 E-0003。","stage":"E2","run":"done","tests":["H-0002"]},"H-0003":{"kind":"H","title":"M 线单跳记忆读取产生可用信号（V2）","purpose":"这是记忆路线的核心问题：问答阶段丢掉事实部分的主干 KV，只留侧支写下的低维记忆时，模型能否从记忆里读出正确事实。具体看第 14 层、r128、S=1 的 2×2×2 析因（特征 × 读算子 × 融合）中，是否至少有一组在 T1 单跳任务（每样本 16 条事实）上达到 H3 门槛。","did":"先做准备：新数据与 Base 上下限（E-0005）、训练与诊断流水线（E-0006）、F 线 Base 难度诊断（E-0007）、事实在上下文中的 LoRA 正对照（E-0008）与读算子学习率校准（E-0009）。然后 E-0010 训练十组（八组析因加两个 C_dual 探针），每组 400 万 token、seed 0；失败后 E-0012 用表示探针逐层定位信息在哪里丢失。","result":"正对照可学（calibration EM 99.95%），但十组都没有达到 H3：最大 EM 差只有 +0.6 pp（门槛 10 pp），所有目标读权重都低于 0.125（EV-0070）。D-0007 记为 challenged（screening），D-0008 按预期价值停止扩大投入。D-0012 经用户授权以修复配方（H-0009）重开；修复路线暂停后，D-0037 把它也暂停，状态维持 challenged。","ev":"challenged","disp":"paused","derived":[]},"E-0003":{"kind":"E","title":"V1 FFN 融合接口筛选（八组）","purpose":"检验 H-0002：在 tokenwise 代理下，哪种接口能把低维信号变成任务收益；这种优势是否超出线性退化组与参数相近的 LoRA。","did":"八组使用同一训练日程（13,077 步、2,000,040 个输入 token，排除 1 条超长样本）：F_out、F_pre、C_gate、C_up、C_dual、线性退化组、4 层 LoRA r10、28 层 LoRA r2，seed 0。在每任务 1,000 条 dev 上算宏平均准确率，配对分层 bootstrap 区间（10,000 次）只作描述；判定规则运行前固定，concat 至少比加法高 1 pp 才算胜出。","result":"宏平均准确率：F_out 77.80%、F_pre 77.05%、C_gate 77.10%、C_up 77.70%、C_dual 78.15%、线性 78.00%、LoRA4 r10 79.20%、LoRA28 r2 79.05%，Base 70.15%。C_up 比 LoRA4 低 1.50 pp [-2.40, -0.60]，比 LoRA28 低 1.35 pp [-2.50, -0.20]（EV-0048，screening）。D-0004 据此把 H-0002 记为 challenged 并暂停。","stage":"E2","run":"done","tests":["H-0002"]},"H-0004":{"kind":"H","title":"SoftmaxSlot 比 KernelMatrix 读得更集中","purpose":"如果记忆里有信息却读不出来，瓶颈可能在读权重的选择性。这条假说比较两种读算子：SoftmaxSlot（对槽位做 softmax）是否比 KernelMatrix（正核线性注意力）给目标更高的权重、更少的有效读取项数和更高的单跳 EM。","did":"在 E-0010 的析因内比较四个格子（两种特征 × 两种融合）。规则运行前锁定：一格中 SoftmaxSlot 同时有更高的 EM、更高的目标权重与更低的 n_eff 才算它更好，KernelMatrix 的 EM 更高就算 KernelMatrix 更好；至少 3/4 格同向才下结论。","result":"SoftmaxSlot 更好 0/4 格，KernelMatrix 更好 0/4 格（EV-0071）。SoftmaxSlot 的 EM 在四格都略高（0.2 至 0.9 pp），但有三格的目标权重反而更低。D-0006 记为 inconclusive（screening）并暂停：没有可用的记忆读取时，读算子的差别无法与“记忆里没有信息”分开；重开条件是先有可用的 M 线读取。","ev":"inconclusive","disp":"paused","derived":["H-0003"]},"E-0004":{"kind":"E","title":"记忆路径就绪检查","purpose":"检验 H-0001 中与 V2 记忆路径有关的两点：分块缓存时记忆状态是否与整段前向一致，支持写入的容量保护是否对所有 backend 一致生效。这是代码审核 RV-0002 的跟进。","did":"在三个 backend、inclusive 与 strict 两种写读顺序、S=1 与 S=4 下比较 FP32 的分块与整段记忆状态，并测容量边界与状态损坏的负对照，容差沿用锁定值。","result":"130/130 项通过（EV-0023）。chunk3 的最大误差为 0（r32）与 3.8e-6（r128）；逐 token（chunk1）的差为 0.18 与 0.25，只作诊断记录。容量边界内的写入被接受、溢出被拒绝，三个 backend 一致。证据级别 diagnostic，与 E-0001 一起支持 H-0001（D-0003）。","stage":"E0","run":"done","tests":["H-0001"]},"H-0005":{"kind":"H","title":"固定记忆下多次读取有独立收益（V3）","purpose":"如果一次读取已经可用，query 逐步演化的多次读取（S=2 或 4 的累加循环）能否在多跳问题上胜过独立训练的单次读取 S1，且收益不能由幅度、步长或更宽的 S1 解释。V2 没有可用读取时它先被暂停（D-0009），H-0012 成立后重开（D-0024），修订后（@2）限定在单独编码写入、D5 配方与 T2 链终点任务上。","did":"E-0011 生成 T2 链终点数据；E-0018 检查 D5 单读 adapter 在 T2 上的迁移；E-0022 训练共同起点；E-0023 在准备度检查通过后训练 S1、S2、S4 三组（各 6,000 步，seed 0），再做冻结转移诊断与一次修复 pilot。","result":"共同起点满足修订后的准备度规则 R（EV-0113），但 S2 只比 S1 高 0.60 pp [-0.60, +1.80]，低于 +3 pp，hop1 还下降 2.69 pp（EV-0115）。冻结诊断显示失败出在两次读取之间的 query 转移（EV-0116），修复 pilot 中正确标签也不胜过置换标签（EV-0117）。D-0036 记为 inconclusive（screening）并暂停；重开条件是某种 query 更新设计让第 2 步对第 2 条路径事实的读权重至少 1/8，且 hop1 下降不超过 1 pp。","ev":"inconclusive","disp":"paused","derived":["H-0003"]},"E-0005":{"kind":"E","title":"M 线合成任务与 Base 上下限","purpose":"为 H-0003 准备数据：新的 concat_loop_v2 合成关系任务能否确定性生成、与旧项目数据不重叠，并且 Base 在 M 线（只有问题）下接近先验、在 F 线（事实在上下文中）下明显高于先验。","did":"生成 train 16,384、calibration 2,048、dev 1,000 与封存确认集 2,000 条，两次生成核对哈希；用冻结的 Base 在 dev 上按固定协议评估 M 线与 F 线，并与只看训练集选出的常数先验比较。","result":"共 21,432 个互不相同的 episode，与旧数据的零重叠来自关系不相交的构造证明，不是逐条枚举（EV-0029）。Base 的 M 线 EM 1.1%，F 线 1.3%，先验 1.5%：M 线条件成立，F 线没有达到先验加 20 pp（需要 21.5%）（EV-0032）。按契约这只作为任务难度信息，不调整协议，也不算对记忆机制的否定；证据级别 diagnostic。随后 E-0007 诊断 F 线为什么也接近先验。","stage":"E1","run":"done","tests":["H-0003"]},"H-0006":{"kind":"H","title":"保留原 attention 的实用价值（V5 原版）","purpose":"原计划 V5 的实用问题：在保留原 attention 的 F 线上，带多次读取的 C* 能否比参数匹配的强 LoRA（全 28 层 all-7）宏平均高至少 1 pp、每任务下降不超过 1 pp，并显示侧支历史有可测的贡献。确认要用封存的官方 validation 与 3 个 seed。","did":"没有直接运行。记忆路线停止后（D-0008、D-0010），D-0011 把它收缩为只比较简单接口的 H-0008（E-0013）；带侧支历史的部分后来由 RB 线的 H-0013、H-0014 接手（D-0025、D-0028）。","result":"未检验。记录中的处置是暂停，但没有针对它本身的决定或证据。缩减版 H-0008 在官方 validation 上被挑战（D-0028）；RB 线为确认准备的 A2 确认集一直没有开封（D-0045）。","ev":"untested","disp":"paused","derived":["H-0002"]},"E-0006":{"kind":"E","title":"V2 M 线训练与诊断流水线","purpose":"为 H-0003 检查 M 线训练与评估流水线：初始化时是否与 Base 相同，梯度是否按预期流动，因果对照与 oracle 开关是否按定义改变读出。","did":"运行 123 项核心与 M 线测试，八个 arm 在一个小的复制任务上做 2 步与 32 步冒烟训练；整合后再跑 124 项回归、E=16 冒烟与 checkpoint 往返检查，同时测步时。","result":"测试全部通过，八个 arm 初始化时与 Base 一致（EV-0025）；32 步冒烟后，正常记忆的 NLL 都低于清空与打乱的记忆（EV-0028），说明微小的正对照可学。整合后 124 项回归通过，V2 八组只算训练外推约 2.42 node·h（EV-0030）。证据级别 diagnostic，不是科学验证。","stage":"E0","run":"done","tests":["H-0003"]},"H-0007":{"kind":"H","title":"冻结旧 S-RE 换用槽位读算子","purpose":"旧项目 S-RE 的 writer 与 reader 已经学到 key 与 value。这项诊断想知道：只把它原生的 ridge 读取换成 SoftSlot 或 HardSlot，旧的 1,000 个验证 episode 的 EM 能否高于原来的 723/1,000，从而判断瓶颈是否在读算子。","did":"没有做实验。旧 S-RE 的推理资产（writer.pt 与 sq2 loader 所需文件）不在本文件系统上，用户 2026-11-01 选择按计划跳过这项诊断，新方案直接从 Base 实现（D-0001）。","result":"未检验，暂停（D-0001）。重开条件是用户提供这些资产的位置，并为诊断分配不超过 1 node·h。项目没有声称旧指标已复现。","ev":"untested","disp":"paused","derived":[]},"E-0007":{"kind":"E","title":"F 线 Base 难度诊断","purpose":"为 H-0003 解释 E-0005 的意外结果：事实就在上下文中，Base 的 EM 也接近先验。Base 是找到了正确实体、只是被复制问题主语的倾向压过，还是在 16 条事实里根本没找到？失败是否来自提示格式或评估实现？","did":"在 2,048 条 calibration 上比较 batch 1 与 batch 8 的评分一致性，加上限定候选的打分，并在 FP32 下重测前 256 条，区分实现错误与 BF16 的数值敏感。","result":"实现门槛没有通过：F 线 batch 1 与 8 的 NLL 平均绝对差 0.088，超过 0.05（EV-0038）；FP32 下两者几乎一致，指向 BF16 对 batch 与填充的数值敏感，而不是评分或掩码错误（EV-0039）。描述性结果：Base 有 96% 复制问题主语，限定候选时只有 14.2% 答对，随机为 3.7%，E=1 时 EM 为 67%（D-0005）。据此 V2 先加一个训练后的 F 线正对照（E-0008），证据级别 diagnostic。","stage":"E1","run":"done","tests":["H-0003"]},"H-0008":{"kind":"H","title":"tokenwise 简单接口的实用价值（V5 缩减版）","purpose":"记忆路线停止后，V5 按计划收缩为简单接口对比：F 线 4 层的 tokenwise C_up（r32，524,288 参数）在 PIQA+BoolQ 官方 validation 上，能否比参数接近的全 28 层 all-7 LoRA rank1（630,784 参数）宏平均高至少 1 pp，且每任务的差不低于 -1 pp。","did":"由 E-0013 检验，这是项目唯一的 E3 确认实验：3 个新 seed，每个 run 正好 3 个 epoch，学习率按预登记的端点扩展校准，官方 validation 在配置与分析锁定后只开封一次。","result":"C_up 比 LoRA 低 0.42 pp，95% 区间 [-1.02, +0.20]，上界低于 +1 pp，按封存规则记 challenges（EV-0110，confirmatory）。D-0028 记为 challenged 并停止这条路线，D-0029 作阶段停止，处置为已关闭。区间包含 0，所以既不说两者等价，也不说 LoRA 更好。","ev":"challenged","disp":"retired","derived":["H-0006"]},"E-0008":{"kind":"E","title":"V2 F 线训练后正对照","purpose":"为 H-0003 确认任务本身可学：事实放在上下文中，用同样的数据、顺序与 400 万 token 预算训练标准 LoRA，能否在 E=16 单跳任务上明显超过先验。如果这里都学不会，M 线的失败就无法解读。","did":"LoRA 学习率在 1e-4、3e-4、1e-3 上做 20 万 token 的校准，最优在端点，按规则外扩到 3e-3 一次，最后选 1e-3。正式训练 6,000 步、4,000,470 个输入 token，seed 0，门槛是 calibration EM 比先验高至少 20 pp。","result":"calibration EM 99.95%，先验 1.90%，dev 1000/1000 答对（EV-0062）。任务在上下文中可学，正对照通过；这只说明任务可学，不支持也不否定 H-0003，证据级别 diagnostic。正对照通过、E-0009 的学习率锁定之后，E-0010 的十组训练才放行。","stage":"E2","run":"done","tests":["H-0003"]},"H-0009":{"kind":"H","title":"改变训练配方修复单跳读取","purpose":"V2 失败后，用户授权了计划外的修改。这条假说认为失败主要来自训练动态而不是容量：更少的事实或事实数课程、先吸收答案先验的独立通路、地址权重辅助监督、去中心化余弦寻址，至少一种能让 T1 E=16 的单跳读取达到 H3。","did":"E-0014 以 V2-03 配置（direct_hidden、SoftmaxSlot、F_out）为基础，训练六个单项修改的 arm（R1 至 R6），seed 0；E-0015 只在这些 checkpoint 上做评估诊断，分离 value 侧与寻址侧；E-0017 的 seed 复现也登记为对它的检验。","result":"E=16 上没有一组达到 H3：R2 至 R6 的 EM 差为 +1.2、-0.2、-0.6、+4.6、+0.2 pp，门槛 +10 pp；只有 R1 在 E=1 上通过 value 门（+82.6 pp）。E-0015 显示，除第一条事实外，带前文编码的 value 都无法解码，单独编码则可以（EV-0087）。D-0033 记为 challenged（screening），只限原上下文写入协议，暂停；记忆线改走单独编码写入（H-0012）。","ev":"challenged","disp":"paused","derived":["H-0003"]},"E-0009":{"kind":"E","title":"V2 记忆读算子学习率校准","purpose":"为 H-0003 的正式析因做准备：确认正式训练程序（400 万 token 日程、对照评估、checkpoint 重载）运行正确，并为 KernelMatrix 与 SoftmaxSlot 两个读算子各选学习率。","did":"先做 146 项检查与 12 个 arm 的 32 步冒烟。再让两个读算子各在 3e-4、1e-3、3e-3 上训练 20 万 token；最优都在上端，按封存规则各外扩到 1e-2 一次，按 calibration NLL 选择，差距小于 0.5% 时取较小的学习率。","result":"KernelMatrix 选 1e-2（NLL 4.585），SoftmaxSlot 选 3e-3（NLL 4.627；1e-2 只差不到 0.5%，按规则取较小值）（EV-0061）。全部候选有限，重载一致，证据级别 diagnostic；锁定的学习率用于 E-0010。","stage":"E2","run":"done","tests":["H-0003"]},"H-0010":{"kind":"H","title":"解码器先行，再从答案 CE 学会寻址","purpose":"顾问轮次 1 提出的路线之一：在 E=16 上下文中，先只用目标槽位做干净读取（teacher-forced，用到目标索引，属于额外监督），让 value 到答案的解码器先学成；之后恢复全部槽位、只用答案 CE 训练，看寻址能否被发现并达到 H3。","did":"E-0016 中，D1 先训练 6,000 步 teacher-forced 单槽读取；然后从 D1 续训 6,000 步，D2a 只训练寻址参数，D2b 训练全部参数。seed 0，第 14 层、r128、LR 3e-3。","result":"第一段成立：D1 在 teacher-forced 读取下的 EM 差为 +65.5 pp，超过 50 pp（EV-0097）。第二段不成立：D2a 只有 +3.2 pp，D2b 为 +3.0 pp，都远低于 10 pp（EV-0098、EV-0099）。D-0022 记为 challenged（screening）并暂停：只能说明干净读取下有解码能力，而这个配方没能发现寻址。","ev":"challenged","disp":"paused","derived":["H-0009"]},"E-0010":{"kind":"E","title":"V2 单跳记忆读取：2×2×2 析因","purpose":"检验 H-0003 与 H-0004：M 线下，哪种特征 × 读算子 × 融合的组合能让学到的记忆读取产生可用信号；SoftmaxSlot 是否比 KernelMatrix 读得更集中、更可用。","did":"第 14 层、r128、S=1，特征（direct_hidden 或 qknorm_pre_rope）× 读算子（KernelMatrix 或 SoftmaxSlot）× 融合（F_out 或 C_up）八组，加两个 C_dual 探针，共十组，每组 400 万 token、seed 0，只用答案 CE 训练。在 1,000 条 dev 上比较正常、清空（zero）与打乱（shuffled）的记忆，H3 门槛与 H4 的四格规则都在运行前锁定。","result":"十组正常记忆的 EM 只有 0.8% 至 2.1%，最大 EM 差 +0.6 pp，所有目标读权重低于 0.125，H3 为 0/10（EV-0070）；直接换入正确 value 的 oracle 也只有 1.1% 至 2.3%。H4 为 0/4 对 0/4，无定论（EV-0071）。证据级别 screening：D-0007 把 H-0003 记为 challenged，D-0006 把 H-0004 记为 inconclusive，下一步是 E-0012 的定位诊断。","stage":"E2","run":"done","tests":["H-0003","H-0004"]},"H-0011":{"kind":"H","title":"槽位隐变量的边际似然训练","purpose":"顾问轮次 1 提出的另一条路线：把训练目标从向量空间的混合读取改为槽位隐变量的边际似然 L = -log Σ_i w_i·p(answer | 只读 v_i)，看能否避免读取塌缩到固定槽位，并让寻址只从答案中学会。","did":"E-0016 的 D3 从零训练 6,000 步，seed 0，不用目标索引；评估用新登记的硬读取协议（只读最后问题位置 argmax 的槽位）。","result":"硬读取的 EM 差只有 +0.4 pp，最后位置的目标权重 0.061（EV-0100）。D-0021 记录最后位置的读取接近均匀（n_eff 7.9），77.5% 的 argmax 落在槽位 0，并把它记为 challenged（screening），范围限于从零训练，暂停。有可用解码器时边际似然能否发现寻址，没有检验。","ev":"challenged","disp":"paused","derived":["H-0009"]},"E-0011":{"kind":"E","title":"V3 T2 链终点任务的生成与难度检查","purpose":"为 H-0005 准备多跳数据：能否确定性生成 T2 链终点任务（训练与 dev 只含 1 至 3 跳，4、6、8 跳与未见名字封存作外推），与 V2 数据不重叠；M 线 Base 接近先验，而事实在上下文中的 LoRA 小 pilot 能学会 1 至 3 跳。","did":"生成 train 18,432、calibration 2,048、dev 1,000、封存确认集 2,000 条与四个各 1,000 条的分布外切片；评估 Base；跑一个 20 万 token 的 F 线 LoRA pilot（学习率 1e-3），在 calibration 上评估。契约在看到部分结果后修订过（E-0011@2），所以之后的比较只算探索性。","result":"27,480 个样本全部唯一，可独立复现，与 V2 零重叠（EV-0064）。M 线 Base 的 EM 为 0.0%，先验 1.1%，F 线 Base 为 0.9%（EV-0067）。LoRA pilot 在 2 至 3 跳上的 calibration EM 为 92.3%，先验 2.05%，按跳分开与合并都过了 +20 pp 门槛（EV-0069）。证据级别 diagnostic；V2 失败后这套数据先保留，V3 重开时复用（D-0009、D-0024）。","stage":"E1","run":"done","tests":["H-0005"]},"H-0012":{"kind":"H","title":"每条事实单独编码后写入","purpose":"E-0015 显示，带前文编码的 value 会随事实位置发生迁移。这条假说让每条事实不带前文单独编码，再在其分隔符处写入记忆，读取协议不变、只用答案 CE，看 E=16 单跳读取能否达到 H3 且不塌缩到固定槽位。","did":"E-0016 中，D4 从零训练，D5 从 R1（先在 E=1 上训练 6,000 步）续训 6,000 步，seed 0。E-0017 用 seed 1、2 重新走完 D5 的完整配方（P1、P2），另有两个只作描述的 arm（C1、C2）。","result":"D4 失败，读取近乎均匀（EM 差 +0.3 pp，EV-0096）；D5 通过 H3（EM 差 41.1 pp，EV-0095），P1、P2 也通过（47.8 与 46.2 pp，EV-0102、EV-0103），共 3/3 个 seed。D-0023 记为 supported（screening），只限 R1 续训这一配方与单独编码写入协议；同一批 adapter 在上下文编码写入下只有约 5% 的 EM。D-0024 据此重开 V3（H-0005）。","ev":"supported","disp":"active","derived":["H-0009"]},"E-0012":{"kind":"E","title":"V2 记忆失败的层次定位","purpose":"为 H-0003 找出 E-0010 失败的位置：答案相关的信息在冻结特征、训练后的投影、学到的 value 与实际读出中，从哪一层开始丢失。结果用来决定是花掉 plan §8.4 允许的唯一探针，还是停止。","did":"在十个 checkpoint 上做探针测量：L0 对照、L1 冻结特征、L2 训练后的 value、L3 读出、L4 寻址几何，并有独立审计。只测量，不训练新模型。","result":"冻结的第 14 层特征能在分隔符处解码尾实体（92.9% 至 99.6%），监督寻址也能到 82.2% 至 90.2%。但训练后的 value 投影解码尾实体不比随机初始化好（17.0% 至 37.1% 对 32.2% 至 38.5%），实际读出接近先验（1.8% 至 2.3%），每个训练组在最后问题位置都把最大权重放在槽位 0（1000/1000）（EV-0072）。证据级别 diagnostic；D-0008 据此按预期价值停止记忆路线。","stage":"E1","run":"done","tests":["H-0003"]},"H-0013":{"kind":"H","title":"残差旁路 R_res + KernelMatrix 的实用价值","purpose":"plan2 的主线假说：在保留原 attention 的 F 线上，冻结 Base 的四层 [6,13,20,27] 各加一个 r32 块输出残差旁路 Y = B(X) + Z·P_R，Z 来自真实的因果 KernelMatrix 单次读取（S1），宏平均比参数接近的标准 LoRA 至少高 1 pp，且每任务的差不低于 -1 pp。它接手了 V5 原版（H-0006）中带侧支历史的部分。","did":"E-0020（RBc）先为四个训练家族锁定学习率；E-0021（RB1）训练九组，与 Base、同参数 T0、同四层 all-7 LoRA r7（630,784 参数）比较，seed 0，dev 每任务 1,000 条。确认阶段（RB5，用封存的 A2 确认集）要等筛选通过才建。","result":"R_res（RB1-02）宏平均 77.10%，比 LoRA r7（RB1-07，78.95%）低 1.85 pp [-3.00, -0.70]，PIQA -2.00、BoolQ -1.70 pp；比 Base 高 6.95 pp（EV-0118）。D-0039 记为 challenged（screening）并暂停；r128 的 E-0026 之后仍为 challenged（D-0056）。RB5 契约没有建，A2 确认集没有开封（D-0045）。","ev":"challenged","disp":"paused","derived":["H-0006"]},"E-0013":{"kind":"E","title":"V5 缩减版：tokenwise 接口对强 LoRA 的确认","purpose":"检验 H-0008：在官方 validation 上，tokenwise C_up 是否比全 28 层 rank1 LoRA 宏平均高至少 1 pp，且每任务不低于 -1 pp；同时与等参数的加法接口 F_out（r64）比较，并记录参数、训练时间、推理延迟与 WikiText-103 NLL 等代价。","did":"三个 arm：C_up r32 与 F_out r64（各 524,288 参数）、LoRA28 r1（630,784 参数），seed 1 至 3，每个 run 29,165 步、4,173,300 个输入 token，三个 arm 的学习率都按校准规则锁定为 1e-3。官方 validation（PIQA 1,838 条、BoolQ 3,270 条）只开封一次，用配对分层 bootstrap 95% 区间，次要比较做 Holm 校正。","result":"宏平均：C 77.48%、F 77.25%、L 77.90%；C 减 L 为 -0.42 pp [-1.02, +0.20]，三个 seed 都为负（-0.28、-0.40、-0.58），PIQA -0.74、BoolQ -0.09 pp（EV-0110，confirmatory）。次要比较 C 减 F 为 +0.23 pp（Holm p 0.34），F 减 L 为 -0.65 pp（Holm p 0.069），都不拒绝；WikiText 的 ΔNLL 为 C +0.20、F +0.24、L +0.34。D-0028 把 H-0008 记为 challenged 并停止。","stage":"E3","run":"done","tests":["H-0008"]},"H-0014":{"kind":"H","title":"残差旁路的收益依赖侧支自身的历史","purpose":"如果 R_res 有收益，它是否真的来自侧支读到的前文历史？判据是：同参数、同深度、没有侧支历史的 T0 至少低 1 pp，并且只改侧支历史的冻结干预（episode 间交换历史、打乱 key 与 value 的配对）各使宏平均下降至少 1 pp。","did":"E-0021 中比较 RB1-02 与 RB1-01（T0），并对 RB1-02 做冻结干预；E-0024 用零训练诊断看读取落在哪里，确定干预结果该怎么读。","result":"R_res 比 T0 低 0.20 pp [-1.30, +0.90]；swap 使宏平均下降 1.85 pp，permute 下降 17.15 pp，这些降幅可能含分布偏移，不能单独证明历史有用（EV-0119）。D-0042 记为 challenged（screening），挑战只来自 T0 对照，并暂停。重开条件是在需要侧支历史的设置中，历史组比 T0 至少高 1 pp 且 swap 降幅至少 1 pp；E-0026 的 r128 结果（比 T0 高 0.15 pp）没有满足。","ev":"challenged","disp":"paused","derived":["H-0006","H-0013"]},"E-0014":{"kind":"E","title":"记忆修复筛选：六个单项配方","purpose":"检验 H-0009：V2 的失败是否主要来自训练动态。分别改变事实数、课程、先验通路、寻址监督与余弦寻址，看哪一个能在 E=16 dev 上达到 H3，并用 E=1 判断 value 的写入、读取与解码通路本身是否可用。","did":"六组，各 6,000 步、每步 8 个 episode（同 V2），第 14 层、r128、LR 3e-3、seed 0：R1 在 E=1 上训练，R2 在 E=4 上训练，R3 用事实数课程 1→4→8→16，R4 先训练并冻结一条吸收答案先验的通路，R5 对最后问题位置的地址权重加辅助交叉熵（额外监督），R6 用去中心化余弦寻址加可学温度。","result":"R1 在 E=1 上的 EM 差为 +82.6 pp，value 通路可用，但到 E=16 为 -0.7 pp。E=16 的 EM 差：R2 +1.2、R3 -0.2、R4 -0.6、R5 +4.6、R6 +0.2 pp，全部不到 10 pp；R3、R4、R6 重现了 V2 的槽位 0 塌缩，R2 的寻址按关系而不是头实体（EV-0080 至 EV-0085，screening）。D-0013 据此请顾问，D-0014 采纳顾问轮次 1 的建议，转向 E-0015 的诊断与 E-0016 的三条新路线。","stage":"E1","run":"done","tests":["H-0009"]},"H-0015":{"kind":"H","title":"同一旁路内重复读取有增量（S2、S4）","purpose":"检验多次读取在 RB 线上是否有用：R_res + KernelMatrix 的累加循环 S2 或 S4 是否比 S1 至少高 1 pp，且增量不能由重复同一读取的放大（固定 query 的 S4）、累积总步长（η 为 0.25/4 的 S4）或同深度 T0 解释。它也接续 M 线 H-0005 的问题。","did":"E-0021 中训练 RB1-03（S2）、RB1-04（S4）与两个对照 RB1-05、RB1-06，S_F* 在 dev 上选定。","result":"S_F* 选为 S2（比 S4 高 0.55 pp），S2 比 S1 高 0.35 pp [-0.55, +1.30]，低于 +1 pp；S4 比固定 query 的 S4 低 0.20 pp，S4 的读数可以由幅度与步长解释（EV-0120）。D-0040 记为 inconclusive（screening）并暂停，写作“本模型规模下暂无迭代查询证据”。RB1 的 T0 只有 S1，逐 token 深度的解释没有排除。","ev":"inconclusive","disp":"paused","derived":["H-0005","H-0013"]},"E-0015":{"kind":"E","title":"记忆诊断：分离 value 侧与寻址侧","purpose":"为 H-0009 找出 E-0014 多事实配方的失败落在哪一侧：训练出的 value 是否仍带尾实体信息，非末位问题位置的混合读取是否干扰解码，E=1 学到的 value 映射能否迁移到多事实上下文。","did":"只评估、不训练：在 E-0014 的 R1、R2、R5 与 V2-03 的 checkpoint 上，于 calibration 中做 oracle_value、单独编码时的 oracle（iso_oracle_value）、幅度扫描与线性探针。","result":"对 R1，E=16 时上下文中的 oracle_value 只对第一条事实有效（83.4%，其余 1.6%），而每条事实单独编码时为 86.4%（第一条 83.4%，其余 86.7%）：value 的上下文迁移成立，规则 4 与 5 成立，于是加入单独编码写入的 arm（EV-0087）。R2、R5 的 value 探针低于 50%（EV-0088、EV-0089）。另外发现同一 checkpoint 在 MIG 1g 切片上的 BF16 评估结果与 2g 切片不同（EV-0086）。证据级别 diagnostic。","stage":"E1","run":"done","tests":["H-0009"]},"H-0016":{"kind":"H","title":"同一状态下 gate/up 融合优于残差写回","purpose":"V1 中条件融合没有胜出，但那是没有记忆的代理。这条假说在相同的四层 r32 KernelMatrix 状态下再比一次：把 Z 送进原 FFN 的 gate/up（C_dual 或 C_up）是否比 R_res 宏平均至少高 1 pp。","did":"E-0021 中比较 RB1-08（C_dual）、RB1-09（C_up）与 RB1-02（R_res），seed 0，dev 每任务 1,000 条。三者参数不同（C_up 925,696，C_dual 1,318,912，R_res 663,552）。","result":"C_up 77.50%、C_dual 77.45%、R_res 77.10%；最好的 concat 比残差高 0.40 pp [-0.70, +1.50]，低于 1 pp（EV-0121）。D-0041 记为 inconclusive（screening）并暂停，参数较少的 C_up 锁定为 C*_RB；参数匹配的 LoRA、更宽的残差与 concat 自己的 T0 都没有测。之后 RB1-09（C_up）成为用户改进线的起点（H-0021 至 H-0025）。","ev":"inconclusive","disp":"paused","derived":["H-0002","H-0013"]},"E-0016":{"kind":"E","title":"记忆修复筛选：顾问轮次 1 的三条路线","purpose":"同时检验 H-0010、H-0011 与 H-0012：解码器能否在干净读取下学成、之后能否从答案 CE 学会寻址；边际似然能否避免塌缩；单独编码写入能否消除上下文迁移，让单跳读取可用。","did":"六个 arm，seed 0，E=16，每段 6,000 步，LR 3e-3：D1（teacher-forced 单槽读取）、D2a 与 D2b（从 D1 续训寻址或全部参数）、D3（槽位边际似然）、D4（单独编码写入，从零训练）、D5（单独编码写入，从 R1 续训）。D4、D5 以 E-0015 的规则 5 成立为前提，判定用锁定的 H3 门槛。","result":"D1 在 teacher-forced 读取下为 +65.5 pp；D2a +3.2、D2b +3.0、D3 +0.4、D4 +0.3 pp，都不到 10 pp；D5 达到 H3（EM 42.8%，差 41.1 pp，全位置目标权重 0.162）（EV-0095 至 EV-0100）。证据级别 screening：D-0022、D-0021 把 H-0010、H-0011 记为 challenged，D5 交给 E-0017 复现。","stage":"E1","run":"done","tests":["H-0010","H-0011","H-0012"]},"H-0017":{"kind":"H","title":"RB 线新实现正确（RB0）","purpose":"RB 线引入了新的代码路径：向量化的因果前缀 KernelMatrix、T0、四层 R_res 与 concat、侧支历史干预。训练前要确认它们与已审核的参考实现一致，零出口时等于 Base，不泄漏未来 token，参数计数与 plan2 一致。","did":"E-0019（RB0）运行 PBS 回归检查与三个真实的训练 CLI 冒烟，并测各 RB1 arm 的步时与 node·h。BF16 比较如果跨越 GEMM 形状的改变，只作诊断，决定性门槛改用 FP32（D-0026、D-0027）。","result":"408 项检查与三个冒烟全部通过（EV-0112）。跨形状的 BF16 差（逐 token decode 0.8203，batch 从 2 扩到 3 时 0.8574）超过 0.50002，但未改动的参考给出相同的值，只作诊断；形状不变的 BF16 门槛与 FP32 门槛都通过，容差没有放宽。D-0030 记为 supported（diagnostic），范围只是实现正确；下一步是 RBc 学习率校准。","ev":"supported","disp":"active","derived":["H-0001"]},"E-0017":{"kind":"E","title":"D5 配方的 seed 复现","purpose":"检验 H-0012（也登记为对 H-0009 的检验）：D5 在 seed 0 上达到 H3；换成 seed 1、2，并从各自重新训练的 R1 出发走完整个配方，是否同样达到。","did":"P1、P2：阶段 A 按 R1 配方用 seed 1、2 在 E=1 上训练 6,000 步，阶段 B 按 D5 续训 6,000 步。C1、C2 从现成的 R1 seed 0 出发续训，只作描述。复现判定只看 P1、P2，两个都达标才算复现。","result":"阶段 A 在 E=1 上的 EM 为 82.7% 与 81.1%。P1 的 EM 为 49.7%，差 47.8 pp；P2 为 48.0%，差 46.2 pp，都通过 H3，最后位置没有塌缩（EV-0102、EV-0103）；C1、C2 也达标（43.0 与 44.2 pp，只作描述）。连同 seed 0 共 3/3，D-0023 把 H-0012 记为 supported（screening）。","stage":"E1","run":"done","tests":["H-0009","H-0012"]},"H-0018":{"kind":"H","title":"RB1 无信号时的宽度探针（r128）","purpose":"RB1 没有信号时，计划允许一次同布局探针：把侧支从 r32 加宽（r64 或 r128）或换 tap，看 R_res 能否达到 Base+1 pp 以上，且不比同布局的近预算 LoRA 低 1 pp 以上。","did":"顾问轮次 3 之后，D-0043 没有放行这个探针，改走分段协议。用户 2026-11-02 要求测 r=128，D-0052 重开，只做 r128：E-0026 在普通设置下训练 R_res r128、同参数的 r128 T0 与参数最接近的同四层 LoRA r31。","result":"R_res r128 的宏平均 76.95%，比 Base 高 6.80 pp，但比 LoRA r31（78.75%）低 1.80 pp [-3.10, -0.50]，超出允许的 -1 pp（EV-0123）。D-0056 记为 challenged（screening，只限 r128 与普通设置）并暂停；r128 相对 r32 的变化都在 ±0.5 pp 以内，按 E-0026 规则 8，普通设置下不再加宽或换 tap。","ev":"challenged","disp":"paused","derived":["H-0013"]},"E-0018":{"kind":"E","title":"V3 前置：单读 adapter 在 T2 上的迁移","purpose":"为 H-0005 检查起点：D5 配方训练的单读 adapter（seed 0、1、2）按单独编码写入，在 T2 dev 的 hop1 上能否读到目标事实；不训练时把读取次数增加到 2、4、8，2 至 3 跳的 EM 与读权重怎样变化；循环实现是否正确。","did":"对三个 adapter 在 T2 dev（hop1 有 334 条）上评估正常、清空、打乱的记忆与 oracle_value，并做 S_eval = 2、4、8 的无训练扫描与 S=1 实现一致性检查。","result":"S=1 的实现与已审核的评估器逐条一致。hop1 都没有过 H3：EM 差只有 0.9、1.8、3.0 pp，目标权重 0.036 至 0.038；但直接换入正确 value 时 hop1 EM 为 75.7% 至 80.2%，说明解码器能迁移、寻址不能（EV-0107 至 EV-0109）。增加读取次数对 2 至 3 跳没有收益；证据级别 diagnostic，下一步是在 T2 上训练共同起点（E-0022）。","stage":"E1","run":"done","tests":["H-0005"]},"H-0019":{"kind":"H","title":"分段协议下跨段侧支状态的收益","purpose":"普通设置下主干自己看得到全部输入，原特征本身就含上下文，RB1 中测不出侧支历史的作用。顾问轮次 3 建议换一个只能靠侧支历史的设置：每个样本做两次主干前向，段间丢掉原 KV，PIQA 的目标与 BoolQ 的文章只在第 1 段，只有四层 KernelMatrix 状态 (M, c, counts) 跨段。假说是：保留跨段状态的 R_res 在 PIQA dev 上比同参数 T0 与段界重置中较好的一个至少高 3 pp，并且把状态换成另一样本的会去掉至少一半收益。","did":"E-0025 训练 SEG-01 T0、SEG-02 保留状态（Keep）、SEG-03 段界重置（Reset）、SEG-04 分段 LoRA，SEG-00 Base 只评估，r32、seed 0；增益为正但不到 3 pp 时，按规则 6 条件释放一次 r128 的三组（SEG-05 至 SEG-07）。","result":"PIQA 上 r32 的增益为 +1.6 pp [-0.3, 3.5]（swap 降 4.2 pp），r128 为 +1.4 pp [-0.4, 3.2]（swap 降 5.3 pp），都为正但低于 +3 pp。次要任务 BoolQ 的 r128 增益为 +4.4 pp [1.5, 6.8]，swap 降 6.5 pp，满足任务层门槛（EV-0134、EV-0135、EV-0137）。D-0057 记为 inconclusive（screening），下一步是 BoolQ 的两个新 seed 复现（H-0020）；之后 D-0063 暂停。","ev":"inconclusive","disp":"paused","derived":["H-0014"]},"E-0019":{"kind":"E","title":"RB0：残差旁路线实现与计时","purpose":"检验 H-0017：新路径在输出与梯度上是否与参考一致，零出口、残差拓扑、两步梯度启动、因果、cache、padding 与侧支历史干预是否按定义工作；同时测各 RB1 arm 的实际成本。","did":"先跑 397 项检查，之后 408 项 PBS 回归加三个训练 CLI 冒烟（重载一致），另有 21 个计时用例与 7 个延迟用例。中途两次按 D-0026、D-0027 修订 BF16 跨形状比较的判定方式，锁定容差不变。","result":"全部通过（EV-0112）。RB1 核心部分预计约 2.44 node·h，RBc 的 12 至 16 个候选约 0.51 至 0.68 node·h。证据级别 diagnostic，支持 H-0017（D-0030）。","stage":"E0","run":"done","tests":["H-0017"]},"H-0020":{"kind":"H","title":"BoolQ 上 r128 跨段收益在新 seed 上复现","purpose":"E-0025 中只有 BoolQ 的 r128 跨段收益达到门槛。这条假说检验它能否在 seed 1、2 上复现：三个 seed 的平均增益（Keep 对 Reset 与 T0 中较好者）至少 +3 pp，两个新 seed 各自为正，swap 平均去掉至少一半；并且 Keep 比同 seed 的分段 LoRA 平均至少高 1 pp，以排除无历史对照没学好的解释。","did":"E-0027 在 seed 1、2 上重训 r128 的 Keep、Reset、T0 与分段 LoRA 四组（共八个训练），seed 0 沿用 E-0025，判定与汇总规则运行前锁定。","result":"三个 seed 的平均增益为 +2.933 pp，低于 +3 pp；两个新 seed 分别为 +2.6 与 +1.8 pp，swap 均值 6.567 pp，对分段 LoRA 的均值 +2.067 pp（EV-0145、EV-0146）。增益变小主要因为 T0 对照在 seed 1、2 学成了（63.1%、63.5%，seed 0 为 61.2%）。D-0062 记为 inconclusive（screening）并暂停，不再加 seed、加宽、换 tap 或加循环。","ev":"inconclusive","disp":"paused","derived":["H-0019"]},"E-0020":{"kind":"E","title":"RBc：四个训练家族的学习率校准","purpose":"为 H-0013 的筛选做准备：在 RB1 的数据、模板与优化配方下，按预登记规则锁定四个家族的学习率：同四层 all-7 LoRA r7、R_res+T0 S1、R_res+KernelMatrix S1、C_dual+KernelMatrix S1。","did":"每个家族 seed 0 短训练到 20 万非 padding 输入 token。LoRA 与 T0 的网格为 {1e-4, 3e-4, 1e-3}，两个 KernelMatrix 家族为 {3e-4, 1e-3, 3e-3}，最优在端点时外扩一次；取 calibration NLL 在最小值 1% 以内的最小学习率，不看 dev。","result":"16 个候选全部有限，锁定 LoRA 3e-4、T0 3e-3、R_res 3e-3、C_dual 1e-3（EV-0114）。T0 的最优落在外扩后的新端点，按规则标为网格边界，不再扩展。用量 0.672 node·h，证据级别 diagnostic；锁定值用于 RB1（E-0021）。","stage":"E2","run":"done","tests":["H-0013"]},"H-0021":{"kind":"H","title":"RB1-09 改用层输入 X 作投影输入","purpose":"用户 2026-11-02 提出：RB1-09 不再从 attention 的 q_norm、k_norm 与 v_proj 输出取特征，而是直接用该层归一化后的输入 X（input_layernorm 的输出）乘 A_q、A_k、A_v。假说是这样改后 dev 宏平均比原 RB1-09（77.50%）至少高 1 pp。这个用户要求优先于此前“普通设置下不再换 tap”的选择（D-0059）。","did":"由 E-0028 的 Part A 检验：训练 X-01（X tap 的 C_up + KernelMatrix S1），并配两种 tap 下同参数、无历史的 T0（X-02、X-03），seed 0，13,115 步，学习率 1e-3；RB1-09、LoRA r7 与 Base 沿用 E-0021 的记录。判定：d_tap = X-01 减 RB1-09，至少 +1 pp 记支持，不高于 0 记挑战。","result":"进行中，还没有正式结果。E-0028 的正式作业在源码 0f22cd6 上放行（D-0061），初始训练已完成，X-01 的冻结干预正在运行，之后才做锁定分析，d_tap 还没有计算。正式运行前的冒烟与成本检查只作诊断（EV-0139、EV-0140）。","ev":"untested","disp":"active","derived":["H-0016"]},"E-0021":{"kind":"E","title":"RB1：残差旁路首轮筛选（九组）","purpose":"同时检验 H-0013 至 H-0016：四层 r32 的 R_res + 因果 KernelMatrix 是否带来收益（对 Base、同参数 T0、近预算 LoRA）；S2、S4 是否有超出幅度与步长解释的增量；C_dual、C_up 是否改善写回。","did":"九组，seed 0，13,115 步（约 200 万输入 token）：RB1-01 T0、RB1-02 R_res S1、RB1-03 S2、RB1-04 S4、RB1-05 固定 query 的 S4、RB1-06 η 为 0.25/4 的 S4、RB1-07 LoRA r7、RB1-08 C_dual、RB1-09 C_up。训练后对部分组做冻结历史干预（swap、permute 等）；dev 每任务 1,000 条，10,000 次配对 bootstrap 区间只作描述，推进规则 G0、GR、GH、GL、GC 与规则 11 运行前锁定。","result":"T0 77.30%，R_res 77.10%，LoRA 78.95%，C_up 77.50%，C_dual 77.45%。R_res 比 LoRA 低 1.85 pp，比 T0 低 0.20 pp；S2 比 S1 只高 0.35 pp；最好的 concat 比 R_res 高 0.40 pp（EV-0118 至 EV-0121，screening）。规则 9 触发（正对照有效，残差与 concat 的门都不成立），D-0038 请顾问轮次 3；之后 H-0013、H-0014 记为 challenged，H-0015、H-0016 记为 inconclusive。","stage":"E2","run":"done","tests":["H-0013","H-0014","H-0015","H-0016"]},"H-0022":{"kind":"H","title":"搜索侧支输出比例 η","purpose":"用户 2026-11-02 要求把侧支输出比例 η（此前固定为 0.25）作为超参数搜索，看能否提高 C_up + KernelMatrix S1 的准确率。假说是：原 tap 与 X tap 中至少一种，在 calibration 上选出的 η* 下的 dev 宏平均比同 tap 的 η = 0.25 至少高 1 pp。","did":"由 E-0028 的 Part B 检验：两种 tap 各在 η ∈ {1/16, 1/8, 1/2, 1, 2} 上训练到完整长度（η = 1/4 的成员是 RB1-09 与 X-01），最优在端点时外扩一次；η* 只按 calibration 准确率选，dev 只用于判定。某个 tap 至少 +1 pp 记支持，两个 tap 都不高于 0 记挑战。","result":"进行中。按 calibration 准确率锁定的 η* 为原 tap 0.25、X tap 1，都不需要端点外扩（EV-0153，screening）；这只记录选择，dev 上的比较还没有汇总，所以还不能判断搜索 η 是否提高准确率。","ev":"untested","disp":"active","derived":["H-0016"]},"E-0022":{"kind":"E","title":"V3 循环矩阵：共同起点阶段","purpose":"检验 H-0005：先训练一个让 T2 hop1 达到 H3 的共同起点，再从它出发训练十组，比较累加循环 S2、S4 与 S1。","did":"按 D5 配方在 T2 上训练共同起点，用锁定的 H3 门槛（EM 差、NLL 与全部问题位置的平均目标权重）判定是否放行十组。","result":"起点在 EM 差（25.4 pp）与 NLL 上通过，但全部问题位置的平均目标权重 0.0655 低于 0.125，规则 1 不成立，十组没有训练（EV-0111）。主要原因是 T2 的问题有 23 至 25 个 token，最后问题位置的权重 0.384 被其余位置稀释。D-0031 经顾问轮次 2 决定另立新契约 E-0023，不修改已封存的 E-0022；证据级别 diagnostic。","stage":"E2","run":"done","tests":["H-0005"]},"H-0023":{"kind":"H","title":"同一 up 接口下，历史混合输入不比当前 token 差","purpose":"RB1-09 比 all-7 LoRA r7 低约 1.45 pp。差距来自 LoRA 改动的模块更多，还是来自侧支的输入是历史混合 p_t 而不是当前 token？这条假说用只改 up_proj、参数相近的 up-only LoRA 作对照：若它不比对应侧支高 1 pp 以上，差距主要来自模块数量。","did":"由 E-0029 检验：L-56（rank56，917,504 参数）对 RB1-09（925,696），L-48（rank48，786,432 参数）对 X-01（794,624）；LoRA 学习率按 E-0020 的短训练规则单独校准。判定：两个差都低于 +1 pp 记支持，任一至少 +1 pp 记挑战并启用 H-0027。","result":"进行中，正式训练尚未开始。E-0029 在等代码审核 RV-0090，之后先做 L-56 的学习率校准（1e-4、3e-4、1e-3），锁定后再训练八组。","ev":"untested","disp":"active","derived":["H-0016"]},"E-0023":{"kind":"E","title":"V3 续：准备度检查与分阶段循环","purpose":"检验 H-0005：E-0022 的共同起点在未用过的 T2 calibration 上是否满足按答案位置定义的准备度；满足时，S2、S4 在 2 至 3 跳上是否胜过 S1。","did":"准备度规则 R 在看过 dev 起点结果后制定，只在未用过的 calibration 上检查一次。阶段 A 训练 V3-01（S1）、V3-02（S2）、V3-03（S4），各 6,000 步、seed 0；增益不足时按 D-0034 的数值判据做冻结转移诊断，再按 D-0035 做后继槽位 CE 修复 pilot（额外监督），配置换标签对照。","result":"R 成立（EV-0113）。阶段 A 的 2 至 3 跳 EM 分别为 3.30%、3.90%、3.30%，S2 比 S1 只高 0.60 pp [-0.60, +1.80]，hop1 从 14.37% 降到 11.68%（EV-0115）。冻结诊断显示终点 value 能解码、给定桥实体后也能寻址下一条边，但原生第 2 步对第 2 条路径事实的读权重只有 0.0761（低于 1/8）（EV-0116）；修复 pilot 中正确标签只比置换标签高 1.65 pp（门槛 +3），修复路线停止（EV-0117）。D-0036 据此把 H-0005 记为 inconclusive（screening）。","stage":"E2","run":"done","tests":["H-0005"]},"H-0024":{"kind":"H","title":"A_v 用任务梯度子空间初始化（I-G）","purpose":"侧支的 value 投影 A_v 原本随机初始化。这条假说把它初始化为任务梯度矩阵 G_F = Σ_t p_tᵀ d_t 的前 r 个左奇异向量（p_t 是按核权重混合的 value 特征，d_t 是 up 加法点的任务梯度），再把读出 RMS 匹配到随机初始化参照，看至少一种 tap 的 dev 宏平均是否比同 tap 的随机初始化至少高 1 pp。","did":"由 E-0029 的 G-T、G-QN、G-N 三组检验（分别对应原 tap、Q-N 与 N tap），梯度用固定的 256 条训练样本收集，SVD 与前后向成本入账；LoRA 不做对应的 LoRA-GA 初始化。判定：任一 tap 至少 +1 pp 记支持并启用 H-0028，全部不高于 0 记挑战。","result":"进行中，正式训练尚未开始。正式前检查已通过：三种 tap 的 I-G 校准都完成，基的正交误差低于 3.3e-8；此前 FP32 下 CUDA gesvdj 的精度问题已查明并修复（EV-0142、EV-0152）。E-0029 在等代码审核 RV-0090。","ev":"untested","disp":"active","derived":["H-0016"]},"E-0024":{"kind":"E","title":"RB1 状态读取的零训练诊断","purpose":"为 H-0014 的干预结果提供读法：RB1 残差组在答案位置的集中读取，是不是落在每个任务都相同的提示首位置（位置 0，正核注意力的 sink），读出在 episode 之间是否近似常量；concat 组是否近乎均匀地读前缀均值。","did":"不训练。在 RB1-02、RB1-03、RB1-08、RB1-09 的 checkpoint 上计算位置 0 的读权重占比 share0、argmax0 与跨 episode 常量读取指数 C，并与 E-0021 的逐条记录做一致性检查。预登记三种读法：sink（集中层都满足 share0 \u003e 0.5 且 C \u003e 0.9）、内容读取（share0 \u003c 0.2）、其余为混合；预算两次上调（D-0047、D-0048），一致性检查在失败后按 D-0050、D-0051 修订，判读阈值不变。","result":"读法为混合（EV-0122）。残差组的集中读取都以位置 0 为主（share0 为 0.81 至 0.98，argmax0 至少 0.996），但 C \u003e 0.9 只在 PIQA 第 27 层成立，其余集中层的 C 为 0.50 至 0.68；concat 组在较浅的层接近均匀，在第 27 层有 0.37 至 0.75 的权重落在位置 0。证据级别 diagnostic，读法写进阶段报告（D-0045）。","stage":"E2","run":"done","tests":["H-0014"]},"H-0025":{"kind":"H","title":"Q/K 配对初始化","purpose":"随机初始化时，侧支读取起初并不按内容相似度加权。这条假说在初始化时让 A_q 与 A_k 对齐（N tap 下 A_q 复制 A_k；原 tap 下按 GQA 把每个 KV 组的两个 query 头以 1/√2 聚合），之后两者独立训练，看至少一种 tap 的 dev 宏平均是否比独立随机初始化至少高 1 pp。","did":"由 E-0029 的 P-T、P-N 两组检验，只改 A_q 的初值，并记录 self 权重、n_eff 与最大权重，区分是否只增强了当前 token 的通路。判定：任一至少 +1 pp 记支持，两个都不高于 0 记挑战。","result":"进行中，正式训练尚未开始。E-0029 在等代码审核 RV-0090。","ev":"untested","disp":"active","derived":["H-0016"]},"E-0025":{"kind":"E","title":"分段信息访问：只有侧支状态跨过段界","purpose":"检验 H-0019：主干看不到第 1 段（PIQA 的目标、BoolQ 的文章），只有四层 r32 侧支状态跨段时，保留跨段状态是否比同参数 T0 与同算子的段界重置有可分辨的收益；把第 1 段的状态换成同任务另一样本的，是否去掉这部分收益。","did":"每个样本两次主干前向，段间丢弃 KV，位置从 0 重新开始。训练组 SEG-01 至 SEG-04（seed 0，沿用 RB1 的训练顺序、13,115 步与 RBc 锁定的学习率），SEG-00 只评估；SEG-02 训练后做 iv_off、iv_swap、iv_reset。主任务 PIQA，增益为 SEG-02 减 max(SEG-01, SEG-03)，至少 +3 pp 且 swap 去掉至少一半才算支持；增益在 0 至 3 pp 之间时释放一次 r128 三组。","result":"两个任务都有信息量：全上下文 LoRA 比分段 LoRA 高 7.0 pp（PIQA）与 19.3 pp（BoolQ）（EV-0131）。PIQA 的增益 r32 为 +1.6 pp，r128 为 +1.4 pp；BoolQ 的 r128 增益为 +4.4 pp，swap 降 6.5 pp（EV-0134、EV-0135、EV-0137）。按 D-0044 的澄清只作描述，D-0057 把 H-0019 记为 inconclusive（screening），下一步是 BoolQ 的新 seed 复现（E-0027）；用量 2.596 node·h。","stage":"E2","run":"done","tests":["H-0019"]},"H-0026":{"kind":"H","title":"只把 Q/K 换成层输入（N-QK）","purpose":"如果换 tap 有效，效果来自寻址（Q/K）还是 value？这条假说只把 Q/K 换成层输入 N（input_layernorm 的输出），value 仍取 v_proj 输出，看 dev 宏平均是否比 RB1-09 至少高 1 pp。它与 RB1-09、E-0028 的 X-01 组成三格：N-QK 减 RB1-09 是寻址来源的效应，X-01 减 N-QK 是 value 来源的效应。","did":"由 E-0029 的 Q-N 组检验（r32、S1、C_up、η = 0.25、学习率 1e-3、seed 0）。判定：Q-N 减 RB1-09 至少 +1 pp 记支持，不高于 0 记挑战。","result":"进行中，正式训练尚未开始。E-0029 在等代码审核 RV-0090，之后才做 LoRA 学习率校准与八组正式训练；涉及 X-01 的比较要等 E-0028 的规则 1 有效。","ev":"untested","disp":"active","derived":["H-0021"]},"E-0026":{"kind":"E","title":"RB1 宽度探针：普通设置下的 r128","purpose":"检验 H-0018：普通设置（主干看到全部输入）下，把侧支从 r32 加宽到 r128，R_res + KernelMatrix S1 能否达到 Base+1 pp 以上，且不比参数最接近的 LoRA 低 1 pp 以上；同时看它是否比同参数、无历史的 r128 T0 至少高 1 pp，且 iv_swap 降幅至少 1 pp（H-0014 的重开条件）。","did":"三组，seed 0，13,115 步，沿用 r32 的学习率锁定值：W-01 r128 T0、W-02 r128 R_res（各 2,752,512 参数，初始参数逐元素相同）、W-03 同四层 all-7 LoRA r31（2,793,472 参数）。训练后对 W-02 做冻结干预，dev 每任务 1,000 条。","result":"W-01 76.80%、W-02 76.95%、W-03 78.75%（EV-0125）。W-02 减 LoRA 为 -1.80 pp [-3.10, -0.50]（EV-0123）；W-02 减 T0 为 +0.15 pp，swap 降 2.25 pp，permute 降 32.30 pp（EV-0127）；三组相对各自的 r32 版本变化都在 ±0.5 pp 以内（EV-0128）。证据级别 screening：D-0056 把 H-0018 记为 challenged，H-0014 的重开条件不满足。","stage":"E2","run":"done","tests":["H-0018"]},"H-0027":{"kind":"H","title":"从 up-only LoRA 出发再混入历史读取","purpose":"如果 H-0023 被挑战（同一 up 接口下当前 token 输入明显更好），就试一个混合通路：Δup_t = η[(1-β)U_t A_v + β a_t]R_o C_u，β 是可训练标量、初始为 0，从 up-only LoRA 的参数化出发，让模型自己学会混入历史读取。假说是它比参数相近的 up-only LoRA 至少高 1 pp，且 iv_swap 降幅至少 1 pp。","did":"还没有开始，也没有实验。只在 E-0029 中 H-0023 被挑战时启用。","result":"未检验，处于候选状态。释放条件是 E-0029 中 L-56 减 RB1-09 或 L-48 减 X-01 至少 +1 pp。","ev":"untested","disp":"candidate","derived":["H-0023"]},"E-0027":{"kind":"E","title":"BoolQ r128 跨段收益的新 seed 复现","purpose":"检验 H-0020：E-0025 中 BoolQ 的 r128 跨段收益（+4.4 pp，swap 降 6.5 pp）在两个新 seed 上是否复现；保留状态的组是否也超过同 seed 的分段 LoRA。","did":"seed 1、2 各训练 SEG-05 Keep、SEG-06 Reset、SEG-07 T0、SEG-04 分段 LoRA（PIQA+BoolQ 混合训练，13,115 步），对 SEG-05 做 swap 等干预；dev 每任务 1,000 条，确认集不开封。","result":"BoolQ 增益 seed 1 为 +2.6 pp，seed 2 为 +1.8 pp，三个 seed 平均 +2.933 pp，不到 +3 pp；swap 降幅为 6.2 与 7.0 pp（EV-0144、EV-0145）。Reset 在三个 seed 上都没学成，T0 只在 seed 0 没学成（EV-0149）。规则 6 判为无定论（EV-0148，screening），D-0062 据此把 H-0020 记为 inconclusive 并暂停；用量 2.804 node·h。","stage":"E2","run":"done","tests":["H-0020"]},"H-0028":{"kind":"H","title":"A_v 用激活子空间初始化（I-A）","purpose":"如果 I-G 有效，收益来自与任务梯度对齐，还是只是保留了激活能量？这条候选假说用历史混合特征 p_t 的未中心化激活 SVD 前 r 个方向初始化 A_v（读出 RMS 同样匹配），预期它比同 tap 的 I-G 至少低 1 pp。","did":"还没有开始，也没有实验。只在 H-0024 得到支持时启用。","result":"未检验，处于候选状态。释放条件是 E-0029 之后 H-0024 记为 supported。","ev":"untested","disp":"candidate","derived":["H-0024"]},"E-0028":{"kind":"E","title":"RB1-09 换 tap 为层输入 X 与 η 搜索","purpose":"同时检验 H-0021 与 H-0022：普通设置下，把 RB1-09 的特征来源换成层输入 X 是否至少提高 1 pp；两种 tap 下 KernelMatrix 历史读取是否比同参数 T0 至少高 1 pp；按 calibration 选出的 η* 是否比 η = 0.25 至少高 1 pp。","did":"Part A 训练 X-01（X tap，KernelMatrix）、X-02（X tap，T0）、X-03（原 tap，T0），seed 0，13,115 步，学习率都用 1e-3，X-01 训练后做六种冻结干预。Part B 两种 tap 各在 5 个 η 上训练完整长度，最优在端点时外扩一次，η* 只在 calibration 上选。规则运行前锁定，预算上限 5.5 node·h，A2 与官方 validation 都不开封。","result":"进行中，还没有 dev 上的结果。D-0061 在审核 RV-0088 之后放行源码 0f22cd6 上的正式作业；14 个初始正式作业已完成，η* 只按 calibration 锁定为原 tap 0.25、X tap 1（EV-0153，只记录选择）。X-01 的冻结干预正在运行，之后做锁定分析并逐条记录规则证据；正式运行前的冒烟与成本检查只作诊断（EV-0139、EV-0140）。","stage":"E2","run":"running","tests":["H-0021","H-0022"]},"H-0029":{"kind":"H","title":"A2 确认集上的分段跨段收益（预登记确认）","purpose":"H-0020 在 dev 上停在无定论，项目不再在 dev 上加 seed。这条候选假说要在封存的 A2 确认集上做一次预先登记的确认：分段协议下，保留跨段侧支状态的 Keep 在 BoolQ 上比 T0 与 Reset 中较好的一个更准确，三个新 seed 的平均增益为正，且 95% 配对区间的下界大于 0。","did":"还没有开始，也没有建实验。按记录，它在 E-0028、E-0029 结束后进行：侧支配置在开封 A2 之前按这两个实验的 dev 证据选定（有胜出并复现的更强算子就用它，否则沿用 E-0027 的 r128 R_res + KernelMatrix S1），比较、门槛与分析脚本开封前锁定，A2 只开封一次，用新 seed 重训。","result":"未检验，处于候选状态。用户 2026-11-02 已同意这个做法；释放条件是 E-0028、E-0029 结束，并据此选定侧支配置。它只陈述跨段状态的信息收益，不宣称实用价值或长上下文优势。","ev":"untested","disp":"candidate","derived":["H-0020"]},"E-0029":{"kind":"E","title":"RB1-09 改进方向筛选（八组）","purpose":"同时检验 H-0023 至 H-0026：同接口 up-only LoRA 是否比侧支高 1 pp 以上；I-G 初始化、Q/K 配对初始化是否比随机初始化至少高 1 pp；只换 Q/K 来源（N-QK）是否比 RB1-09 至少高 1 pp。","did":"八组，seed 0，13,115 步，侧支 η = 0.25、学习率 1e-3：G-T、G-QN、G-N（I-G），Q-N（N-QK），P-T、P-N（Q/K 配对），L-56、L-48（up-only LoRA，学习率单独校准）。RB1-09、RB1-07、Base 沿用 E-0021，X-01 沿用 E-0028；预算上限 3.5 node·h，A2 与官方 validation 都不开封。","result":"进行中，正式训练尚未开始。正式前检查已通过（diagnostic）：112 项测试、八组各 80 步冒烟、三种 tap 的 I-G 校准（EV-0141、EV-0142、EV-0152），保守成本预计 2.50 node·h。现在等代码审核 RV-0090，之后做 L-56 的学习率校准并锁定，再训练八组；涉及 X-01 的比较要等 E-0028 的规则 1 有效。","stage":"E2","run":"running","tests":["H-0023","H-0024","H-0025","H-0026"]}},"meta":{"data_version":"4481","generated":"2026-11-02 22:19 JST"}}</script>
+<script>
+var HT = (function () {
+  'use strict';
+  var EV = {supported: ['■', '支持'], challenged: ['▨', '受挑战'], inconclusive: ['◧', '无定论'], untested: ['□', '未检验']};
+  var DISP = {active: ['●', '活跃'], paused: ['‖', '暂停'], retired: ['×', '已关闭'], candidate: ['◌', '候选']};
+  var STAGE = {E0: '实现', E1: '机制', E2: '真实模型', E3: '确认'};
+  var RUN = {done: ['✓', '已完成'], running: ['◐', '进行中'], notstarted: ['○', '未开始']};
+  var CARET = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M4 2.5 8 6 4 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var ESC = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ESC[c]; }); }
+  function badge(cls, glyph, word, title) {
+    return '<span class="b ' + cls + '" title="' + esc(title) + '"><span class="g" aria-hidden="true">' + glyph + '</span>' + esc(word) + '</span>';
+  }
+  function badgesHTML(n) {
+    if (n.kind === 'H') {
+      return badge('ev ev-' + n.ev, EV[n.ev][0], EV[n.ev][1], '证据状态：' + n.ev) +
+        badge('disp disp-' + n.disp, DISP[n.disp][0], DISP[n.disp][1], '处置：' + n.disp);
+    }
+    return '<span class="b stage" title="实验阶段"><span class="mono">' + esc(n.stage) + '</span>' + esc(STAGE[n.stage]) + '</span>' +
+      badge('run run-' + n.run, RUN[n.run][0], RUN[n.run][1], '进度');
+  }
+  function walk(list, fn) { list.forEach(function (it) { fn(it[0]); walk(it[1], fn); }); }
+  function lineIds(line) {
+    var seen = {}, out = [];
+    walk(line.tree, function (id) { if (!seen[id]) { seen[id] = 1; out.push(id); } });
+    return out;
+  }
+  function countLine(line) {
+    var ids = lineIds(line), h = 0, e = 0;
+    ids.forEach(function (id) { if (id.charAt(0) === 'H') { h++; } else { e++; } });
+    return [h, e];
+  }
+  function nodeHTML(data, item, path) {
+    var id = item[0], kids = item[1], n = data.nodes[id], gid = 'g-' + path;
+    var s = '<li class="node ' + (n.kind === 'H' ? 'h' : 'e') + '" data-id="' + id + '" id="r-' + path + '"><div class="row">';
+    if (kids.length) {
+      s += '<button type="button" class="tog" aria-expanded="false" aria-controls="' + gid + '" aria-label="展开或折叠 ' + id + '">' + CARET + '</button>';
+    } else {
+      s += '<span class="spacer" aria-hidden="true"></span>';
+    }
+    s += '<button type="button" class="sel" data-id="' + id + '"><span class="nid">' + id + '</span><span class="ttl">' + esc(n.title) +
+      '</span><span class="badges">' + badgesHTML(n) + '</span></button></div>';
+    if (kids.length) {
+      s += '<ul class="kids" id="' + gid + '" hidden>';
+      kids.forEach(function (k, i) { s += nodeHTML(data, k, path + '-' + i); });
+      s += '</ul>';
+    }
+    return s + '</li>';
+  }
+  function treeHTML(data) {
+    return data.lines.map(function (line) {
+      var c = countLine(line), gid = 'g-' + line.key;
+      var s = '<li class="line" data-line="' + line.key + '"><button type="button" class="line-tog" aria-expanded="true" aria-controls="' + gid + '">' +
+        CARET + '<span class="lname">' + esc(line.name) + '</span><span class="count">' + c[0] + ' 个假说 · ' + c[1] + ' 个实验</span></button>' +
+        '<p class="line-desc">' + esc(line.desc) + '</p><ul class="kids top" id="' + gid + '">';
+      line.tree.forEach(function (it, i) { s += nodeHTML(data, it, line.key + '-' + i); });
+      return s + '</ul></li>';
+    }).join('');
+  }
+  function overviewHTML(data) {
+    return data.lines.map(function (line) {
+      var chips = lineIds(line).filter(function (id) { return id.charAt(0) === 'H'; }).map(function (id) {
+        var n = data.nodes[id];
+        var label = id + ' ' + EV[n.ev][1] + '，' + DISP[n.disp][1] + '：' + n.title;
+        return '<button type="button" class="ov-chip" data-id="' + id + '" aria-label="' + esc(label) + '" title="' + esc(label) + '">' +
+          '<span class="sw ' + n.ev + (n.disp === 'candidate' ? ' cand' : '') + '" aria-hidden="true"></span>' + id + '</button>';
+      }).join('');
+      return '<div class="ov-row"><div class="ov-name">' + esc(line.name) + '</div><div class="ov-chips">' + chips + '</div></div>';
+    }).join('');
+  }
+  function lineNames(data) {
+    var m = {};
+    data.lines.forEach(function (line) { lineIds(line).forEach(function (id) { m[id] = line.name; }); });
+    return m;
+  }
+  return {esc: esc, badgesHTML: badgesHTML, treeHTML: treeHTML, overviewHTML: overviewHTML,
+    countLine: countLine, lineIds: lineIds, lineNames: lineNames, EV: EV, DISP: DISP, STAGE: STAGE, RUN: RUN};
+})();
+
+function htInit() {
+  'use strict';
+  var data = JSON.parse(document.getElementById('tree-data').textContent);
+  var tree = document.getElementById('tree');
+  var ov = document.getElementById('ov-grid');
+  var card = document.getElementById('detail-card');
+  var empty = document.getElementById('detail-empty');
+  var dId = document.getElementById('d-id');
+  var dTitle = document.getElementById('d-title');
+  var dBadges = document.getElementById('d-badges');
+  var dRel = document.getElementById('d-rel');
+  var noMatch = document.getElementById('no-match');
+  var filter = document.getElementById('filter');
+  var names = HT.lineNames(data);
+  var mqNarrow = window.matchMedia('(max-width: 899px)');
+  var mqReduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var lastRow = null, saved = null;
+  tree.innerHTML = HT.treeHTML(data);
+  ov.innerHTML = HT.overviewHTML(data);
+
+  function behavior() { return mqReduce.matches ? 'auto' : 'smooth'; }
+  function setExpanded(btn, open) {
+    if (!btn) { return; }
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var g = document.getElementById(btn.getAttribute('aria-controls'));
+    if (g) { g.hidden = !open; }
+  }
+  function toggles() { return tree.querySelectorAll('.tog, .line-tog'); }
+  function childList(li) {
+    for (var c = li.firstElementChild; c; c = c.nextElementSibling) { if (c.tagName === 'UL') { return c; } }
+    return null;
+  }
+  function ownToggle(li) {
+    if (li.classList.contains('line')) { return li.firstElementChild; }
+    var row = li.firstElementChild, b = row && row.firstElementChild;
+    return b && b.classList.contains('tog') ? b : null;
+  }
+  function reveal(li) {
+    var p = li.parentElement;
+    while (p && p !== tree) {
+      if (p.tagName === 'UL' && p.id) { setExpanded(tree.querySelector('[aria-controls="' + p.id + '"]'), true); }
+      p = p.parentElement;
+    }
+  }
+  function rowFor(id) { return tree.querySelector('li[data-id="' + id + '"]'); }
+  function relButtons(label, ids) {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(document.createTextNode(label));
+    ids.forEach(function (rid) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = rid;
+      b.setAttribute('data-rel', rid);
+      frag.appendChild(b);
+    });
+    return frag;
+  }
+  function select(id, opt) {
+    var n = data.nodes[id];
+    if (!n) { return; }
+    opt = opt || {};
+    dId.textContent = id + ' · ' + (n.kind === 'H' ? '假说' : '实验') + ' · ' + (names[id] || '');
+    dTitle.textContent = n.title;
+    dBadges.innerHTML = HT.badgesHTML(n);
+    dRel.textContent = '';
+    if (n.kind === 'H' && n.derived.length) { dRel.appendChild(relButtons('源自：', n.derived)); }
+    if (n.kind === 'E' && n.tests.length) { dRel.appendChild(relButtons('检验：', n.tests)); }
+    dRel.hidden = !dRel.firstChild;
+    document.getElementById('d-purpose').textContent = n.purpose;
+    document.getElementById('d-did').textContent = n.did;
+    document.getElementById('d-result').textContent = n.result;
+    empty.hidden = true;
+    card.hidden = false;
+    tree.querySelectorAll('.sel[aria-current]').forEach(function (b) { b.removeAttribute('aria-current'); });
+    tree.querySelectorAll('.sel[data-id="' + id + '"]').forEach(function (b) { b.setAttribute('aria-current', 'true'); });
+    ov.querySelectorAll('.ov-chip[aria-current]').forEach(function (b) { b.removeAttribute('aria-current'); });
+    var chip = ov.querySelector('.ov-chip[data-id="' + id + '"]');
+    if (chip) { chip.setAttribute('aria-current', 'true'); }
+    var row = opt.row || rowFor(id);
+    if (opt.reveal && row) { reveal(row); }
+    lastRow = row;
+    document.getElementById('sr-status').textContent = '已显示 ' + id + ' 的详情';
+    try { history.replaceState(null, '', '#' + id); } catch (e) { }
+    if (!opt.from) { return; }
+    if (mqNarrow.matches) {
+      card.scrollIntoView({block: 'start', behavior: behavior()});
+      dTitle.focus({preventScroll: true});
+    } else if (opt.from !== 'tree' && row && !row.hidden) {
+      row.scrollIntoView({block: 'center', behavior: behavior()});
+    }
+  }
+
+  tree.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button');
+    if (!b || !tree.contains(b)) { return; }
+    if (b.classList.contains('tog') || b.classList.contains('line-tog')) {
+      setExpanded(b, b.getAttribute('aria-expanded') !== 'true');
+    } else if (b.classList.contains('sel')) {
+      select(b.getAttribute('data-id'), {from: 'tree', row: b.closest('li')});
+    }
+  });
+  ov.addEventListener('click', function (ev) {
+    var b = ev.target.closest('.ov-chip');
+    if (b) { select(b.getAttribute('data-id'), {from: 'overview', reveal: true}); }
+  });
+  dRel.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-rel]');
+    if (b) { select(b.getAttribute('data-rel'), {from: 'rel', reveal: true}); }
+  });
+  document.getElementById('back-to-tree').addEventListener('click', function () {
+    if (!lastRow) { return; }
+    reveal(lastRow);
+    lastRow.scrollIntoView({block: 'center', behavior: behavior()});
+    var s = lastRow.querySelector('.sel');
+    if (s) { s.focus({preventScroll: true}); }
+  });
+  document.getElementById('expand-all').addEventListener('click', function () {
+    toggles().forEach(function (b) { setExpanded(b, true); });
+  });
+  document.getElementById('collapse-all').addEventListener('click', function () {
+    toggles().forEach(function (b) { setExpanded(b, false); });
+  });
+
+  function matchNode(li, q) {
+    var n = data.nodes[li.getAttribute('data-id')];
+    var self = (li.getAttribute('data-id') + ' ' + n.title).toLowerCase().indexOf(q) >= 0;
+    var any = false, ul = childList(li);
+    if (ul) {
+      for (var k = ul.firstElementChild; k; k = k.nextElementSibling) { if (matchNode(k, q)) { any = true; } }
+      setExpanded(ownToggle(li), any);
+    }
+    li.hidden = !(self || any);
+    if (self) { li.setAttribute('data-hit', ''); } else { li.removeAttribute('data-hit'); }
+    return self || any;
+  }
+  function applyFilter() {
+    var q = filter.value.trim().toLowerCase();
+    if (!q) {
+      tree.querySelectorAll('li').forEach(function (li) { li.hidden = false; li.removeAttribute('data-hit'); });
+      if (saved) { saved.forEach(function (st) { setExpanded(st[0], st[1]); }); saved = null; }
+      noMatch.hidden = true;
+      return;
+    }
+    if (!saved) {
+      saved = [];
+      toggles().forEach(function (b) { saved.push([b, b.getAttribute('aria-expanded') === 'true']); });
+    }
+    var hits = 0;
+    for (var line = tree.firstElementChild; line; line = line.nextElementSibling) {
+      var ul = childList(line), any = false;
+      if (line.querySelector('.lname').textContent.toLowerCase().indexOf(q) >= 0) {
+        line.querySelectorAll('li').forEach(function (li) { li.hidden = false; });
+        any = true;
+      } else {
+        for (var k = ul.firstElementChild; k; k = k.nextElementSibling) { if (matchNode(k, q)) { any = true; } }
+      }
+      line.hidden = !any;
+      setExpanded(ownToggle(line), any);
+      if (any) { hits++; }
+    }
+    noMatch.hidden = hits > 0;
+  }
+  filter.addEventListener('input', applyFilter);
+
+  var themeBtn = document.getElementById('theme');
+  var modes = ['auto', 'light', 'dark'], modeName = {auto: '自动', light: '浅色', dark: '深色'};
+  function curMode() {
+    var t = document.documentElement.getAttribute('data-theme');
+    return t === 'light' || t === 'dark' ? t : 'auto';
+  }
+  function showMode() { themeBtn.textContent = '配色：' + modeName[curMode()]; }
+  themeBtn.addEventListener('click', function () {
+    var m = modes[(modes.indexOf(curMode()) + 1) % modes.length];
+    if (m === 'auto') { document.documentElement.removeAttribute('data-theme'); } else { document.documentElement.setAttribute('data-theme', m); }
+    try { if (m === 'auto') { localStorage.removeItem('ht-theme'); } else { localStorage.setItem('ht-theme', m); } } catch (e) { }
+    showMode();
+  });
+  showMode();
+
+  var h = decodeURIComponent((location.hash || '').slice(1));
+  if (data.nodes[h]) { select(h, {reveal: true}); }
+}
+if (typeof document !== 'undefined' && document.getElementById) {
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', htInit); } else { htInit(); }
+}
+</script>
+</body>
+</html>
