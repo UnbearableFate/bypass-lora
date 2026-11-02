@@ -291,3 +291,26 @@ and measured usage, request the coordinator-authorized new review round with
 files frozen. No lock is written until that review passes and all twelve
 formal runs have valid final results. Both notification listeners belong to
 the coordinator; training notification N-20261103-040731-ab87 remains active.
+
+ATT-0391-1 is validated and imported as RES-0353, usage U-0389 (0.02
+measured MIG-hour = 0.005 node-hour; 72 scheduler seconds). At exact source
+3ae1974, all 421 tests passed with no failures/errors/skips. The manifest,
+RunSpec/source pins and checks.log/XML agree; the in-job allocation confirms
+mg1099 and torch reports actual 2g.24gb. Pinned prior audit/reference checks
+also passed. Completed diagnostics total 0.050139 node-hour; formal training
+usage is still pending. Administrative unsubmitted preparations remain reported
+zero under U-0388. The conservative full projection is about 4.42 node-hour.
+
+Manifest SHA256:
+`12bc7858103d57faea8b99fee1679de7e3e0d1f96f92d67a05968bd50fe18173`.
+checks.xml SHA256:
+`512d2f8586fdc93be3dcf5b5887804d7ee2185e19ec872a93758f731ccc74408`.
+
+The coordinator-authorized new review round RV-0099 has been requested with
+`--recheck-of RV-0098 --new-round` and assigned to reviewer-2. Its candidate
+is 3ae1974; the four analysis/audit/test-list files are frozen. The training,
+A2 reader/evaluator, checkpoint validation and lock-construction paths have
+an empty diff from the passed training source f741952. Resume on RV-0099's
+answer or the formal-training notification. Seed-5 SEG-07 remains under the
+coordinator's queue observation (MSG-0968 estimated start 04:56 JST); no queue
+or resource change is requested.
