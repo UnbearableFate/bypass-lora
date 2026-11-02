@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+RB1_PROJECT=/work/xg24i002/x10041/bypass-lora
+RB1_SOURCE="$RB1_PROJECT/snapshots/$SR_CODE_COMMIT"
+RB1_OUT="$RB1_PROJECT/runs/$SR_ATTEMPT_ID"
+RB1_PY="$RB1_PROJECT/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$RB1_OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$RB1_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$RB1_OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$RB1_OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$RB1_SOURCE/src"
+export TMPDIR="/local/${PBS_JOBID}/t0029-analysis"
+mkdir -p "$TMPDIR"
+# D-0018/D-0019: profiles are metadata for statistical analysis.
+nvidia-smi -L > "$RB1_OUT/nvidia-smi.txt" 2>&1 || true
+cd "$RB1_SOURCE"
+exec "$RB1_PY" src/rb_width_analysis.py --input "$RB1_SOURCE/research/artifacts/T-0029/analysis-input.json" \
+  --output "$RB1_OUT"
