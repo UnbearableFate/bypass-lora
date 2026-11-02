@@ -1,0 +1,46 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "review": "RV-0078",
+  "run": "RUN-0276",
+  "attempt": "ATT-0276-1",
+  "code_commit": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "job_id": "3770216.opbs",
+  "spec_digest": "blake2b:a26303bfcb1fe981c7e4e08bbb2facd298bde46b9878ac23f489f52127f50d6c",
+  "script": "/work/xg24i002/x10041/bypass-lora/snapshots/7d8b3464b6145504d155268f4c667fa3ecc53b00/research/notes/T-0028-checks.pbs",
+  "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-091308-2c93e9/script.sh",
+  "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0276-1",
+  "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-regression-20261102-091308-2c93e9.log",
+  "expected_seconds": 80,
+  "walltime": "00:02:00",
+  "notification": {
+    "notification": {
+      "id": "N-20261102-091319-30da",
+      "name": "T0028-RV0078-regression-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3770216.opbs"
+      ],
+      "expected": 1,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: verify post-RV0078 regression XML/all protocol and analysis tests at7d8b346, import terminal result/usage once, then request the one focused --recheck-of RV-0078. No formal SEG training/dev quality inspection until the revised source is covered.",
+      "created_at": "2026-11-02T09:13:19+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T09:11:16+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-091319-30da --notifier miyabi-g2"
+    }
+  }
+}
