@@ -389,3 +389,42 @@ stage=lock at 4e6e8df against this input, inspect the generated lock and rule-1
 checks, and run three stage=dev-replay jobs (seeds 3/4/5) using the generated
 lock path/SHA without unseal. Report that unchanged lock and replay results
 to the coordinator for its confirming decision. A2 is still sealed.
+
+2026-11-03 06:38 JST: all twelve formal training jobs ended with PBS 0.
+Their complete manifests report 13,115 steps, 26,230 examples, finite final
+metrics, the registered seed orders, full gradient coverage and identical
+same-job reloads. Keep initial/Base and trained off/Base checks all pass.
+Keep/Reset/T0 initial adapter digests match within each new seed. All three
+legacy SEG-04 jobs actually ran on 2g.24gb; no repeat or profile change occurred.
+Keep seeds 4/5 and T0 seed 5 actually ran on 1g.24gb, despite the ledger's 2g
+labels; Keep seed 3 and the other eight jobs ran on 2g.24gb. Use manifest torch
+profiles for the D-0072 gates and usage annotations.
+
+Measured training usage is 16.405555 MIG-hour = 4.10138875 node-hour, recorded
+as U-0391 through U-0402. Completed training plus diagnostics is 4.15652775
+node-hour. Control metadata is in central T-0033/training-completion-jobs.json,
+training-observations-ended.jsonl and training-manifest-summary.json.
+
+The exact reviewed-source PBS lock audit RUN-0393 / ATT-0393-1 completed as
+3781694.opbs on confirmed allocation mg1103. Application status is complete,
+validator E0030_preopening_lock passed, preopening.passed=true and
+confirmation_evaluated=false. This runtime audit authenticated all twelve
+artifact inventories/checkpoints, finite step ledgers, schedules, parameter
+and token budgets, three curve snapshots, initial/reload/off identities and
+training/A2-ID disjointness. Lock source is 4e6e8df, training source f741952.
+Lock: central research/artifacts/ATT-0393-1/a2-lock.json, SHA256
+`cfd2e9b054c26da3d43ed22dbf0c410060599d6599d5fe88c4b8cfe1b78838c5`.
+The lock and digest files are now read-only. D-0072 and all fixed rules are
+present. Do not report it as ready for confirmation until the three real
+Keep checkpoint dev replays complete under this unchanged lock/source.
+
+The updated cost projection is committed separately as
+T-0033-cost-projection-after-training.json. It uses the worst measured
+eval/reload-to-smoke ratio rounded up to 1.30 for future A2 timing, and actual
+maximum Keep replay time plus 60 seconds overhead. Full expected cost is
+4.903822 node-hour. Full cost if all remaining requested walltimes are used
+is 5.323194 node-hour (dev 3x12 min, A2 3x80 min, lock/analysis 2 min each).
+Both are below 5.5, and neither assumes free engineering retries. Recompute
+from measured cumulative usage before every subsequent submission/retry.
+MSG-0982 reports this interim accounting and actual profiles to coordinator;
+A2 remains sealed. No A2 evaluation has been submitted.
