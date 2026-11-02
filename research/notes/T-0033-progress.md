@@ -215,3 +215,24 @@ walltime (earlier full suite 72-73 seconds). Outputs:
 Prior ATT-0377-1 is imported as RES-0351 with measured usage U-0386. The
 RV-0097 recheck will be requested only after these D-0072 checks pass and
 their actual outputs are inspected, as MSG-0954 requires.
+
+ATT-0378-1 is now validated and imported as RES-0352, with measured usage
+U-0387 (0.02 MIG-hour = 0.005 node-hour; 72 scheduler seconds). The exact
+candidate f741952 passed 415 cases with zero failures/errors/skips. The
+manifest/RunSpec/source pins match, torch reports actual 2g.24gb on mg1097,
+and its in-job allocation was confirmed. The E-0013 and E-0027 pinned metadata
+checks also passed. Total measured task usage is 0.045139 node-hour; the
+conservative full projection including the D-0072 dev replays is about
+4.415625 node-hour, within 5.5.
+
+Manifest SHA256:
+`a02bf27b61b31fc85c0319d7a6a1c4c0b74f2e1becc4029dcf6ed9b8d5105d63`.
+checks.xml SHA256:
+`fccdf11ea5e5366f512e28523e3b92c838a31fbadfb5a9e01cbc4850337c2cd8`.
+
+RV-0098 (the second and final review in RV-0097's round) has been requested
+and assigned to reviewer-2. It covers all five findings, D-0072 and the A2
+runbook. Reviewed files are frozen. Next: inspect that answer, obtain the
+coordinator's disposition if medium findings remain, and only after a passing
+review register the twelve formal training runs at the covered source.
+A2 remains sealed, and no formal training has been registered.
