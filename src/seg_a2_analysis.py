@@ -11,8 +11,9 @@ import time
 from rb1_analysis import measured_cost
 from rb1_artifacts import read, reference
 from rb_history import donor_indices
-from seg_a2_data import ARMS, CONTRACT, SEEDS, verify_lock
+from seg_a2_data import ARMS, CONTRACT, SEEDS, verify_lock, confirmation_decision
 from seg_a2_rules import IMPLEMENTATION_CHECKS, analyze as apply_rules
+from seg_a2_descriptive import describe_a2, describe_dev, compare_dev_to_e0027, load_e0027_dev_reference
 from seg_artifacts import validate_rows as validate_dev_rows
 
 TASKS = ('piqa', 'boolq')
@@ -162,13 +163,17 @@ def _verify_eval(seed, root, lock, lock_path, lock_sha256, expected_ids):
     if re.fullmatch(r'(?:blake2b:)?[0-9a-f]{64}', str(manifest.get('spec_digest'))) is None:
         raise ValueError(f'seed {seed} A2 evaluation spec digest is malformed')
     artifacts = {item.get('role'): item.get('path') for item in manifest.get('artifacts', [])}
-    if set(artifacts) != {'dev-reproduction.json', 'conditions.json', 'provenance.json', 'a2-read.jsonl'}:
+    if set(artifacts) != {'dev-reproduction.json', 'conditions.json', 'provenance.json',
+                          'a2-read.jsonl', 'a2-encodability.json'}:
         raise ValueError(f'seed {seed} A2 manifest artifact inventory differs')
     for role, path in artifacts.items():
         p = Path(path).resolve()
         if p != root / role or not p.is_file():
             raise ValueError(f'seed {seed} A2 artifact {role} path is invalid')
     provenance = read(root / 'provenance.json')
+    decision = confirmation_decision(provenance.get('confirmation_decision'))
+    if metrics.get('confirmation_decision') != decision or metrics.get('a2.opened') is not True:
+        raise ValueError(f'seed {seed} confirmation decision or opening record differs')
     lock_ref = reference(lock_path)
     if (provenance.get('lock') != lock_ref or provenance.get('seed') != seed or
             provenance.get('training_source') != lock['training_source'] or
@@ -184,8 +189,13 @@ def _verify_eval(seed, root, lock, lock_path, lock_sha256, expected_ids):
     receipt = receipts[0]
     if (receipt.get('lock_sha256') != lock_sha256 or receipt.get('seed') != seed or
             receipt.get('arm') != 'SEG-05' or receipt.get('pbs_job_id') != provenance.get('job_id') or
-            receipt.get('hardware') != provenance.get('hardware') or not receipt.get('time_utc')):
+            receipt.get('hardware') != provenance.get('hardware') or not receipt.get('time_utc') or
+            receipt.get('confirmation_decision') != decision):
         raise ValueError(f'seed {seed} A2 read receipt differs from its job/provenance')
+    encodability = read(root/'a2-encodability.json')
+    if encodability != {'passed': True, 'checked': {'piqa': 1000, 'boolq': 1000},
+                       'status': 'encodable_no_model_scored_yet'}:
+        raise ValueError(f'seed {seed} complete A2 encoding check missing')
 
     dev = read(root / 'dev-reproduction.json')
     entries = lock['runs'][str(seed)]
@@ -236,7 +246,14 @@ def _verify_eval(seed, root, lock, lock_path, lock_sha256, expected_ids):
             'provenance': provenance, 'receipt': receipt, 'path_gate': gate,
             'predictions': predictions, 'summaries': summaries,
             'base_rows': base_rows, 'iv_off_matches_base': off_identical,
-            'donor_map': actual_donors}
+            'donor_map': actual_donors, 'confirmation_decision': decision}
+
+
+def shared_confirmation_decision(verified):
+    decisions = {confirmation_decision(v.get('confirmation_decision')) for v in verified.values()}
+    if len(decisions) != 1:
+        raise ValueError('confirmation decision differs across seeds')
+    return next(iter(decisions))
 
 
 def _counts(rows):
@@ -291,6 +308,7 @@ def analyze(inputs, lock_path, lock_sha256):
     for seed in SEEDS:
         verified[seed] = _verify_eval(seed, inputs['evaluations'][str(seed)], lock, lock_path,
                                       lock_sha256, expected_id_order)
+    decision = shared_confirmation_decision(verified)
     # Cross-seed A2 membership, gold labels, and tokenization must be paired.
     canonical_rows = verified[3]['base_rows']
     canonical = [(r['task'], r['id'], r['gold'], r['gold_loss_tokens']) for r in canonical_rows]
@@ -303,6 +321,8 @@ def analyze(inputs, lock_path, lock_sha256):
     interval_rows = {}
     checks = {}
     seed_reports = {}
+    dev_predictions = {seed: {arm: validate_dev_rows(read(lock['runs'][str(seed)][arm]['predictions']['path']))
+                              for arm in ARMS} for seed in SEEDS}
     for seed in SEEDS:
         predictions = verified[seed]['predictions']
         counts[seed] = {arm: _counts({arm: predictions[arm]})[arm]['boolq'] for arm in ARMS}
@@ -318,7 +338,7 @@ def analyze(inputs, lock_path, lock_sha256):
         seed_reports[str(seed)] = {
             'conditions': verified[seed]['summaries'],
             'dev_training': {
-                arm: _summary(validate_dev_rows(read(lock['runs'][str(seed)][arm]['predictions']['path'])))
+                arm: _summary(dev_predictions[seed][arm])
                 for arm in ARMS
             },
             'boolq_correct_counts': {arm: list(counts[seed][arm]) for arm in counts[seed]},
@@ -336,8 +356,16 @@ def analyze(inputs, lock_path, lock_sha256):
         for seed in SEEDS}
     roots = [inputs['evaluations'][str(seed)] for seed in SEEDS]
     cost = _complete_cost(inputs, roots, lock)
+    a2_descriptive = describe_a2({seed: {arm: verified[seed]['predictions'][arm]
+                                        for arm in (*ARMS, 'SEG-05/iv_swap')} for seed in SEEDS})
+    dev_descriptive = describe_dev(dev_predictions)
+    prior_dev = load_e0027_dev_reference()
     return {**result, 'contract': CONTRACT, 'hypothesis': 'H-0029@1', 'stage': 'final',
             'lock': {'path': str(lock_path), 'sha256': lock_sha256}, 'seeds': seed_reports,
+            'confirmation_decision': decision,
+            'descriptive': {'a2': a2_descriptive, 'dev': dev_descriptive,
+                'e0027_dev_reference': prior_dev,
+                'dev_difference_from_e0027': compare_dev_to_e0027(dev_descriptive, prior_dev)},
             'base_seg_seed3_boolq': {'correct': base_count[0], 'total': base_count[1]},
             'cross_job_base_prediction_mismatches_vs_seed3': base_mismatches,
             'cost': cost,

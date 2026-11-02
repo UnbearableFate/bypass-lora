@@ -125,6 +125,7 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
         'lock': lock_ref, 'seed': 3, 'training_source': 'a' * 40,
         'evaluation_source': 'b' * 40, 'inputs': {'SEG-05': entry},
         'job_id': '123.server', 'hardware': 'MIG-2g',
+        'confirmation_decision': 'D-9999',
     }
     provenance_path = a2_root / 'provenance.json'
     provenance_path.write_text(json.dumps(provenance))
@@ -133,9 +134,13 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
         'lock_sha256': lock_ref['sha256'], 'seed': 3, 'arm': 'SEG-05',
         'pbs_job_id': '123.server', 'hardware': 'MIG-2g',
         'time_utc': '2026-11-03T00:00:00+00:00',
+        'confirmation_decision': 'D-9999',
     }) + '\n')
+    encoding_path = a2_root/'a2-encodability.json'
+    encoding_path.write_text(json.dumps({'passed': True, 'checked': {'piqa': 1000, 'boolq': 1000},
+                                         'status': 'encodable_no_model_scored_yet'}))
     artifacts = [{'role': path.name, 'path': str(path)} for path in
-                 (dev_path, conditions_path, provenance_path, receipt_path)]
+                 (dev_path, conditions_path, provenance_path, receipt_path, encoding_path)]
     actual_lock_sha = lock_ref['sha256']
     eval_manifest = {
         'status': 'complete', 'contract': analysis.CONTRACT, 'arm': 'A2', 'seed': 3,
@@ -146,6 +151,7 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
                     'path.dev_gate': gate, 'off.identical_to_Base_seg': True},
         'artifacts': artifacts, 'validator': {'passed': True},
     }
+    eval_manifest['metrics'].update({'confirmation_decision': 'D-9999', 'a2.opened': True})
     manifest_path = a2_root / 'manifest.json'
     manifest_path.write_text(json.dumps(eval_manifest))
     lock = {'training_source': 'a' * 40, 'evaluation_source': 'b' * 40,
@@ -157,7 +163,30 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
     assert result['path_gate']['same_hardware'] is False
     assert result['path_gate']['prediction_mismatches'] == 10
 
+    receipt = json.loads(receipt_path.read_text())
+    del receipt['confirmation_decision']
+    receipt_path.write_text(json.dumps(receipt)+'\n')
+    with pytest.raises(ValueError, match='receipt differs'):
+        analysis._verify_eval(3, a2_root, lock, lock_path, actual_lock_sha, expected_ids)
+    receipt['confirmation_decision'] = 'D-9998'
+    receipt_path.write_text(json.dumps(receipt)+'\n')
+    with pytest.raises(ValueError, match='receipt differs'):
+        analysis._verify_eval(3, a2_root, lock, lock_path, actual_lock_sha, expected_ids)
+    receipt['confirmation_decision'] = 'D-9999'
+    receipt_path.write_text(json.dumps(receipt)+'\n')
+
     eval_manifest['spec_digest'] = ''
     manifest_path.write_text(json.dumps(eval_manifest))
     with pytest.raises(ValueError, match='spec digest'):
         analysis._verify_eval(3, a2_root, lock, lock_path, actual_lock_sha, expected_ids)
+
+
+def test_confirmation_decision_must_match_across_all_seeds():
+    verified = {s: {'confirmation_decision': 'D-9999'} for s in (3, 4, 5)}
+    assert analysis.shared_confirmation_decision(verified) == 'D-9999'
+    verified[4]['confirmation_decision'] = 'D-9998'
+    with pytest.raises(ValueError, match='differs across seeds'):
+        analysis.shared_confirmation_decision(verified)
+    del verified[4]['confirmation_decision']
+    with pytest.raises(ValueError, match='confirmation decision'):
+        analysis.shared_confirmation_decision(verified)

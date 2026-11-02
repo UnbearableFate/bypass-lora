@@ -178,7 +178,14 @@ def load_a2(original_splits, manifest):
     return result
 
 
-def read_a2(lock_path, lock_sha256, data_dir, output, seed, arm, hardware, *, unseal=False):
+def confirmation_decision(value):
+    if not isinstance(value, str) or re.fullmatch(r'D-\d{4}', value) is None:
+        raise ValueError('A2 opening requires a confirmation decision D-NNNN')
+    return value
+
+
+def read_a2(lock_path, lock_sha256, data_dir, output, seed, arm, hardware, *,
+            unseal=False, confirmation_decision_id=None):
     """Verify, log the opening receipt, then load and select the A2 rows.
 
     The caller must run the per-seed dev gate before calling this function.
@@ -186,6 +193,7 @@ def read_a2(lock_path, lock_sha256, data_dir, output, seed, arm, hardware, *, un
     """
     if not unseal:
         raise ValueError('A2 access requires explicit unseal=True')
+    decision = confirmation_decision(confirmation_decision_id)
     if seed not in SEEDS or arm not in EVALUATION_ARMS:
         raise ValueError('A2 read seed/arm is not registered')
     if not isinstance(hardware, str) or not hardware.strip():
@@ -200,6 +208,7 @@ def read_a2(lock_path, lock_sha256, data_dir, output, seed, arm, hardware, *, un
         'lock_sha256': hashlib.sha256(lock_path.read_bytes()).hexdigest(),
         'seed': seed, 'arm': arm, 'hardware': hardware,
         'evaluated_conditions': EVALUATION['conditions'],
+        'confirmation_decision': decision,
     }
     with (receipt_path / 'a2-read.jsonl').open('a') as handle:
         handle.write(json.dumps(receipt, sort_keys=True, separators=(',', ':')) + '\n')
@@ -220,10 +229,12 @@ def main():
     parser.add_argument('--seed', type=int, choices=SEEDS, required=True)
     parser.add_argument('--arm', choices=EVALUATION_ARMS, required=True)
     parser.add_argument('--hardware', required=True)
+    parser.add_argument('--confirmation-decision', required=True)
     parser.add_argument('--unseal', action='store_true')
     args = parser.parse_args()
     read_a2(args.lock, args.sha256, args.data_dir, args.output, args.seed,
-            args.arm, args.hardware, unseal=args.unseal)
+            args.arm, args.hardware, unseal=args.unseal,
+            confirmation_decision_id=args.confirmation_decision)
 
 
 if __name__ == '__main__':

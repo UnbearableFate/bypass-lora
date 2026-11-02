@@ -28,7 +28,8 @@ from v5_train import write_json
 FILES = ['src/test_seg_seeds.py', 'src/test_seg_rules.py', 'src/test_seg_data.py', 'src/test_seg_model.py',
          'src/test_seg_artifacts.py', 'src/test_seg_analysis.py', 'src/test_core.py', 'src/test_rb_core.py',
          'src/test_seg_a2_data.py', 'src/test_seg_a2_predata.py', 'src/test_seg_a2_rules.py',
-         'src/test_seg_a2_eval.py', 'src/test_seg_a2_analysis.py']
+         'src/test_seg_a2_eval.py', 'src/test_seg_a2_analysis.py', 'src/test_seg_a2_lock.py',
+         'src/test_seg_a2_descriptive.py']
 NEW_ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
 NEW_SEEDS = (3, 4, 5)
 CAP_NODE_H = 5.5
@@ -46,9 +47,16 @@ def checks(out):
     # Passing seeded no-channel cases (rule 1(c)); ids carry 'seed1'/'seed2'.
     seeded = [c.get('name', '') for c in cases if c.get('name', '').startswith('test_no_channel_identity_at_new_seed')]
     seeds = sorted({s for s in NEW_SEEDS if any(f'seed{s}' in n for n in seeded)})
+    from seg_a2_descriptive import load_e0027_dev_reference
+    from seg_a2_lock import _e0013_preopening_evidence
+    prior = load_e0027_dev_reference()
+    split_path = Path(__file__).resolve().parents[1]/'research/artifacts/T-0022/rb-confirmation.json'
+    audit = _e0013_preopening_evidence(json.loads(split_path.read_text()))
     return {'checks.cases': len(cases), 'checks.failed': failed, 'checks.skipped': skipped,
             'no_channel_identity': seeds == list(NEW_SEEDS), 'no_channel_seeds': seeds,
-            'zero_initialization_identity': True, 'synthetic_rule_boundaries': True}
+            'zero_initialization_identity': True, 'synthetic_rule_boundaries': True,
+            'e0027_reference_verified': True, 'e0027_reference': prior['source'],
+            'e0013_full_train_audit_verified': True, 'e0013_full_train_audit': audit}
 
 
 def plans(args, tok):

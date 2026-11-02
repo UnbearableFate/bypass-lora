@@ -147,7 +147,8 @@ def test_failed_lock_stops_before_importing_or_reading_source(tmp_path, monkeypa
     monkeypatch.setattr(builtins, '__import__', guarded_import)
     with pytest.raises(ValueError, match='caller pin'):
         a2.read_a2(lock_path, '0' * 64, '/must/not/read', tmp_path / 'out',
-                   3, 'SEG-05', 'synthetic hardware', unseal=True)
+                   3, 'SEG-05', 'synthetic hardware', unseal=True,
+                   confirmation_decision_id='D-9999')
     assert not (tmp_path / 'out').exists()
 
 
@@ -156,3 +157,11 @@ def test_read_a2_requires_explicit_unseal_before_any_lock_or_data_access(tmp_pat
         a2.read_a2(tmp_path / 'missing-lock', '0' * 64, '/must/not/read',
                    tmp_path / 'out', 3, 'SEG-05', 'synthetic hardware')
     assert not (tmp_path / 'out').exists()
+
+
+@pytest.mark.parametrize('decision', [None, '', 'D-1', 'D-99999', 'arbitrary'])
+def test_read_a2_requires_recordable_confirmation_decision(tmp_path, decision):
+    with pytest.raises(ValueError, match='confirmation decision'):
+        a2.read_a2(tmp_path/'missing', '0'*64, '/must/not/read', tmp_path/'out',
+            3, 'SEG-05', 'synthetic hardware', unseal=True, confirmation_decision_id=decision)
+    assert not (tmp_path/'out').exists()

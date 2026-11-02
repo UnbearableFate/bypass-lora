@@ -209,7 +209,7 @@ def analyze(counts, checks, base, intervals):
               'learned': {str(s): learned[s] for s in SEEDS},
               'no_history_r128_controls_unlearned': {str(s): unlearned_controls[s] for s in SEEDS},
               'mean_mainly_one_seed': direction == 'supported' and sum(x > 0 for x in gains) < 2},
-        '8': {'level': 'descriptive', 'other_metrics': 'PIQA, macro, NLL, and dev comparisons supplied/reported by caller',
+        '8': {'level': 'descriptive', 'other_metrics': 'PIQA, macro, NLL, dev contrasts and pinned E-0027 comparisons in locked analysis',
               'hypothesis_status_changed': False},
     }
     return {'rules': rules, 'direction': direction,

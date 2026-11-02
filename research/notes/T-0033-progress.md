@@ -148,3 +148,29 @@ checks.xml SHA256:
 The PBS ledger application verdict is verified_success. RV-0097 is still
 pending with reviewer-2; no reviewed file changed, and no formal training or
 A2 evaluation has been registered. Resume on that review answer.
+
+## RV-0097 fixes in progress
+
+RV-0097 identified one medium protocol issue and four low findings. MSG-0950
+asks the coordinator to choose the protocol for a dev-gate failure after a
+peer has opened A2; option (c), an unchanged engineering retry under the same
+lock on the training slice, was recommended. No dependent protocol change has
+been assumed or implemented while the decision is pending.
+
+Independent fixes are implemented, awaiting PBS checks and review recheck:
+
+- The reader records the confirmation decision D-NNNN. The evaluator passes
+  it from PBS; receipt, provenance and manifest must agree, and analysis
+  requires the same decision across seeds.
+- All A2 rows are encoded before loading/scoring any A2 model. A segmented
+  encoding failure records `unencodable_no_model_scored` and stops. The
+  earlier E-0013 full-train audit is pinned in the pre-opening lock evidence;
+  its only exclusion, PIQA 5528, is checked against the sealed A2 IDs only.
+- Lock creation accepts separate training and evaluation/analysis commits,
+  while deterministic checks must bind to the evaluation commit.
+- PIQA/BoolQ/macro gain, LoRA and swap descriptives, dev gain/LoRA, and a
+  pinned E-0027 dev reference comparison now execute inside locked analysis.
+- A synthetic orchestration regression verifies that a failed dev gate writes
+  a partial manifest and cannot call the A2 reader or write an opening receipt.
+
+Tests and thresholds were not relaxed. No A2 access or formal training occurred.

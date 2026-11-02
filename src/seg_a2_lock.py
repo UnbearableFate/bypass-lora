@@ -13,11 +13,54 @@ from seg_artifacts import validate
 from v1_data import derive_seed
 from v5_train import write_json
 
+E0013_AUDIT_ROOT = Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0129-1')
+E0013_MANIFEST_SHA256 = '38f4c152de6735c16f3c04cb9790c04bb8781a149980f68b3fc3c00863d110f3'
+E0013_EXCLUDED_SHA256 = 'b67a489da0a81f8c6c3fcfd112182c9a0e77df5fd468c6d1547166fec83780b5'
+E0013_MANIFEST_BYTES = 3180
+E0013_EXCLUDED_BYTES = 159
+E0013_EXCLUSION = [{'task': 'piqa', 'id': 5528, 'candidate_lengths': [537, 537],
+                    'reason': 'a complete candidate exceeds max_length'}]
+
+
+def _e0013_preopening_evidence(split):
+    """Pin the earlier full-V1-train encodability audit using metadata only."""
+    manifest_path = E0013_AUDIT_ROOT / 'manifest.json'
+    excluded_path = E0013_AUDIT_ROOT / 'excluded-train.json'
+    for path, size in ((manifest_path, E0013_MANIFEST_BYTES),
+                       (excluded_path, E0013_EXCLUDED_BYTES)):
+        if not path.is_file() or path.stat().st_size != size:
+            raise ValueError(f'E-0013 audit artifact name/size differs: {path.name}')
+    manifest_ref = reference(manifest_path)
+    excluded_ref = reference(excluded_path)
+    if manifest_ref['sha256'] != E0013_MANIFEST_SHA256 or excluded_ref['sha256'] != E0013_EXCLUDED_SHA256:
+        raise ValueError('E-0013 full-train audit artifacts differ from their pins')
+    producer = read(manifest_path)
+    excluded = read(excluded_path)
+    if (producer.get('status') != 'complete' or producer.get('contract') != 'E-0013@3' or
+            producer.get('phase') != 'train' or
+            producer.get('validator') != {'name': 'v5_runtime', 'passed': True} or
+            producer.get('metrics', {}).get('data.rows_per_epoch') != 19443 or
+            producer.get('metrics', {}).get('train.examples') != 58329):
+        raise ValueError('E-0013 full-V1-train encodability audit did not pass its producer checks')
+    if excluded != E0013_EXCLUSION:
+        raise ValueError('E-0013 full-V1-train exclusion list differs from the pinned single row')
+    if 5528 in split['ids']['piqa']:
+        raise ValueError('the E-0013 excluded PIQA row appears in sealed A2 IDs')
+    return {'attempt': 'ATT-0129-1', 'manifest': manifest_ref,
+            'excluded_train': excluded_ref, 'contract': 'E-0013@3',
+            'validator': {'name': 'v5_runtime', 'passed': True},
+            'data_rows_per_epoch': 19443, 'excluded_rows': E0013_EXCLUSION,
+            'excluded_piqa_5528_not_in_a2': True}
+
 
 def make_lock(inputs):
-    source = os.environ['SR_CODE_COMMIT']
-    if inputs['training_source'] != source:
-        raise ValueError('training/evaluation/analysis source must be the same reviewed commit')
+    evaluation_source = os.environ['SR_CODE_COMMIT']
+    training_source = inputs['training_source']
+    for name, commit in (('training_source', training_source),
+                         ('SR_CODE_COMMIT', evaluation_source)):
+        if not isinstance(commit, str) or len(commit) != 40 or any(
+                c not in '0123456789abcdef' for c in commit):
+            raise ValueError(f'{name} must be a full lowercase commit SHA')
     checks_ref = inputs['deterministic_checks']; smoke_ref = inputs['smoke']
     for ref in (checks_ref, smoke_ref):
         if reference(ref['path']) != ref:
@@ -26,7 +69,7 @@ def make_lock(inputs):
         if check.get('status') != 'complete' or check.get('validator', {}).get('passed') is not True:
             raise ValueError('preopening test or smoke job did not pass')
     deterministic = read(checks_ref['path'])
-    if (deterministic.get('source_commit') != source or
+    if (deterministic.get('source_commit') != evaluation_source or
             deterministic['metrics'].get('no_channel_identity') is not True or
             deterministic['metrics'].get('no_channel_seeds') != list(SEEDS)):
         raise ValueError('no-channel checks are not at the final reviewed source for all seeds')
@@ -40,6 +83,7 @@ def make_lock(inputs):
     if split_ref['sha256'] != SPLIT_MANIFEST_SHA256:
         raise ValueError('A2 IDs file differs from the sealed manifest')
     split = read(split_ref['path'])
+    e0013_audit = _e0013_preopening_evidence(split)
     runs, checks = {}, {}
     for seed in SEEDS:
         roots = inputs['runs'][str(seed)]
@@ -48,7 +92,7 @@ def make_lock(inputs):
         runs[str(seed)] = {}; manifests = {}
         for arm in ARMS:
             root = Path(roots[arm]).resolve()
-            manifest, _, _ = validate(root, arm, source, seed)
+            manifest, _, _ = validate(root, arm, training_source, seed)
             manifests[arm] = manifest
             train_ids = {(r['task'], r['id']) for r in read(root/'seams-train.json')}
             held = {(t, i) for t, ids in split['ids'].items() for i in ids}
@@ -64,13 +108,14 @@ def make_lock(inputs):
         if not all(check.values()):
             raise ValueError('initial parameter identity failed')
         checks[str(seed)] = check
-    return {'contract': CONTRACT, 'evaluation_source': source, 'training_source': source,
+    return {'contract': CONTRACT, 'evaluation_source': evaluation_source, 'training_source': training_source,
         'model_revision': REVISION, 'tokenizer_revision': REVISION,
         'split_manifest': split_ref, 'ids_sha256': split['ids_sha256'], 'runs': runs,
         'evaluation': EVALUATION, 'bootstrap': BOOTSTRAP,
         'derangement': {'seed': derive_seed(BASE_SEED, STUDY, 'A2', 'iv_swap'),
                         'method': 'within_task_fixed_derangement'},
         'preopening_checks': {'passed': True, 'checks': checks, 'deterministic': checks_ref, 'smoke': smoke_ref,
+            'e0013_full_v1_train_encodability': e0013_audit,
             'rules': {'2': 'same slice exact dev rows; other slice <=10 class mismatches; A2 off equals same-job Base',
                       '3': 'gain_s=Keep-max(Reset,T0); lora_s=Keep-LoRA; swap_s=Keep-swap',
                       '4': '10000 paired BoolQ row draws shared by all arms/seeds; recompute maximum; linear quantile',
