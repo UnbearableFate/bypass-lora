@@ -65,6 +65,10 @@ def validate(root, arm, source_commit, seed=0):
     mandatory = {'config.json', 'predictions.json', 'seams-train.json', 'excluded-train.json', 'evaluation-audit.json'}
     if stage == 'train':
         mandatory |= {'checkpoint.json', 'steps.jsonl', *(f'dev-step-{math.ceil(STEPS*f)}.json' for f in (.25, .5, .75))}
+        if seed in (3, 4, 5):
+            mandatory.add('initial-predictions.json')
+            if arm == 'SEG-05':
+                mandatory.add('iv-off-dev.json')
     if not mandatory <= {Path(ref['path']).name for ref in artifacts}:
         raise ValueError('segmented producer artifact inventory incomplete')
     if m.get('model_revision') != REVISION or m.get('tokenizer_revision') != REVISION:
@@ -148,4 +152,9 @@ def validate(root, arm, source_commit, seed=0):
         if arm in KEEP:
             if m.get('initial.identical_to_Base_seg') is not True or read(root/'initial-base-predictions.json') != read(root/'initial-predictions.json'):
                 raise ValueError('segmented zero-initialization identity failed')
+        if seed in (3, 4, 5):
+            validate_rows(read(root/'initial-predictions.json'), [(r['task'], r['id'], r['gold']) for r in rows])
+            if arm == 'SEG-05' and (m.get('off.identical_to_Base_seg') is not True or
+                    read(root/'iv-off-dev.json')['predictions'] != read(root/'initial-base-predictions.json')):
+                raise ValueError('E-0030 dev off/Base same-allocation identity failed')
     return manifest, refs, root/'adapter'

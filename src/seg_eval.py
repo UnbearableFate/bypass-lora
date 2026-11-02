@@ -32,10 +32,12 @@ def token_losses(model, arm, encoded, pad_id, kind='normal', donor_memory=None, 
 
 
 @torch.no_grad()
-def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
+def evaluate(model, arm, splits, tok, limit=None, kind='normal', split_name='dev', donor_phase='R1'):
     model.eval()
-    rows = [r for task in ('piqa', 'boolq') for r in splits['splits'][task]['dev'][:limit]]
-    donors = donor_indices(rows, 'R1') if kind == 'iv_swap' else None
+    if split_name not in ('dev', 'a2'):
+        raise ValueError('unknown segmented evaluation split')
+    rows = [r for task in ('piqa', 'boolq') for r in splits['splits'][task][split_name][:limit]]
+    donors = donor_indices(rows, donor_phase) if kind == 'iv_swap' else None
     metrics, predictions, audit, donor_map = {}, [], [], []
     start = time.monotonic()
     segment_seconds = {'segment1': 0., 'segment2': 0.}
@@ -64,7 +66,7 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
             scores.append(-total/(counts[-1] if row['task'] == 'piqa' else 1))
         gold = int(row['label']) if row['task'] == 'piqa' else (0 if row['label'] else 1)
         prediction = 0 if scores[0] >= scores[1] else 1
-        predictions.append({'task': row['task'], 'split': 'dev', 'id': row['id'], 'gold': gold,
+        predictions.append({'task': row['task'], 'split': split_name, 'id': row['id'], 'gold': gold,
                             'prediction': prediction, 'scores': scores,
                             'gold_nll_sum': sums[gold], 'gold_loss_tokens': counts[gold]})
     for task in ('piqa', 'boolq'):
@@ -73,10 +75,10 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
             raise ValueError('both tasks need nonempty dev rows')
         nll = sum(r['gold_nll_sum'] for r in selected)
         tokens = sum(r['gold_loss_tokens'] for r in selected)
-        metrics.update({f'dev.{task}.accuracy': sum(r['prediction'] == r['gold'] for r in selected)/len(selected),
-                        f'dev.{task}.examples': len(selected), f'dev.{task}.nll': nll/tokens,
-                        f'dev.{task}.loss_tokens': tokens})
-    metrics['dev.nll'] = sum(metrics[f'dev.{t}.nll'] for t in ('piqa', 'boolq'))/2
+        metrics.update({f'{split_name}.{task}.accuracy': sum(r['prediction'] == r['gold'] for r in selected)/len(selected),
+                        f'{split_name}.{task}.examples': len(selected), f'{split_name}.{task}.nll': nll/tokens,
+                        f'{split_name}.{task}.loss_tokens': tokens})
+    metrics[f'{split_name}.nll'] = sum(metrics[f'{split_name}.{t}.nll'] for t in ('piqa', 'boolq'))/2
     if not all(math.isfinite(float(x)) for x in metrics.values()):
         raise EvaluationNonfinite('nonfinite segmented evaluation aggregate')
     return metrics, predictions, {'elapsed_s': time.monotonic()-start, 'seams': audit, 'donors': donor_map,

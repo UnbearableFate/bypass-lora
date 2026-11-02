@@ -101,20 +101,20 @@ def seeded(base, arm, seed):
 
 def test_r128_initial_parameters_identical_within_seed_and_distinct_across_seeds(base):
     digests = {}
-    for seed in (0, 1, 2):
+    for seed in (0, 1, 2, 3, 4, 5):
         for arm in ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'):
             with seeded(base, arm, seed) as model:
                 digests[seed, arm] = parameter_digest(model)
         assert digests[seed, 'SEG-05'] == digests[seed, 'SEG-06'] == digests[seed, 'SEG-07']
         assert digests[seed, 'SEG-04'] != digests[seed, 'SEG-05']
-    assert len({digests[s, 'SEG-05'] for s in (0, 1, 2)}) == 3
-    assert len({digests[s, 'SEG-04'] for s in (0, 1, 2)}) == 3
+    assert len({digests[s, 'SEG-05'] for s in (0, 1, 2, 3, 4, 5)}) == 6
+    assert len({digests[s, 'SEG-04'] for s in (0, 1, 2, 3, 4, 5)}) == 6
 
 
 IDS = ([[11, 29, 73, 181, 8]], [[71, 9, 18, 41]])
 
 
-@pytest.mark.parametrize('seed', [1, 2], ids=['seed1', 'seed2'])
+@pytest.mark.parametrize('seed', [1, 2, 3, 4, 5], ids=['seed1', 'seed2', 'seed3', 'seed4', 'seed5'])
 @pytest.mark.parametrize('arm', ['SEG-04', 'SEG-06', 'SEG-07'])
 def test_no_channel_identity_at_new_seed(base, arm, seed):
     a, b = (torch.tensor(x, device='cuda') for x in IDS)
@@ -134,7 +134,7 @@ def test_no_channel_identity_at_new_seed(base, arm, seed):
         assert not torch.equal(direct.logits, untouched)
 
 
-@pytest.mark.parametrize('seed', [1, 2], ids=['seed1', 'seed2'])
+@pytest.mark.parametrize('seed', [1, 2, 3, 4, 5], ids=['seed1', 'seed2', 'seed3', 'seed4', 'seed5'])
 def test_zero_initialized_keep_matches_base_at_new_seed(base, seed):
     a, b = (torch.tensor(x, device='cuda') for x in IDS)
     with torch.no_grad():

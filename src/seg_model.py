@@ -24,11 +24,13 @@ FAMILIES = {**{a: 'RBc-R' for a in (*KEEP, *RESET)}, **{a: 'RBc-T' for a in T0},
 PARAMETERS = {'SEG-00': 0, **{f'SEG-{i:02}': 663552 for i in (1, 2, 3)},
               'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)}}
 # E-0027 trains only the r128 triplet and LoRA_seg at new seeds; seed 0 is E-0025.
-SEED_ARMS = {0: ARMS, 1: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'), 2: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')}
+SEED_ARMS = {0: ARMS, **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07') for s in (1, 2, 3, 4, 5)}}
 
 
 def contract(seed):
-    return 'E-0025@1' if seed == 0 else 'E-0027@1'
+    if seed not in SEED_ARMS:
+        raise ValueError('unknown segmented seed')
+    return 'E-0025@1' if seed == 0 else 'E-0027@1' if seed in (1, 2) else 'E-0030@1'
 
 
 def config_for(arm):
@@ -39,8 +41,8 @@ def config_for(arm):
 def make_model(arm, checkpoint=None, seed=0):
     if arm not in ARMS:
         raise ValueError('unknown segmented arm')
-    if seed not in (0, 1, 2):
-        raise ValueError('segmented seeds are 0 (E-0025) and 1, 2 (E-0027)')
+    if arm not in SEED_ARMS.get(seed, ()):
+        raise ValueError('unregistered segmented seed/arm')
     base = load_base()
     torch.manual_seed(derive_seed(BASE_SEED, STUDY, 'R1', 'init', seed))
     if arm == 'SEG-00':
