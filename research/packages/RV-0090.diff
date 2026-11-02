@@ -1,0 +1,1886 @@
+diff --git a/research/notes/T-0032-run.pbs b/research/notes/T-0032-run.pbs
+new file mode 100644
+index 0000000..3260238
+--- /dev/null
++++ b/research/notes/T-0032-run.pbs
+@@ -0,0 +1,104 @@
++#!/bin/bash
++# E-0029 immutable snapshot entry; all operations require registered attempts.
++set -euo pipefail
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_CODE_COMMIT:?registered source required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++: "${IMPROVE_JOB:?registered operation required}"
++P=/work/xg24i002/x10041/bypass-lora
++SRC="$P/snapshots/$SR_CODE_COMMIT"
++OUT="$P/runs/$SR_ATTEMPT_ID"
++PY="$P/envs/3c916b51337d-cuda/bin/python"
++SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
++SIDE_LOCK="$SRC/research/artifacts/T-0024/lr-lock.json"
++mkdir -p "$OUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
++/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$SRC/src"
++export TMPDIR="/local/${PBS_JOBID}/t0032-${IMPROVE_JOB}"
++mkdir -p "$TMPDIR"
++nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
++cd "$SRC"
++case "$IMPROVE_JOB" in
++  svd-diagnostic)
++    exec "$PY" src/rb_improve_svd_diagnostic.py --output "$OUT" \
++      --split-manifest "$SPLIT" --data-dir "$P/data/v1"
++    ;;
++  smoke|tests)
++    "$PY" -m pytest -q -p no:cacheprovider src/test_rb_improve.py src/test_rb_improve_analysis.py \
++      src/test_rb_improve_lr.py src/test_rb_tap.py src/test_rb_train.py src/test_rb1_artifacts.py \
++      src/test_rb_tap_analysis.py src/test_rb_tap_eval.py src/test_rb_eta_select.py src/test_v1_lora.py \
++      > "$OUT/pytest.txt" 2>&1
++    if [ "$IMPROVE_JOB" = smoke ]; then
++      exec "$PY" src/rb_improve_smoke.py --output "$OUT" --split-manifest "$SPLIT" --data-dir "$P/data/v1"
++    fi
++    "$PY" - "$OUT" <<'PY'
++import json,os,sys
++from pathlib import Path
++out=Path(sys.argv[1])
++json.dump({'status':'complete','contract':'E-0029@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
++ 'metrics':{'pytest_exit':0,'source_commit':os.environ['SR_CODE_COMMIT']},
++ 'artifacts':[{'path':str(out/'pytest.txt'),'role':'tests'}],
++ 'validator':{'name':'e0029_tests','passed':True}},open(out/'manifest.json','w'),indent=2)
++PY
++    ;;
++  ig|calibration|train)
++    : "${IMPROVE_ARM:?registered arm required}"
++    : "${IMPROVE_LR:?registered LR required}"
++    extra=()
++    if [ "$IMPROVE_JOB" = train ]; then
++      : "${IMPROVE_UP_LOCK:?locked up-only LR required}"
++      LOCK="$SIDE_LOCK"
++      if [[ "$IMPROVE_ARM" = L-* ]]; then LOCK="$IMPROVE_UP_LOCK"; fi
++      extra+=(--lr-lock "$LOCK" --up-lr-lock "$IMPROVE_UP_LOCK" --base-run "$P/runs/ATT-0024-1")
++      if [[ "$IMPROVE_ARM" = G-* ]]; then
++        : "${IMPROVE_IG_INIT:?reviewed I-G initialization required}"
++        extra+=(--ig-init "$IMPROVE_IG_INIT")
++      fi
++    fi
++    exec "$PY" src/rb_improve_train.py --stage "$IMPROVE_JOB" --arm "$IMPROVE_ARM" --lr "$IMPROVE_LR" \
++      --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT" "${extra[@]}"
++    ;;
++  lr-plan|lr-lock)
++    : "${IMPROVE_SELECTION_INPUT:?registered calibration input list required}"
++    exec "$PY" - "$IMPROVE_SELECTION_INPUT" "$OUT" "$IMPROVE_JOB" <<'PY'
++import json,os,sys
++from pathlib import Path
++from rb_improve_lr import lock
++from rb1_artifacts import reference
++source,out,mode=sys.argv[1:];out=Path(out)
++inputs=json.loads(Path(source).read_text())
++value=lock(inputs['manifests'],final=mode=='lr-lock')
++path=out/('lr-lock.json' if mode=='lr-lock' else 'lr-plan.json')
++with path.open('x') as handle:
++    json.dump(value,handle,indent=2,allow_nan=False);handle.write('\n')
++json.dump({'status':'complete','contract':'E-0029@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
++ 'stage':mode,'metrics':{'locked_lrs':value['locked_lrs'],'required_extension':value['required_extension'],
++ 'selection_sha256':reference(path)['sha256']},
++ 'artifacts':[{'path':str(path),'role':path.name},{'path':str(Path(source).resolve()),'role':'calibration_inputs'}],
++ 'validator':{'name':'e0029_calibration_only_selection','passed':True}},open(out/'manifest.json','w'),indent=2)
++PY
++    ;;
++  reference-read)
++    : "${IMPROVE_ARM:?reference arm required}"
++    : "${IMPROVE_REFERENCE_RUN:?validated training run required}"
++    extra=()
++    if [ "$IMPROVE_ARM" = X-01 ]; then
++      : "${IMPROVE_REFERENCE_SOURCE:?X-01 reviewed source required}"
++      extra+=(--training-source "$IMPROVE_REFERENCE_SOURCE")
++    fi
++    exec "$PY" src/rb_improve_reference.py --arm "$IMPROVE_ARM" --training-run "$IMPROVE_REFERENCE_RUN" \
++      --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT" "${extra[@]}"
++    ;;
++  analysis)
++    : "${IMPROVE_ANALYSIS_INPUT:?locked analysis input required}"
++    exec "$PY" src/rb_improve_analysis.py --input "$IMPROVE_ANALYSIS_INPUT" --output "$OUT"
++    ;;
++  *) exit 2 ;;
++esac
+diff --git a/src/bypass_model.py b/src/bypass_model.py
+index 6c2aea2..79c3b42 100644
+--- a/src/bypass_model.py
++++ b/src/bypass_model.py
+@@ -47,7 +47,7 @@ class AdapterConfig:
+     def __post_init__(self):
+         if self.fusion not in FUSIONS or self.branch not in ('tokenwise_silu', 'tokenwise_linear', 'memory', 'kernel_tokenwise'):
+             raise ValueError('unknown branch or fusion')
+-        if self.tap not in ('qknorm_pre_rope', 'raw_qkv', 'direct_hidden'):
++        if self.tap not in ('qknorm_pre_rope', 'raw_qkv', 'direct_hidden', 'normalized_qk'):
+             raise ValueError('unknown feature tap')
+         if self.steps < 1 or self.rank < 1 or len(set(self.layers)) != len(self.layers):
+             raise ValueError('invalid rank, steps or duplicate layers')
+@@ -94,7 +94,11 @@ class FeatureTap:
+         if self.kind == 'direct_hidden':
+             values.update(q=normalized_hidden, k=normalized_hidden, v=normalized_hidden)
+         else:
+-            modules = {'q': self.attention.q_norm, 'k': self.attention.k_norm,
++            if self.kind == 'normalized_qk':
++                values.update(q=normalized_hidden, k=normalized_hidden)
++                modules = {'v': self.attention.v_proj}
++            else:
++                modules = {'q': self.attention.q_norm, 'k': self.attention.k_norm,
+                        'v': self.attention.v_proj} if self.kind == 'qknorm_pre_rope' else {
+                            'q': self.attention.q_proj, 'k': self.attention.k_proj, 'v': self.attention.v_proj}
+             for key, module in modules.items():
+@@ -165,8 +169,9 @@ class SideBranch(nn.Module):
+         d = layer.self_attn.q_proj.in_features
+         if config.branch in ('memory', 'kernel_tokenwise'):
+             dims = (d, d, d) if config.tap == 'direct_hidden' else (
++                (d, d, layer.self_attn.v_proj.out_features) if config.tap == 'normalized_qk' else (
+                 layer.self_attn.q_proj.out_features, layer.self_attn.k_proj.out_features,
+-                layer.self_attn.v_proj.out_features)
++                layer.self_attn.v_proj.out_features))
+             self.projection = LowDimProjection(dims, config.rank)
+             self.reader = LatentReader(config.rank, eta=config.eta, read_gain=config.read_gain,
+                                        eps_norm=config.eps_norm, eps_read=config.eps_read,
+diff --git a/src/rb1_artifacts.py b/src/rb1_artifacts.py
+index 5c7abf8..8ccb3bc 100644
+--- a/src/rb1_artifacts.py
++++ b/src/rb1_artifacts.py
+@@ -6,7 +6,7 @@ import re
+ import statistics
+ from pathlib import Path
+ 
+-from rb_train import E0028_ARMS, FAMILIES, LORA_RANKS, PARAMETERS, WIDTH_ARMS, contract
++from rb_train import E0028_ARMS, E0029_ARMS, FAMILIES, LORA_RANKS, PARAMETERS, UP_LORA_ARMS, WIDTH_ARMS, contract
+ 
+ 
+ CONTRACT = 'E-0021@1'
+@@ -105,7 +105,7 @@ def validate_formal_run(run_dir, arm, source_commit=None):
+     """
+     if arm not in PARAMETERS:
+         raise ValueError(f'unknown RB1 arm {arm}')
+-    if arm in (*WIDTH_ARMS,*E0028_ARMS):
++    if arm in (*WIDTH_ARMS,*E0028_ARMS,*E0029_ARMS):
+         if not isinstance(source_commit, str) or re.fullmatch('[0-9a-f]{40}', source_commit) is None:
+             raise ValueError(f'{arm}: validation requires the reviewed training source commit')
+         expected_source = source_commit
+@@ -150,7 +150,7 @@ def validate_formal_run(run_dir, arm, source_commit=None):
+         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
+             raise ValueError(f'{arm}: missing or invalid {key}')
+     if metrics['source.commit'] != expected_source:
+-        release = run_contract if arm in (*WIDTH_ARMS,*E0028_ARMS) else 'RB1'
++        release = run_contract if arm in (*WIDTH_ARMS,*E0028_ARMS,*E0029_ARMS) else 'RB1'
+         raise ValueError(f'{arm}: source commit differs from covered {release} training release')
+     expected_params = PARAMETERS[arm]
+     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
+@@ -168,10 +168,15 @@ def validate_formal_run(run_dir, arm, source_commit=None):
+     lock_path, split_path = Path(lock_value).resolve(), Path(split_value).resolve()
+     if not lock_path.is_file() or not split_path.is_file():
+         raise ValueError(f'{arm}: LR lock or split manifest file is missing')
+-    lock = verify_lr_lock(lock_path)
++    if arm in UP_LORA_ARMS:
++        from rb_improve_lr import verify_lock
++        lock = verify_lock(lock_path)
++    else:
++        lock = verify_lr_lock(lock_path)
+     lock_hash = reference(lock_path)['sha256']
+     split_hash = reference(split_path)['sha256']
+-    if lock.get('experiment') != LOCK_CONTRACT or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:
++    expected_lock_contract = 'E-0029@1' if arm in UP_LORA_ARMS else LOCK_CONTRACT
++    if lock.get('experiment') != expected_lock_contract or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:
+         raise ValueError(f'{arm}: LR lock family/value mismatch')
+     if lock.get('split_manifest_sha256') != split_hash:
+         raise ValueError(f'{arm}: LR lock split hash differs from actual split manifest')
+diff --git a/src/rb_improve_analysis.py b/src/rb_improve_analysis.py
+new file mode 100644
+index 0000000..64e8131
+--- /dev/null
++++ b/src/rb_improve_analysis.py
+@@ -0,0 +1,187 @@
++"""Artifact-bound E-0029 screening rules 1-8; execute only in PBS."""
++import argparse
++from fractions import Fraction
++import os
++from pathlib import Path
++
++from rb1_analysis import (ACCEPTED_BASE_MANIFEST_SHA256, check_metrics, measured_cost,
++                          validate_rows)
++from rb1_artifacts import finite_tree, read, reference, validate_formal_run
++from rb1_rules import TASKS, paired_bootstrap
++from rb_eta_select import ORDER_SHA256, SPLIT_SHA256
++from rb_improve_lr import verify_lock
++from rb_tap_analysis import accuracy, pp
++from rb_tap_identity import PINNED_PROFILE, reference_check
++from rb_train import E0029_ARMS, IG_ARMS
++from v5_train import write_json
++
++
++SIDE_ARMS = E0029_ARMS[:6]
++ONE_PP = Fraction(1, 100)
++
++
++def any_gain(deltas):
++    return 'supports' if any(d >= ONE_PP for d in deltas) else 'challenges' if all(d <= 0 for d in deltas) else 'inconclusive'
++
++
++def rule_outcomes(scores, implementation_passed=True):
++    if not implementation_passed:
++        raise ValueError('implementation checks failed; no scientific outcomes')
++    required = {*E0029_ARMS, 'Base', 'RB1-07', 'RB1-09', 'X-01'}
++    if not required <= scores.keys():
++        raise ValueError('required valid references are pending; withhold dependent comparisons')
++    up = {'T': scores['L-56']-scores['RB1-09'], 'N': scores['L-48']-scores['X-01']}
++    ig = {arm: scores[arm]-scores[ref] for arm, ref in
++          (('G-T', 'RB1-09'), ('G-QN', 'Q-N'), ('G-N', 'X-01'))}
++    pair = {'P-T': scores['P-T']-scores['RB1-09'], 'P-N': scores['P-N']-scores['X-01']}
++    qk = scores['Q-N']-scores['RB1-09']
++    lora = {arm: scores[arm]-scores['RB1-07'] for arm in SIDE_ARMS}
++    h23 = 'challenges' if any(d >= ONE_PP for d in up.values()) else 'supports'
++    h24, h25 = any_gain(ig.values()), any_gain(pair.values())
++    h26 = 'supports' if qk >= ONE_PP else 'challenges' if qk <= 0 else 'inconclusive'
++    return {
++        '1_implementation': {'passed': True, 'evidence_level': 'diagnostic'},
++        '2_learnability': {arm: {'minus_Base': pp(scores[arm]-scores['Base']),
++            'at_least_Base_plus_1pp': scores[arm]-scores['Base'] >= ONE_PP} for arm in E0029_ARMS},
++        '3_H0023': {'outcome': h23, 'd_up': {tap: pp(d) for tap, d in up.items()},
++            'activate_H0027': h23 == 'challenges', 'L56_minus_RB107': pp(scores['L-56']-scores['RB1-07'])},
++        '4_H0024': {'outcome': h24, 'd_IG': {arm: pp(d) for arm, d in ig.items()},
++            'activate_H0028': h24 == 'supports'},
++        '5_H0025': {'outcome': h25, 'd_pair': {arm: pp(d) for arm, d in pair.items()}},
++        '6_H0026': {'outcome': h26, 'd_QK': pp(qk), 'd_V_descriptive': pp(scores['X-01']-scores['Q-N']),
++            'GQN_minus_GT_descriptive': pp(scores['G-QN']-scores['G-T'])},
++        '7_LoRA': {'differences': {arm: pp(d) for arm, d in lora.items()},
++            'new_two_seed_replication': [arm for arm, d in lora.items() if d >= ONE_PP],
++            'LoRA_GA_required_in_replication': [arm for arm, d in lora.items() if d >= ONE_PP and arm in IG_ARMS]},
++        '8_evidence': {'scientific_rules_level': 'screening', 'implementation_level': 'diagnostic',
++            'hypothesis_status_changes': False}}
++
++
++def validate_reads(value):
++    records = value.get('records', [])
++    keys = set()
++    for row in records:
++        key = row['task'], row['layer'], row['scope'], tuple(row['prefix_bin'])
++        if key in keys or key[0] not in TASKS or key[1] not in (6, 13, 20, 27) or key[2] not in ('all_valid_input', 'answer_prediction'):
++            raise ValueError('unexpected or duplicate read diagnostic stratum')
++        keys.add(key)
++        low, high = key[3]
++        means = row['means']
++        if row['count'] <= 0 or not 1 <= low <= high <= 512:
++            raise ValueError('invalid prefix bin/count')
++        if not 0 <= means['self_weight'] <= means['maximum_weight'] <= 1.00001 or not .999 <= means['n_eff'] <= high + .001:
++            raise ValueError('invalid read weight distribution')
++    if {key[0] for key in keys} != set(TASKS) or {key[1] for key in keys} != {6, 13, 20, 27}:
++        raise ValueError('incomplete read diagnostic tasks/layers')
++    finite_tree(value)
++    return value
++
++
++def analyze(spec):
++    # The calibration-only lock is reconstructed before any new dev is opened.
++    lock = verify_lock(spec['up_lr_lock'])
++    if reference(spec['up_lr_lock'])['sha256'] != spec['up_lr_lock_sha256']:
++        raise ValueError('registered LoRA LR lock hash changed')
++    source = spec['training_source_commit']
++    if lock['identity']['source.commit'] != source:
++        raise ValueError('calibration and training code differ')
++    smoke = read(spec['smoke_manifest'])
++    if (smoke.get('status') != 'complete' or smoke.get('validator', {}).get('passed') is not True or
++            smoke.get('metrics', {}).get('source_commit') != source or smoke['metrics'].get('pytest_exit') != 0):
++        raise ValueError('implementation tests do not cover the training source')
++    xcheck = read(spec['e0028_analysis'])
++    if xcheck.get('contract') != 'E-0028@1' or xcheck.get('rules', {}).get('1_implementation', {}).get('passed') is not True:
++        raise ValueError('X-01 is pending or fails E-0028 rule1')
++    base = Path(spec['base_run'])
++    if reference(base/'manifest.json')['sha256'] != ACCEPTED_BASE_MANIFEST_SHA256:
++        raise ValueError('Base differs from locked E-0021 reference')
++    rows = {'Base': validate_rows(read(base/'predictions.json'), 'Base')}
++    manifests, sources, performance, curves, reads, checks, initial = {}, {}, {}, {}, {}, {}, {}
++    performance['Base'] = check_metrics(rows['Base'], read(base/'manifest.json')['metrics'], 'Base')
++    for arm in ('RB1-07', 'RB1-09', 'X-01', *E0029_ARMS):
++        root = Path(spec['reference_runs'][arm] if arm in ('RB1-07', 'RB1-09', 'X-01') else spec['training_runs'][arm])
++        expected = spec['x01_source_commit'] if arm == 'X-01' else source if arm in E0029_ARMS else None
++        manifest, refs, _ = validate_formal_run(root, arm, expected)
++        manifests[arm], sources[arm] = manifest, refs
++        rows[arm] = validate_rows(read(root/'predictions.json'), arm, rows['Base'])
++        performance[arm] = check_metrics(rows[arm], manifest['metrics'], arm)
++        if arm not in E0029_ARMS:
++            continue
++        m = manifest['metrics']
++        if (m['plan.order_sha256'] != ORDER_SHA256 or m['split_manifest.sha256'] != SPLIT_SHA256 or
++                m['plan.steps'] != 13115 or m['plan.examples'] != 26230 or
++                m['up_lr_lock.sha256'] != spec['up_lr_lock_sha256']):
++            raise ValueError('new arm order/split/budget/LoRA lock differs')
++        registration = read(root/'initialization.json')
++        if registration.get('passed') is not True or registration.get('sha256') != m['init.parameters.sha256'] or registration.get('timing_only_random_IG') is not False:
++            raise ValueError('new arm initialization registration failed')
++        initial_record = read(root/'dev-step-0.json')
++        initial_rows = validate_rows(initial_record['predictions'], arm+'/init', rows['Base'])
++        check_metrics(initial_rows, initial_record['metrics'], arm+'/init')
++        local = None
++        if m['hardware'] != PINNED_PROFILE:
++            value = read(root/'dev-base-same-allocation.json')
++            if value['hardware'] != m['hardware'] or value['source_commit'] != source or value['job_id'] != m['exec.pbs_job_id'] or value['job_id'] in (None, 'unknown'):
++                raise ValueError('initial Base reference lacks same-allocation provenance')
++            local = validate_rows(value['predictions'], arm+'/same-allocation-Base', rows['Base'])
++            check_metrics(local, value['metrics'], arm+'/same-allocation-Base')
++        initial[arm] = reference_check(initial_rows, rows['Base'], m['hardware'], same_allocation=local)
++        if not initial[arm]['passed']:
++            raise ValueError('new arm step0 differs from required Base')
++        curves[arm] = {}
++        for step in (3279, 6558, 9837):
++            record = read(root/f'dev-step-{step}.json')
++            curve_rows = validate_rows(record['predictions'], arm+f'/step{step}', rows['Base'])
++            curves[arm][str(step)] = check_metrics(curve_rows, record['metrics'], arm+f'/step{step}')
++        curves[arm]['13115'] = performance[arm]
++        if arm in SIDE_ARMS:
++            reads[arm] = {stage: validate_reads(read(root/f'{stage}-read.json')) for stage in ('step0', 'final')}
++        if arm in IG_ARMS:
++            init_root = Path(spec['ig_initializations'][arm])
++            if reference(init_root/'manifest.json') != m['ig.initialization']:
++                raise ValueError('I-G producer differs from training input')
++            init_manifest = read(init_root/'manifest.json')
++            details = read(init_root/'ig-initialization.json')
++            if (init_manifest['metrics']['source.commit'] != source or init_manifest['metrics']['ig.sample_sha256'] != m['ig.sample_sha256'] or
++                    details.get('passed') is not True or any(layer['relative_RMS_error'] > 1e-3 or
++                    layer['unscaled_orthogonality_max_error'] > 1e-4 for layer in details['layers'].values())):
++                raise ValueError('I-G basis/scale/provenance check failed')
++            checks[arm] = details
++        sources[arm].update({name: reference(root/name) for name in ('initialization.json', 'ig-samples.json', 'initial-identity.json')})
++    if len({manifests[arm]['metrics']['ig.sample_sha256'] for arm in E0029_ARMS}) != 1:
++        raise ValueError('arms used different training-side initialization/diagnostic samples')
++    for arm in ('RB1-09', 'X-01'):
++        diagnostic = read(spec['reference_diagnostics'][arm])
++        if diagnostic['arm'] != arm or diagnostic['sample_sha256'] != manifests['Q-N']['metrics']['ig.sample_sha256']:
++            raise ValueError('reference diagnostics use different examples')
++        reads[arm] = {stage: validate_reads(diagnostic[stage]) for stage in ('step0', 'final')}
++    scores = {arm: accuracy(value) for arm, value in rows.items()}
++    rules = rule_outcomes(scores)
++    rules['1_implementation'].update(initial_references=initial, initialization_checks=checks,
++        smoke=reference(spec['smoke_manifest']), X01_rule1=reference(spec['e0028_analysis']))
++    arrays = {arm: {task: [int(row['gold'] == row['prediction']) for row in value if row['task'] == task]
++                   for task in TASKS} for arm, value in rows.items()}
++    result = {'contract': 'E-0029@1', 'rules': rules, 'performance': performance, 'curves': curves,
++        'read_diagnostics': reads, 'sources': sources, 'LoRA_LR_lock': lock,
++        'bootstrap': {'repeats': 10000, 'seed': 20261101, 'comparisons': paired_bootstrap(arrays),
++            'scope': 'descriptive paired task-stratified resampling; excludes seed and selection uncertainty'},
++        'measured_cost': measured_cost(spec.get('observations', [])),
++        'limitations': ['seed0 screening', 'dev used for decisions', '1000 dev examples/task',
++            'multiple tap comparisons in H-0024/H-0025', 'LoRA has no LoRA-GA initialization',
++            'eta fixed0.25; side LR inherited1e-3', 'A2 and official validation unopened']}
++    finite_tree(result)
++    return result
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--input', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args()
++    args.output.mkdir(parents=True, exist_ok=True)
++    result = analyze(read(args.input))
++    write_json(args.output/'analysis.json', result)
++    write_json(args.output/'manifest.json', {'status': 'complete', 'contract': 'E-0029@1',
++        'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': {'implementation_passed': True, 'rules': result['rules']},
++        'artifacts': [{'path': str(args.output/'analysis.json'), 'role': 'analysis'}],
++        'validator': {'name': 'e0029_locked_analysis', 'passed': True}})
+diff --git a/src/rb_improve_init.py b/src/rb_improve_init.py
+new file mode 100644
+index 0000000..4e60004
+--- /dev/null
++++ b/src/rb_improve_init.py
+@@ -0,0 +1,281 @@
++"""E-0029 paired Q/K and gradient-subspace initialization. Run only in PBS."""
++from contextlib import contextmanager
++import hashlib
++import random
++import time
++
++import torch
++
++from bypass_core import elu_plus_one, rmsnorm_no_affine
++from rb_data import BASE_SEED, STUDY, canonical
++from v1_data import derive_seed, encode_training_example
++from v1_run import batch_tensors, example_mean_objective, token_losses
++
++
++IG_SEED = derive_seed(BASE_SEED, STUDY, 'R1', 'ig', 0)
++
++
++class InitializationCheckFailed(ValueError):
++    def __init__(self, diagnostics):
++        self.diagnostics = diagnostics
++        summary = {index: {'RMS_error': row['relative_RMS_error'],
++            'orthogonality_error': row['unscaled_orthogonality_max_error']}
++            for index, row in diagnostics['layers'].items()}
++        super().__init__(f'I-G scale or orthogonality check failed: {summary}')
++
++
++def calibration_examples(splits, tok, excluded, count=256):
++    """One pooled, without-replacement train sample, shared by all three taps."""
++    excluded = {(row['task'], row['id']) for row in excluded}
++    population = [row for task in ('piqa', 'boolq')
++                  for row in splits['splits'][task]['train']
++                  if (task, row['id']) not in excluded]
++    selected = random.Random(IG_SEED).sample(population, count)
++    examples = [encode_training_example(tok, row, max_length=512) for row in selected]
++    identities = [{'task': row['task'], 'id': row['id'], 'input_tokens': len(encoded['input_ids'])}
++                  for row, encoded in zip(selected, examples)]
++    record = {'seed': IG_SEED, 'sampling': 'pooled RB train; task/source order; sample without replacement',
++              'examples': identities, 'input_tokens': sum(row['input_tokens'] for row in identities),
++              'examples_sha256': hashlib.sha256(canonical(identities).encode()).hexdigest(),
++              'loss_normalization': 'per-example answer-token mean / 2 (formal batch size)',
++              'diagnostic_subset': 'first 64 sampled examples; same IDs at step0 and final'}
++    return examples, record
++
++
++def grouped_query_projection(A_k, query_heads, kv_heads, head_dim):
++    """G_group A_k without materializing a dense, mostly zero G_group."""
++    if query_heads % kv_heads or A_k.shape[0] != kv_heads * head_dim:
++        raise ValueError('invalid GQA projection dimensions')
++    group = query_heads // kv_heads
++    return A_k.reshape(kv_heads, head_dim, -1).repeat_interleave(group, dim=0).reshape(
++        query_heads * head_dim, -1) / group ** .5
++
++
++@torch.no_grad()
++def pair_qk(model):
++    for layer in model.adapters().values():
++        side = layer.side
++        projection = side.projection
++        if model.config.tap == 'direct_hidden':
++            value = projection.A_k
++        elif model.config.tap == 'qknorm_pre_rope':
++            attention = layer.original.self_attn
++            dim = attention.head_dim
++            value = grouped_query_projection(projection.A_k,
++                attention.q_proj.out_features // dim, attention.k_proj.out_features // dim, dim)
++        else:
++            raise ValueError('paired initialization supports T and N taps only')
++        projection.A_q.copy_(value)
++        if projection.A_q is projection.A_k or projection.A_q.data_ptr() == projection.A_k.data_ptr():
++            raise ValueError('Q/K parameters must remain independent')
++
++
++@torch.no_grad()
++def full_value_prefix(qbar, kbar, values, reader, valid, chunk_size=64):
++    """Inclusive p_t via full-value sufficient statistics, bounded prefix storage.
++
++    Q/K use the actual S1 initial reader. The uncompressed value dimension is
++    independent of the key dimension; padding neither writes nor reads.
++    """
++    if qbar.shape != kbar.shape or values.shape[:2] != qbar.shape[:2] or valid.shape != qbar.shape[:2]:
++        raise ValueError('full-value prefix shapes differ')
++    if chunk_size < 1:
++        raise ValueError('positive prefix chunk required')
++    q = elu_plus_one(rmsnorm_no_affine(qbar.float(), reader.eps_norm) @ reader.Rq)
++    k = elu_plus_one(rmsnorm_no_affine(kbar.float(), reader.eps_norm)) * valid[..., None]
++    values = values.float() * valid[..., None]
++    batch, length, rank = k.shape
++    matrix = k.new_zeros(batch, rank, values.shape[-1])
++    mass = k.new_zeros(batch, rank)
++    result = []
++    for start in range(0, length, chunk_size):
++        stop = min(length, start + chunk_size)
++        keys, features = k[:, start:stop], values[:, start:stop]
++        matrices = (keys[..., :, None] * features[..., None, :]).cumsum(1) + matrix[:, None]
++        masses = keys.cumsum(1) + mass[:, None]
++        queries = q[:, start:stop]
++        p = torch.einsum('btr,btrd->btd', queries, matrices) / (
++            (queries * masses).sum(-1, keepdim=True) + reader.eps_read)
++        result.append(p * valid[:, start:stop, None])
++        matrix, mass = matrices[:, -1], masses[:, -1]
++    return torch.cat(result, 1) if result else values.new_zeros(values.shape)
++
++
++def mixed_gradient(p, d, valid):
++    """All valid input positions, including prompt positions with indirect loss."""
++    return p[valid].float().T @ d[valid].float()
++
++
++def basis_orthogonality_error(basis):
++    """Validate stored columns in FP64, independent of TF32 matmul settings."""
++    columns = basis.double()
++    return (columns.T @ columns - torch.eye(columns.shape[1], device=columns.device,
++                                            dtype=torch.float64)).abs().max().item()
++
++
++def scaled_subspace(gradient, covariance, random_z_sum_squares, reader, rank):
++    if not torch.isfinite(gradient).all() or not torch.isfinite(covariance).all():
++        raise ValueError('nonfinite initialization statistics')
++    # CUDA's default FP32 Jacobi decomposition returned non-orthogonal left
++    # vectors on the observed task gradients. Use the accuracy-oriented QR
++    # driver in FP64, and only then round the retained vectors to storage dtype.
++    decomposition_input = gradient.double()
++    options = {'driver': 'gesvd'} if gradient.is_cuda else {}
++    left, singular, right = torch.linalg.svd(decomposition_input, full_matrices=False, **options)
++    precise_basis = left[:, :rank]
++    precise_orth_error = basis_orthogonality_error(precise_basis)
++    basis = precise_basis.float()
++    if not singular.square().sum() > 0:
++        raise ValueError('zero I-G task gradient')
++    orth_error = basis_orthogonality_error(basis)
++    fp32_product_error = (basis.T @ basis - torch.eye(rank, device=basis.device)).abs().max().item()
++    projected = basis @ reader.Ro.detach()
++    candidate_sum = reader.eta ** 2 * (projected * (covariance @ projected)).sum().item()
++    if candidate_sum <= 0 or random_z_sum_squares <= 0:
++        raise ValueError('zero I-G readout energy')
++    scale = (random_z_sum_squares / candidate_sum) ** .5
++    energy = singular.square()
++    return basis * scale, {'unscaled_orthogonality_max_error': orth_error,
++        'precast_orthogonality_max_error': precise_orth_error,
++        'svd_input_dtype': str(decomposition_input.dtype),
++        'svd_driver': 'gesvd' if gradient.is_cuda else 'CPU LAPACK',
++        'condition_number_descriptive': float(singular[0]/singular[-1]) if singular[-1] > 0 else None,
++        'top_rank_condition_number_descriptive': float(singular[0]/singular[rank-1]) if singular[rank-1] > 0 else None,
++        'leading_singular_residual_relative': float((decomposition_input @ right[:rank].T -
++            precise_basis * singular[:rank]).norm()/decomposition_input.norm()),
++        'orthogonality_check_dtype': 'torch.float64',
++        'FP32_orthogonality_product_max_error_descriptive': fp32_product_error,
++        'singular_values': singular.tolist(), 'top_rank_energy_fraction': float(energy[:rank].sum()/energy.sum()),
++        'scale': scale, 'random_Z_sum_squares': random_z_sum_squares,
++        'unscaled_Z_sum_squares': candidate_sum}
++
++
++class GradientCollector:
++    """Activation hooks do not unfreeze any backbone weight or take optimizer steps."""
++    def __init__(self, model):
++        self.model, self.valid, self.pending, self.stats = model, None, {}, {}
++        self.handles = []
++        for index, layer in model.adapters().items():
++            value = layer.side.projection.A_v
++            width = layer.original.mlp.up_proj.out_features
++            self.stats[index] = {'G': value.new_zeros(value.shape[0], width),
++                'covariance': value.new_zeros(value.shape[0], value.shape[0]), 'Z2': 0., 'count': 0,
++                'direct_Z2': 0., 'direct_Z_error2': 0.}
++            self.handles.extend([
++                layer.side.projection.register_forward_hook(self._projection(index, layer.side.reader)),
++                layer.side.register_forward_hook(self._readout(index)),
++                layer.original.mlp.up_proj.register_forward_hook(self._up(index))])
++
++    def _projection(self, index, reader):
++        def hook(module, args, result):
++            p = full_value_prefix(result[0].detach(), result[1].detach(), args[2].detach(), reader, self.valid)
++            self.pending[index] = p
++            selected = p[self.valid]
++            self.stats[index]['covariance'].add_(selected.T @ selected)
++        return hook
++
++    def _readout(self, index):
++        def hook(module, args, result):
++            selected = result[0].detach()[self.valid]
++            self.stats[index]['Z2'] += selected.double().square().sum().item()
++            self.stats[index]['count'] += selected.numel()
++            side = self.model.adapters()[index].side
++            ideal = side.reader.eta * (self.pending[index] @ side.projection.A_v.detach() @ side.reader.Ro.detach())
++            ideal = ideal[self.valid]
++            self.stats[index]['direct_Z2'] += ideal.double().square().sum().item()
++            self.stats[index]['direct_Z_error2'] += (ideal.double()-selected.double()).square().sum().item()
++        return hook
++
++    def _up(self, index):
++        def hook(module, args, output):
++            # First adapted up output can have no graph because the backbone is frozen.
++            # Making only this activation require gradients exposes the true addition-point d_t.
++            output = output.requires_grad_(True)
++            p, valid = self.pending[index], self.valid
++            def accumulate(d):
++                self.stats[index]['G'].add_(mixed_gradient(p, d, valid))
++            output.register_hook(accumulate)
++            return output
++        return hook
++
++    def close(self):
++        for handle in self.handles:
++            handle.remove()
++        self.pending.clear()
++
++
++@contextmanager
++def readout_sums(model):
++    sums = {index: {'sum_squares': 0., 'count': 0} for index in model.adapters()}
++    handles = []
++    for index, layer in model.adapters().items():
++        def hook(module, args, output, index=index):
++            selected = output[0].detach()[args[3].bool()]
++            sums[index]['sum_squares'] += selected.double().square().sum().item()
++            sums[index]['count'] += selected.numel()
++        handles.append(layer.side.register_forward_hook(hook))
++    try:
++        yield sums
++    finally:
++        for handle in handles:
++            handle.remove()
++
++
++def initialize_gradient(model, examples, tok):
++    if any(torch.count_nonzero(layer.side.fusion.C_u) for layer in model.adapters().values()):
++        raise ValueError('I-G requires zero exits')
++    tick = time.monotonic()
++    model.eval()
++    collector = GradientCollector(model)
++    try:
++        for example in examples:
++            model.zero_grad(set_to_none=True)
++            batch = batch_tensors([example], tok.pad_token_id)
++            collector.valid = batch['attention_mask'].bool()
++            losses, _ = token_losses(model, batch)
++            if not torch.isfinite(losses).all():
++                raise ValueError('nonfinite I-G calibration loss')
++            example_mean_objective(losses, 2).backward()
++    finally:
++        collector.close()
++    collection_seconds = time.monotonic() - tick
++    records = {}
++    with torch.no_grad():
++        for index, layer in model.adapters().items():
++            stats = collector.stats[index]
++            projection = layer.side.projection
++            value, record = scaled_subspace(stats['G'], stats['covariance'], stats['Z2'],
++                layer.side.reader, model.config.rank)
++            projection.A_v.copy_(value)
++            record['random_Z_rms'] = (stats['Z2']/stats['count']) ** .5
++            record['gradient_shape'] = list(stats['G'].shape)
++            record['gradient_dtype'] = str(stats['G'].dtype)
++            record['float32_matmul_precision'] = torch.get_float32_matmul_precision()
++            record['cuda_matmul_allow_tf32'] = torch.backends.cuda.matmul.allow_tf32
++            record['gradient_frobenius_norm'] = stats['G'].norm().item()
++            record['full_value_random_Z_sum_squares'] = stats['direct_Z2']
++            record['full_value_relative_L2_error_vs_actual_Z'] = (stats['direct_Z_error2']/stats['Z2']) ** .5
++            effective = projection.A_v.detach() @ layer.side.reader.Ro.detach()
++            # This uses the newly assigned basis. Record the covariance-implied
++            # scaled energy alongside the independent actual forward check.
++            record['covariance_scaled_Z_sum_squares'] = layer.side.reader.eta ** 2 * (
++                effective * (stats['covariance'] @ effective)).sum().item()
++            records[str(index)] = record
++        with readout_sums(model) as measured:
++            for example in examples:
++                batch = batch_tensors([example], tok.pad_token_id)
++                model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], use_cache=False)
++    for index, values in measured.items():
++        record = records[str(index)]
++        record['scaled_Z_rms'] = (values['sum_squares']/values['count']) ** .5
++        record['relative_RMS_error'] = abs(record['scaled_Z_rms']/record['random_Z_rms'] - 1)
++    model.zero_grad(set_to_none=True)
++    torch.cuda.synchronize()
++    passed = all(row['relative_RMS_error'] <= 1e-3 and row['unscaled_orthogonality_max_error'] <= 1e-4
++                 for row in records.values())
++    result = {'layers': records, 'collection_seconds': collection_seconds,
++        'total_seconds': time.monotonic() - tick, 'optimizer_steps': 0,
++        'gradient_positions': 'all nonpadding; includes indirect prompt gradients', 'passed': passed}
++    if not passed:
++        raise InitializationCheckFailed(result)
++    return result
+diff --git a/src/rb_improve_lr.py b/src/rb_improve_lr.py
+new file mode 100644
+index 0000000..4b3a956
+--- /dev/null
++++ b/src/rb_improve_lr.py
+@@ -0,0 +1,101 @@
++"""E-0029 up-only LoRA calibration: manifests only, no dev access."""
++import hashlib
++import json
++import math
++from pathlib import Path
++
++from rb1_artifacts import read, reference
++
++
++GRID = (1e-4, 3e-4, 1e-3)
++
++
++def candidate_grid(manifests):
++    from rb_eta_select import validate_calibration
++    records, refs, artifacts, common = {}, [], [], None
++    for name in manifests:
++        value = read(name)
++        metrics = value.get('metrics', {})
++        expected = {'contract': 'E-0029@1', 'arm': 'L-56', 'family': 'RBc-UP',
++                    'stage': 'calibration', 'phase': 'V0', 'seed': 0, 'status': 'complete'}
++        if any(value.get(key) != field for key, field in expected.items()) or value.get('validator', {}).get('passed') is not True:
++            raise ValueError('invalid up-only LoRA calibration manifest')
++        lr = metrics.get('learning_rate')
++        if lr not in (*GRID, 3e-5, 3e-3) or lr in records:
++            raise ValueError('duplicate or unregistered LR')
++        predictions = Path(name).parent/'predictions.json'
++        rows = read(predictions)
++        validate_calibration(rows, metrics)
++        membership = [(row['task'], row['id'], row['gold'], row['gold_loss_tokens']) for row in rows]
++        identity = {key: metrics.get(key) for key in ('source.commit', 'environment.lock_sha256',
++                    'split_manifest.sha256', 'plan.order_sha256', 'plan.steps', 'plan.input_tokens',
++                    'init.parameters.sha256')}
++        identity['calibration_membership_sha256'] = hashlib.sha256(json.dumps(membership).encode()).hexdigest()
++        if any(identity[key] in (None, 'unknown') for key in identity) or common is not None and common != identity:
++            raise ValueError('calibration code/environment/split/order/budget mismatch')
++        common = identity
++        if any(key.startswith('dev.') for key in metrics) or metrics.get('dev_read') is not False:
++            raise ValueError('LR calibration may not read dev')
++        failed = metrics.get('failed')
++        if failed is not False:
++            raise ValueError('engineering/nonfinite failures stop E-0029; they are not LR exclusions')
++        nll = metrics.get('calibration.nll')
++        if type(nll) not in (float, int) or not math.isfinite(nll) or nll <= 0:
++            raise ValueError('finite positive calibration NLL required')
++        if (metrics.get('train.input_tokens') != identity['plan.input_tokens'] or
++                metrics.get('train.steps') != identity['plan.steps'] or metrics['train.input_tokens'] < 200000 or
++                any(metrics.get(f'calibration.{task}.examples') != 2048 for task in ('piqa', 'boolq'))):
++            raise ValueError('incomplete calibration tokens/steps/evaluation')
++        config = read(Path(name).parent/'config.json')
++        if (config.get('smoke_steps') is not None or config.get('eval_limit') is not None or
++                any(config.get(key) != field for key, field in
++                    {'arm': 'L-56', 'stage': 'calibration', 'phase': 'V0', 'seed': 0, 'lr': lr}.items())):
++            raise ValueError('partial calibration candidate')
++        before, tokens, count = 0, 0, 0
++        with (Path(name).parent/'steps.jsonl').open() as handle:
++            for count, line in enumerate(handle, 1):
++                row = json.loads(line)
++                if row['step'] != count or type(row['input_tokens']) is not int or not 0 < row['input_tokens'] <= 1024:
++                    raise ValueError('invalid calibration step accounting')
++                before, tokens = tokens, tokens + row['input_tokens']
++        if not before < 200000 <= tokens or tokens != metrics['train.input_tokens'] or count != metrics['train.steps']:
++            raise ValueError('calibration did not stop at the first full step reaching200k')
++        records[float(lr)] = float(nll)
++        refs.append(reference(name))
++        artifacts.append({key: reference(Path(name).parent/key) for key in ('config.json', 'predictions.json', 'steps.jsonl')})
++    return records, refs, common, artifacts
++
++
++def endpoint(records):
++    if set(records) != set(GRID):
++        raise ValueError('initial LR grid is incomplete')
++    best = min(records, key=lambda lr: (records[lr], lr))
++    return 3e-5 if best == GRID[0] else 3e-3 if best == GRID[-1] else None
++
++
++def lock(manifests, final=True):
++    records, refs, common, artifacts = candidate_grid(manifests)
++    extension = endpoint({lr: records[lr] for lr in GRID if lr in records})
++    expected = set(GRID) | ({extension} if extension is not None and final else set())
++    if set(records) != expected:
++        raise ValueError('LR endpoint extension missing or extraneous')
++    minimum = min(records.values())
++    choice = min(lr for lr, nll in records.items() if (nll-minimum)/minimum <= .01)
++    return {'experiment': 'E-0029@1', 'family': 'RBc-UP', 'representative': 'L-56',
++        'locked_lrs': {'RBc-UP': choice} if final else {}, 'required_extension': extension,
++        'boundary_minimum': extension is not None and records.get(extension) == minimum,
++        'candidates': {f'{lr:g}': nll for lr, nll in sorted(records.items())},
++        'inputs': sorted(refs, key=lambda row: row['path']), 'identity': common,
++        'candidate_artifacts': sorted(artifacts, key=lambda row: row['config.json']['path']),
++        'split_manifest_sha256': common['split_manifest.sha256'],
++        'plan_order_sha256': common['plan.order_sha256'], 'dev_read': False}
++
++
++def verify_lock(path):
++    value = read(path)
++    for ref in value.get('inputs', []):
++        if reference(ref['path']) != ref:
++            raise ValueError('calibration manifest changed after LR locking')
++    if value != lock([ref['path'] for ref in value['inputs']]):
++        raise ValueError('up-only LR lock does not reconstruct')
++    return value
+diff --git a/src/rb_improve_read.py b/src/rb_improve_read.py
+new file mode 100644
+index 0000000..2dec06c
+--- /dev/null
++++ b/src/rb_improve_read.py
+@@ -0,0 +1,72 @@
++"""E-0029 S1 read weights by prefix length on a fixed training-side subset."""
++import torch
++
++from bypass_core import elu_plus_one, rmsnorm_no_affine
++from v1_run import batch_tensors
++
++
++PREFIX_BINS = ((1, 1), (2, 8), (9, 32), (33, 128), (129, 512))
++
++
++@torch.no_grad()
++def read_statistics(qbar, kbar, reader, valid):
++    if qbar.shape != kbar.shape or valid.shape != qbar.shape[:2]:
++        raise ValueError('read statistic shapes differ')
++    q = elu_plus_one(rmsnorm_no_affine(qbar.float(), reader.eps_norm) @ reader.Rq)
++    k = elu_plus_one(rmsnorm_no_affine(kbar.float(), reader.eps_norm))
++    length = q.shape[1]
++    visible = torch.ones(length, length, device=q.device, dtype=torch.bool).tril()
++    visible = visible[None] & valid[:, None, :] & valid[:, :, None]
++    weights = torch.where(visible, q @ k.transpose(-1, -2), 0.)
++    mass = weights.sum(-1, keepdim=True)
++    normalized = weights / mass.clamp_min(torch.finfo(weights.dtype).tiny)
++    actual = weights / (mass + reader.eps_read)
++    return {'self_weight': normalized.diagonal(dim1=-2, dim2=-1),
++        'maximum_weight': normalized.max(-1).values,
++        'n_eff': normalized.square().sum(-1).clamp_min(torch.finfo(weights.dtype).tiny).reciprocal(),
++        'actual_self_weight': actual.diagonal(dim1=-2, dim2=-1),
++        'raw_weight_sum': actual.sum(-1), 'denominator': mass.squeeze(-1) + reader.eps_read,
++        'prefix_length': valid.long().cumsum(-1)}
++
++
++@torch.no_grad()
++def diagnose(model, examples, tok):
++    """No dev or confirmation data. Caller preserves training/RNG state."""
++    if model.config.steps != 1 or model.config.mode != 'inclusive':
++        raise ValueError('diagnostics require inclusive S1')
++    model.eval()
++    totals, handles, current = {}, [], {}
++    for index, layer in model.adapters().items():
++        def hook(module, args, result, index=index, reader=layer.side.reader):
++            current[index] = read_statistics(result[0], result[1], reader, current['valid'])
++        handles.append(layer.side.projection.register_forward_hook(hook))
++    try:
++        for example in examples:
++            batch = batch_tensors([example], tok.pad_token_id)
++            valid = batch['attention_mask'].bool()
++            current['valid'] = valid
++            model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], use_cache=False)
++            answer = torch.zeros_like(valid)
++            answer[:, :-1] = batch['labels'][:, 1:] != -100
++            for index in model.adapters():
++                stats = current[index]
++                for scope, mask in (('all_valid_input', valid), ('answer_prediction', answer & valid)):
++                    for low, high in PREFIX_BINS:
++                        chosen = mask & (stats['prefix_length'] >= low) & (stats['prefix_length'] <= high)
++                        count = int(chosen.sum())
++                        if not count:
++                            continue
++                        key = example['task'], index, scope, low, high
++                        total = totals.setdefault(key, {'count': 0, 'sums': {}})
++                        total['count'] += count
++                        for name, values in stats.items():
++                            if name != 'prefix_length':
++                                total['sums'][name] = total['sums'].get(name, 0.) + values[chosen].double().sum().item()
++    finally:
++        for handle in handles:
++            handle.remove()
++    return {'scope': 'fixed first 64 I-G training examples; all arms and checkpoints share IDs',
++        'records': [{'task': key[0], 'layer': key[1], 'scope': key[2], 'prefix_bin': list(key[3:]),
++            'count': value['count'], 'means': {name: total/value['count'] for name, total in value['sums'].items()}}
++            for key, value in sorted(totals.items())],
++        'weight_convention': 'self/max/n_eff normalized to sum one; actual_self/raw_weight_sum include eps'}
+diff --git a/src/rb_improve_reference.py b/src/rb_improve_reference.py
+new file mode 100644
+index 0000000..ba30214
+--- /dev/null
++++ b/src/rb_improve_reference.py
+@@ -0,0 +1,52 @@
++"""Read-only diagnostic replay of E-0021/E-0028 anchors on E-0029 train IDs."""
++import argparse
++import gc
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION
++from rb1_artifacts import reference, validate_formal_run
++from rb_improve_init import calibration_examples
++from rb_improve_read import diagnose
++from rb_train import load_data, make_model
++from v5_train import write_json
++
++
++def run(args):
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    tick = time.monotonic()
++    _, refs, adapter = validate_formal_run(args.training_run, args.arm, args.training_source)
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tok.pad_token_id = tok.eos_token_id
++    splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
++    examples, sample = calibration_examples(splits, tok, excluded)
++    value = {'arm': args.arm, 'sample_sha256': sample['examples_sha256'],
++        'training_inputs': refs, 'hardware': torch.cuda.get_device_name(), 'job_id': os.environ['PBS_JOBID']}
++    for stage, checkpoint in (('step0', None), ('final', adapter)):
++        model = make_model(args.arm, checkpoint=checkpoint)
++        value[stage] = diagnose(model, examples[:64], tok)
++        del model
++        gc.collect()
++        torch.cuda.empty_cache()
++    write_json(out/'read-diagnostics.json', value)
++    write_json(out/'manifest.json', {'status': 'complete', 'contract': 'E-0029@1',
++        'spec_digest': os.environ['SR_SPEC_DIGEST'], 'arm': args.arm, 'stage': 'reference-read',
++        'metrics': {'elapsed_s': time.monotonic()-tick, 'sample_sha256': sample['examples_sha256']},
++        'artifacts': [{'path': str(out/'read-diagnostics.json'), 'role': 'read_diagnostics'}],
++        'validator': {'name': 'e0029_reference_read', 'passed': True}})
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--arm', choices=('RB1-09', 'X-01'), required=True)
++    p.add_argument('--training-run', type=Path, required=True)
++    p.add_argument('--training-source')
++    p.add_argument('--split-manifest', type=Path, required=True)
++    p.add_argument('--data-dir', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    run(p.parse_args())
+diff --git a/src/rb_improve_smoke.py b/src/rb_improve_smoke.py
+new file mode 100644
+index 0000000..064c42f
+--- /dev/null
++++ b/src/rb_improve_smoke.py
+@@ -0,0 +1,105 @@
++"""E-0029 PBS-only checks, measured timing and pre-training cost gate."""
++import argparse
++import gc
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION
++from rb1_artifacts import read
++from rb_data import plan_batches
++from rb_improve_init import calibration_examples
++from rb_improve_read import diagnose
++from rb_train import E0029_ARMS, PARAMETERS, load_data, make_model
++from v1_run import evaluate
++from v5_train import plan_metadata, write_json
++
++
++def run(args):
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    tick = time.monotonic()
++    def child(arm, stage, directory, *extra):
++        with (out/f'{directory}.log').open('w') as log:
++            subprocess.run([sys.executable, 'src/rb_improve_train.py', '--arm', arm, '--stage', stage,
++                '--lr', '.001', '--split-manifest', str(args.split_manifest), '--data-dir', str(args.data_dir),
++                '--output', str(out/directory), *extra], check=True, stdout=log, stderr=subprocess.STDOUT)
++        value = read(out/directory/'manifest.json')
++        if value['status'] != 'complete' or value['validator']['passed'] is not True or value['metrics']['dev_read'] is not False:
++            raise ValueError('smoke failed or opened dev')
++        return value['metrics']
++    # One complete I-G collection measures forward/backward, SVD and RMS verification.
++    ig = child('G-T', 'ig', 'ig-G-T')
++    arms = {arm: child(arm, 'smoke', 'smoke-'+arm, '--smoke-steps', '80') for arm in E0029_ARMS}
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tok.pad_token_id = tok.eos_token_id
++    splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
++    samples, sample_record = calibration_examples(splits, tok, excluded)
++    cal_plan = plan_batches(splits, tok, 'V0', 0, [(r['task'], r['id']) for r in excluded], 200000)
++    model = make_model('L-56', checkpoint=out/'smoke-L-56'/'adapter')
++    start = time.monotonic()
++    # Scoring is solely to measure a full calibration pass. This is not an LR candidate.
++    _, rows = evaluate(model, splits, tok, split_names=('calibration',))
++    calibration_seconds = time.monotonic()-start
++    if len(rows) != 4096:
++        raise ValueError('calibration timing did not cover both full2048-row splits')
++    del model, rows
++    gc.collect()
++    torch.cuda.empty_cache()
++    model = make_model('G-T', checkpoint=out/'ig-G-T'/'adapter')
++    start = time.monotonic()
++    diagnostic = diagnose(model, samples[:64], tok)
++    diagnostic_seconds = time.monotonic()-start
++    write_json(out/'diagnostic-example.json', diagnostic)
++    # N-QK must share every initial parameter with N-QKV (only the value input differs).
++    from rb_tap_check import initial_state
++    model_qn = make_model('Q-N')
++    qn_digest = initial_state(model_qn)[0]
++    del model_qn
++    model_n = make_model('X-01')
++    if qn_digest != initial_state(model_n)[0]:
++        raise ValueError('Q-N and X-01 initial parameters differ')
++    if any(m['params.stored'] != PARAMETERS[arm] or m['params.with_grad'] != PARAMETERS[arm] for arm, m in arms.items()):
++        raise ValueError('smoke parameter/gradient registry mismatch')
++    dev_seconds = calibration_seconds / 2.048 * 1.1
++    startup = {arm: max(0., m['elapsed_s']-m['train.seconds']) for arm, m in arms.items()}
++    training = {arm: m['train.steady_step_seconds']*13115 + 7*dev_seconds + startup[arm] +
++                (2*diagnostic_seconds if arm not in ('L-56', 'L-48') else 0.) for arm, m in arms.items()}
++    # Four LR candidates is the worst case; use the measured V0 plan length.
++    lr_seconds = 4 * (arms['L-56']['train.steady_step_seconds']*len(cal_plan) +
++                       calibration_seconds + startup['L-56'])
++    ig_seconds = 3 * ig['elapsed_s']
++    reference_seconds = 4*diagnostic_seconds + 2*max(startup.values())
++    smoke_seconds = time.monotonic()-tick
++    total = (sum(training.values()) + lr_seconds + ig_seconds + reference_seconds + smoke_seconds + 180)/14400
++    cost = {'contract': 'E-0029@1', 'cap_node_hours': 3.5, 'profile_cost_factor': .25,
++        'training_seconds': training, 'worst_case_four_LR_seconds': lr_seconds,
++        'three_IG_seconds': ig_seconds, 'reference_diagnostics_seconds': reference_seconds,
++        'current_smoke_seconds': smoke_seconds, 'pytest_seconds_reserved': 60,
++        'analysis_seconds_reserved': 120, 'full_calibration_seconds': calibration_seconds,
++        'estimated_dev_seconds': dev_seconds, 'diagnostic64_seconds': diagnostic_seconds,
++        'projected_total_node_hours': total, 'within_cap': total <= 3.5,
++        'method': '80-step steady timing;13115 full steps;7 dev passes incl fallback Base;MIG/4;four LR candidates;three full IG collections;reference reads;smoke;180s checks/analysis'}
++    write_json(out/'cost-estimate.json', cost)
++    write_json(out/'manifest.json', {'status': 'complete', 'contract': 'E-0029@1',
++        'spec_digest': os.environ['SR_SPEC_DIGEST'], 'stage': 'smoke',
++        'metrics': {'source_commit': os.environ['SR_CODE_COMMIT'], 'pytest_exit': 0,
++            'arms': arms, 'ig': ig, 'calibration_plan': plan_metadata(cal_plan),
++            'calibration_seconds': calibration_seconds, 'diagnostic_seconds': diagnostic_seconds,
++            'dev_read': False, 'projected_node_hours': total, 'sample_sha256': sample_record['examples_sha256'],
++            'elapsed_s': time.monotonic()-tick},
++        'artifacts': [{'path': str(p), 'role': p.name} for p in sorted(out.iterdir()) if p.is_file() and p.name != 'manifest.json'],
++        'validator': {'name': 'e0029_smoke', 'passed': True}})
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--split-manifest', type=Path, required=True)
++    p.add_argument('--data-dir', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    run(p.parse_args())
+diff --git a/src/rb_improve_svd_diagnostic.py b/src/rb_improve_svd_diagnostic.py
+new file mode 100644
+index 0000000..2f29c82
+--- /dev/null
++++ b/src/rb_improve_svd_diagnostic.py
+@@ -0,0 +1,82 @@
++"""Compare SVD precision and drivers on the same observed I-G matrices in PBS."""
++import argparse
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION
++from rb_improve_init import (GradientCollector, basis_orthogonality_error,
++                             calibration_examples, scaled_subspace)
++from rb_train import load_data, make_model
++from v1_run import batch_tensors, example_mean_objective, token_losses
++from v5_train import write_json
++
++
++def run(args):
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    tick = time.monotonic()
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tok.pad_token_id = tok.eos_token_id
++    splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
++    examples, samples = calibration_examples(splits, tok, excluded)
++    model = make_model('G-T').eval()
++    collector = GradientCollector(model)
++    try:
++        for example in examples:
++            model.zero_grad(set_to_none=True)
++            batch = batch_tensors([example], tok.pad_token_id)
++            collector.valid = batch['attention_mask'].bool()
++            losses, _ = token_losses(model, batch)
++            example_mean_objective(losses, 2).backward()
++    finally:
++        collector.close()
++    records = {}
++    with torch.no_grad():
++        for index, stats in collector.stats.items():
++            G = stats['G']
++            cases = {}
++            for dtype in (torch.float32, torch.float64):
++                matrix = G.to(dtype)
++                for driver in ('gesvdj', 'gesvd'):
++                    start = time.monotonic()
++                    left, singular, right = torch.linalg.svd(matrix, full_matrices=False, driver=driver)
++                    basis = left[:, :32].double()
++                    cases[f'{dtype}/{driver}'] = {
++                        'orthogonality_max_error_FP64': basis_orthogonality_error(basis),
++                        'stored_FP32_orthogonality_max_error': basis_orthogonality_error(basis.float()),
++                        'leading_singular_residual_relative': float((G.double() @ right[:32].double().T -
++                            basis * singular[:32].double()).norm()/G.double().norm()),
++                        'first_singular_value': singular[0].item(),
++                        'rank32_singular_value': singular[31].item(),
++                        'last_singular_value': singular[-1].item(),
++                        'seconds': time.monotonic()-start}
++            value, production = scaled_subspace(G, stats['covariance'], stats['Z2'],
++                model.adapters()[index].side.reader, 32)
++            records[str(index)] = {'gradient_shape': list(G.shape), 'gradient_dtype': str(G.dtype),
++                'solver_cases': cases, 'production': production,
++                'passed': production['unscaled_orthogonality_max_error'] <= 1e-4}
++    passed = all(row['passed'] for row in records.values())
++    write_json(out/'svd-diagnostic.json', {'layers': records, 'samples': samples,
++        'float32_matmul_precision': torch.get_float32_matmul_precision(),
++        'cuda_matmul_allow_tf32': torch.backends.cuda.matmul.allow_tf32,
++        'hardware': torch.cuda.get_device_name(), 'job_id': os.environ['PBS_JOBID'],
++        'gradient_accumulation_unchanged': 'FP32, as specified by E-0029@1', 'passed': passed})
++    write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
++        'contract': 'E-0029@1', 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++        'metrics': {'passed': passed, 'elapsed_s': time.monotonic()-tick, 'dev_read': False},
++        'artifacts': [{'path': str(out/'svd-diagnostic.json'), 'role': 'solver_diagnostic'}],
++        'validator': {'name': 'e0029_same_gradient_SVD_precision_comparison', 'passed': passed}})
++    if not passed:
++        raise ValueError('accurate SVD still fails the stored-basis orthogonality check')
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--data-dir', type=Path, required=True)
++    p.add_argument('--split-manifest', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    run(p.parse_args())
+diff --git a/src/rb_improve_train.py b/src/rb_improve_train.py
+new file mode 100644
+index 0000000..fb5b26e
+--- /dev/null
++++ b/src/rb_improve_train.py
+@@ -0,0 +1,268 @@
++"""E-0029 runner. Calibration and smoke never open new dev predictions."""
++import argparse
++from contextlib import contextmanager
++import gc
++import math
++import os
++from pathlib import Path
++import time
++
++import torch
++from transformers import AutoTokenizer
++
++from bypass_model import BranchModel
++from calibrate import MODEL, REVISION
++from rb1_artifacts import read, reference, verify_lr_lock
++from rb_data import plan_batches
++from rb_improve_init import InitializationCheckFailed, calibration_examples, initialize_gradient
++from rb_improve_lr import verify_lock
++from rb_improve_read import diagnose
++from rb_tap_check import initial_state
++from rb_tap_identity import PINNED_PROFILE, reference_check
++from rb_train import E0029_ARMS, FAMILIES, IG_ARMS, PARAMETERS, UP_LORA_ARMS, load_data, make_model, train
++from v1_run import evaluate, preserved_evaluation_state
++from v5_train import plan_metadata, write_json
++
++
++class ForwardAccounting:
++    def __init__(self):
++        self.tokens, self.calls, self.handles = 0, 0, []
++
++    def attach(self, model):
++        def observe(module, args, kwargs):
++            ids = kwargs.get('input_ids', args[0] if args else None)
++            mask = kwargs.get('attention_mask')
++            self.tokens += ids.numel() if mask is None else int(mask.sum())
++            self.calls += 1
++        self.handles.append(model.model.register_forward_pre_hook(observe, with_kwargs=True))
++
++    def close(self):
++        for handle in self.handles:
++            handle.remove()
++
++
++@contextmanager
++def backbone_only(model):
++    if isinstance(model, BranchModel):
++        from rb1_intervene import original_backbone
++        with original_backbone(model) as backbone:
++            yield backbone
++    else:
++        targets = []
++        for (index, path), adapter in model._targets.items():
++            parent = model.model.model.layers[index]
++            parts = path.split('.')
++            for part in parts[:-1]:
++                parent = getattr(parent, part)
++            targets.append((parent, parts[-1], adapter))
++        for parent, name, adapter in targets:
++            setattr(parent, name, adapter.base)
++        try:
++            yield model.model
++        finally:
++            for parent, name, adapter in targets:
++                setattr(parent, name, adapter)
++
++
++def init_check(model, arm, random_state, require_change=True):
++    digest, actual = initial_state(model)
++    allowed = '.projection.A_v' if arm in IG_ARMS else '.projection.A_q' if arm in ('P-T', 'P-N') else None
++    if actual.keys() != random_state.keys():
++        raise ValueError('initial parameter names differ from random reference')
++    changed = [name for name, value in actual.items() if not torch.equal(value, random_state[name])]
++    if any(allowed is None or not name.endswith(allowed) for name in changed):
++        raise ValueError('initialization changed an unregistered parameter')
++    if allowed and require_change and len(changed) != len(model.config.layers):
++        raise ValueError('initialization did not change exactly the intended per-layer matrices')
++    if arm in UP_LORA_ARMS and any(path != 'mlp.up_proj' for _, path in model._targets):
++        raise ValueError('up-only LoRA changed another module')
++    return {'passed': True, 'sha256': digest, 'changed_from_random_reference': changed,
++            'parameters': sum(p.numel() for p in model.adapter_parameters()),
++            'allowed_parameter_suffix': allowed}
++
++
++def random_reference(arm, phase):
++    # P arms are already paired in make_model; their random references must be unpaired.
++    reference_arm = {'G-T': 'RB1-09', 'P-T': 'RB1-09', 'G-QN': 'Q-N',
++                     'G-N': 'X-01', 'P-N': 'X-01'}.get(arm, arm)
++    model = make_model(reference_arm, phase=phase)
++    _, state = initial_state(model)
++    del model
++    gc.collect()
++    torch.cuda.empty_cache()
++    return state
++
++
++def run(args):
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    metrics, passed = {}, False
++    forward_accounting = ForwardAccounting()
++    tick = time.monotonic()
++    phase = 'V0' if args.stage == 'calibration' else 'R1'
++    try:
++        if args.arm not in E0029_ARMS or not math.isfinite(args.lr) or args.lr <= 0:
++            raise ValueError('invalid E-0029 arm/LR')
++        if args.stage == 'calibration' and args.arm != 'L-56':
++            raise ValueError('up-only LR representative is L-56')
++        if args.stage != 'smoke' and (args.smoke_steps is not None or args.eval_limit is not None):
++            raise ValueError('partial budgets are smoke-only')
++        if args.arm not in UP_LORA_ARMS and args.lr != .001:
++            raise ValueError('side branch LR is fixed at1e-3')
++        if args.stage == 'train':
++            up_lock = verify_lock(args.up_lr_lock)
++            if up_lock['identity']['source.commit'] != os.environ['SR_CODE_COMMIT']:
++                raise ValueError('LoRA calibration source differs from training release')
++            lr_lock = up_lock if args.arm in UP_LORA_ARMS else verify_lr_lock(args.lr_lock)
++            if lr_lock['locked_lrs'][FAMILIES[args.arm]] != args.lr:
++                raise ValueError('training LR differs from its lock')
++            split_hash = reference(args.split_manifest)['sha256']
++            if lr_lock['split_manifest_sha256'] != split_hash or up_lock['split_manifest_sha256'] != split_hash:
++                raise ValueError('split differs from LR calibration')
++            metrics.update({'lr_lock.sha256': reference(args.lr_lock)['sha256'],
++                'up_lr_lock.sha256': reference(args.up_lr_lock)['sha256']})
++        tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++        tok.pad_token_id = tok.eos_token_id
++        splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
++        examples, sample = calibration_examples(splits, tok, excluded)
++        write_json(out/'ig-samples.json', sample)
++        write_json(out/'excluded-train.json', excluded)
++        config = dict(vars(args), phase=phase, seed=0, three_epochs=False)
++        write_json(out/'config.json', config)
++        metrics.update({'learning_rate': args.lr, 'failed': False, 'dev_read': False,
++            'source.commit': os.environ['SR_CODE_COMMIT'], 'model_revision': REVISION,
++            'tokenizer_revision': REVISION, 'environment.lock_sha256': reference(Path(__file__).resolve().parents[1]/'uv.lock')['sha256'],
++            'split_manifest.sha256': reference(args.split_manifest)['sha256'],
++            'torch': torch.__version__, 'cuda': torch.version.cuda, 'hardware': torch.cuda.get_device_name(),
++            'exec.pbs_job_id': os.environ['PBS_JOBID'], 'ig.sample_sha256': sample['examples_sha256']})
++        baseline_state = random_reference(args.arm, phase)
++        start = time.monotonic()
++        checkpoint = None
++        if args.stage == 'train' and args.arm in IG_ARMS:
++            init_root = Path(args.ig_init)
++            init_manifest = read(init_root/'manifest.json')
++            if (init_manifest.get('status') != 'complete' or init_manifest.get('arm') != args.arm or
++                    init_manifest.get('stage') != 'ig' or init_manifest.get('validator', {}).get('passed') is not True or
++                    init_manifest['metrics'].get('source.commit') != os.environ['SR_CODE_COMMIT'] or
++                    init_manifest['metrics'].get('ig.sample_sha256') != sample['examples_sha256']):
++                raise ValueError('I-G artifact differs from training release/sample')
++            checkpoint = init_root/'adapter'
++            inventory = read(init_root/'checkpoint.json')
++            if any(reference(checkpoint/name) != record for name, record in inventory.items()):
++                raise ValueError('I-G checkpoint bytes changed')
++            metrics['ig.initialization'] = reference(init_root/'manifest.json')
++        model = make_model(args.arm, phase=phase, checkpoint=checkpoint)
++        forward_accounting.attach(model)
++        metrics['load.seconds'] = time.monotonic()-start
++        if args.stage == 'ig':
++            if args.arm not in IG_ARMS:
++                raise ValueError('I-G collection requires a G arm')
++            try:
++                values = initialize_gradient(model, examples, tok)
++            except InitializationCheckFailed as exc:
++                write_json(out/'ig-initialization.json', exc.diagnostics)
++                raise
++            write_json(out/'ig-initialization.json', values)
++            metrics.update({'ig.collection_seconds': values['collection_seconds'],
++                'ig.total_seconds': values['total_seconds'], 'ig.input_tokens': sample['input_tokens']})
++        registration = init_check(model, args.arm, baseline_state, require_change=args.stage != 'smoke')
++        registration['timing_only_random_IG'] = args.stage == 'smoke' and args.arm in IG_ARMS
++        write_json(out/'initialization.json', registration)
++        metrics['init.parameters.sha256'] = registration['sha256']
++        del baseline_state
++        metrics['params.stored'] = sum(p.numel() for p in model.adapter_parameters())
++        metrics['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
++        if metrics['params.stored'] != PARAMETERS[args.arm] or metrics['params.trainable'] != PARAMETERS[args.arm]:
++            raise ValueError('registered parameter count differs')
++        if args.stage != 'ig':
++            budget = 200000 if args.stage == 'calibration' else 2000000
++            batches = plan_batches(splits, tok, phase, 0, [(r['task'], r['id']) for r in excluded], budget)
++            if args.stage == 'smoke':
++                batches = batches[:args.smoke_steps or 80]
++            metrics.update(plan_metadata(batches))
++            if args.stage == 'train' and (metrics['plan.steps'] != 13115 or metrics['plan.examples'] != 26230):
++                raise ValueError('E-0029 requires the locked RB1 full training budget')
++            def monitor(step, current):
++                values, rows = evaluate(current, splits, tok, split_names=('dev',))
++                write_json(out/f'dev-step-{step}.json', {'step': step, 'metrics': values, 'predictions': rows})
++                return rows
++            if args.stage == 'train':
++                metrics['dev_read'] = True
++                start = time.monotonic()
++                with preserved_evaluation_state(model):
++                    initial = monitor(0, model)
++                    local_rows = None
++                    if metrics['hardware'] != PINNED_PROFILE:
++                        with backbone_only(model) as backbone:
++                            local_metrics, local_rows = evaluate(backbone, splits, tok, split_names=('dev',))
++                        write_json(out/'dev-base-same-allocation.json', {'hardware': metrics['hardware'],
++                            'job_id': os.environ['PBS_JOBID'], 'source_commit': os.environ['SR_CODE_COMMIT'],
++                            'metrics': local_metrics, 'predictions': local_rows})
++                    from rb1_analysis import ACCEPTED_BASE_MANIFEST_SHA256
++                    if reference(Path(args.base_run)/'manifest.json')['sha256'] != ACCEPTED_BASE_MANIFEST_SHA256:
++                        raise ValueError('Base manifest differs from E-0021 locked reference')
++                    pinned = [row for row in read(Path(args.base_run)/'predictions.json') if row['split'] == 'dev']
++                    initial_gate = reference_check(initial, pinned,
++                        metrics['hardware'], same_allocation=local_rows)
++                    write_json(out/'initial-identity.json', initial_gate)
++                    if not initial_gate['passed']:
++                        raise ValueError('step0 predictions differ from required Base reference')
++                metrics['init_eval.seconds'] = time.monotonic()-start
++                if isinstance(model, BranchModel):
++                    with preserved_evaluation_state(model):
++                        write_json(out/'step0-read.json', diagnose(model, examples[:64], tok))
++            metrics.update(train(model, batches, tok, args.lr, out, monitor if args.stage == 'train' else None))
++            if metrics['params.with_grad'] != PARAMETERS[args.arm]:
++                raise ValueError('not all registered parameters received a gradient')
++            if args.stage != 'smoke':
++                start = time.monotonic()
++                split = 'calibration' if args.stage == 'calibration' else 'dev'
++                values, rows = evaluate(model, splits, tok, split_names=(split,))
++                metrics.update(values)
++                metrics['eval.seconds'] = time.monotonic()-start
++                write_json(out/'predictions.json', rows)
++            if args.stage == 'train' and isinstance(model, BranchModel):
++                write_json(out/'final-read.json', diagnose(model, examples[:64], tok))
++        if args.stage != 'calibration':
++            model.export_adapter(out/'adapter')
++            write_json(out/'checkpoint.json', {name: reference(out/'adapter'/name) for name in ('config.json', 'adapter.pt')})
++            if args.stage == 'train':
++                del model
++                gc.collect()
++                torch.cuda.empty_cache()
++                model = make_model(args.arm, phase=phase, checkpoint=out/'adapter')
++                forward_accounting.attach(model)
++                values, reloaded = evaluate(model, splits, tok, split_names=('dev',))
++                metrics['reload.identical'] = rows == reloaded and all(metrics[key] == value for key, value in values.items())
++                if not metrics['reload.identical']:
++                    raise ValueError('checkpoint reload differs')
++        passed = True
++    finally:
++        forward_accounting.close()
++        metrics['failed'] = not passed
++        metrics['runtime.total_forward_input_tokens'] = forward_accounting.tokens
++        metrics['runtime.total_forward_calls'] = forward_accounting.calls
++        metrics['elapsed_s'] = time.monotonic()-tick
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
++            'spec_digest': os.environ['SR_SPEC_DIGEST'], 'contract': 'E-0029@1',
++            'arm': args.arm, 'family': FAMILIES[args.arm], 'seed': 0, 'phase': phase, 'stage': args.stage,
++            'metrics': metrics, 'artifacts': [{'path': str(p), 'role': p.name}
++                for p in sorted(out.iterdir()) if p.is_file() and p.name != 'manifest.json'],
++            'validator': {'name': 'e0029_runtime', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--arm', choices=E0029_ARMS, required=True)
++    p.add_argument('--stage', choices=('smoke', 'ig', 'calibration', 'train'), required=True)
++    p.add_argument('--lr', type=float, required=True)
++    p.add_argument('--lr-lock', type=Path)
++    p.add_argument('--up-lr-lock', type=Path)
++    p.add_argument('--ig-init', type=Path)
++    p.add_argument('--base-run', type=Path)
++    p.add_argument('--split-manifest', type=Path, required=True)
++    p.add_argument('--data-dir', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    p.add_argument('--smoke-steps', type=int)
++    p.add_argument('--eval-limit', type=int)
++    run(p.parse_args())
+diff --git a/src/rb_train.py b/src/rb_train.py
+index 1e490e5..5145888 100644
+--- a/src/rb_train.py
++++ b/src/rb_train.py
+@@ -20,7 +20,7 @@ from bypass_model import AdapterConfig, BranchModel
+ from calibrate import MODEL,REVISION,load_base
+ from rb_data import BASE_SEED,STUDY,apply_confirmation,plan_batches
+ from v1_data import derive_seed,audit_training_exclusions
+-from v1_lora import LoRAConfig,LoRAModel
++from v1_lora import LoRAConfig,LoRAModel,UpLoRAModel
+ from v1_run import (prepare,evaluate,train as v1_train,TrainingDiverged,EvaluationNonfinite,
+                     preserved_evaluation_state)
+ from v5_train import file_sha256,write_json,plan_metadata
+@@ -36,16 +36,22 @@ ETA_EXTENSIONS=(.03125,4.)
+ ETA_ARMS={f'ETA-{tap}-{eta:g}':(tap,eta) for tap in ('QK','X')
+           for eta in (*ETA_GRID,*ETA_EXTENSIONS) if eta!=.25}
+ E0028_ARMS=(*TAP_ARMS,*ETA_ARMS)
+-LORA_RANKS={'RB1-07':7,'W-03':31}
++E0029_ARMS=('G-T','G-QN','G-N','Q-N','P-T','P-N','L-56','L-48')
++IG_ARMS=('G-T','G-QN','G-N')
++UP_LORA_ARMS=('L-56','L-48')
++LORA_RANKS={'RB1-07':7,'W-03':31,'L-56':56,'L-48':48}
+ PARAMETERS={**{f'RB1-{i:02}':663552 for i in range(1,7)},
+             'RB1-07':630784,'RB1-08':1318912,'RB1-09':925696,
+             'W-01':2752512,'W-02':2752512,'W-03':2793472}
+ PARAMETERS.update({'X-01':794624,'X-02':794624,'X-03':925696,
+                    **{arm:794624 if tap=='X' else 925696 for arm,(tap,eta) in ETA_ARMS.items()}})
++PARAMETERS.update({'G-T':925696,'G-QN':794624,'G-N':794624,'Q-N':794624,
++                   'P-T':925696,'P-N':794624,'L-56':917504,'L-48':786432})
+ FAMILIES={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T',
+           'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C',
+           'W-01':'RBc-T','W-02':'RBc-R','W-03':'RBc-L'}
+ FAMILIES.update({arm:'RBc-C' for arm in E0028_ARMS})
++FAMILIES.update({arm:'RBc-UP' if arm in UP_LORA_ARMS else 'RBc-C' for arm in E0029_ARMS})
+ REPRESENTATIVES={'RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-L':'RB1-07','RBc-C':'RB1-08'}
+ GRIDS={'RBc-T':(1e-4,3e-4,1e-3),'RBc-L':(1e-4,3e-4,1e-3),
+        'RBc-R':(3e-4,1e-3,3e-3),'RBc-C':(3e-4,1e-3,3e-3)}
+@@ -54,6 +60,8 @@ EXTENSIONS={'RBc-T':(3e-5,3e-3),'RBc-L':(3e-5,3e-3),
+ 
+ 
+ def contract(arm,stage):
++    if arm in E0029_ARMS:
++        return 'E-0029@1'
+     if arm in E0028_ARMS:
+         return 'E-0028@1'
+     if arm in WIDTH_ARMS:
+@@ -65,9 +73,11 @@ def adapter_config(arm,impl='prefix'):
+     if arm not in PARAMETERS or arm in LORA_RANKS:
+         raise ValueError('not an RB side-branch arm')
+     tap,eta=ETA_ARMS.get(arm,('X' if arm in ('X-01','X-02') else 'QK',.25))
++    if arm in E0029_ARMS:
++        tap='X' if arm in ('G-N','P-N') else 'QN' if arm in ('G-QN','Q-N') else 'QK'
+     return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm in ('RB1-01','W-01','X-02','X-03') else 'memory',
+-        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' or arm in E0028_ARMS else 'F_out',
+-        tap='direct_hidden' if tap=='X' else 'qknorm_pre_rope',
++        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' or arm in (*E0028_ARMS,*E0029_ARMS) else 'F_out',
++        tap='direct_hidden' if tap=='X' else 'normalized_qk' if tap=='QN' else 'qknorm_pre_rope',
+         rank=WIDTH_RANK if arm in WIDTH_ARMS else 32,
+         steps=2 if arm=='RB1-03' else 4 if arm in ('RB1-04','RB1-05','RB1-06') else 1,
+         fixed_query=arm=='RB1-05',eta=.0625 if arm=='RB1-06' else eta,impl=impl)
+@@ -82,10 +92,14 @@ def make_model(arm,phase='R1',seed=0,checkpoint=None,impl='prefix'):
+         return base
+     if arm in LORA_RANKS:
+         config=LoRAConfig(layers=LAYERS,rank=LORA_RANKS[arm],alpha=LORA_RANKS[arm])
+-        model=LoRAModel.load_adapter(base,checkpoint) if checkpoint else LoRAModel(base,config)
++        wrapper=UpLoRAModel if arm in UP_LORA_ARMS else LoRAModel
++        model=wrapper.load_adapter(base,checkpoint) if checkpoint else wrapper(base,config)
+     else:
+         config=adapter_config(arm,impl)
+         model=BranchModel.load_adapter(base,checkpoint) if checkpoint else BranchModel(base,config)
++        if not checkpoint and arm in ('P-T','P-N'):
++            from rb_improve_init import pair_qk
++            pair_qk(model)
+     if model.config!=config:
+         raise ValueError('checkpoint differs from registered RB arm')
+     params=list(model.adapter_parameters())
+@@ -216,6 +230,8 @@ def lock_lrs(manifests):
+ 
+ 
+ def run(args):
++    if args.arm in E0029_ARMS:
++        raise ValueError('E-0029 requires rb_improve_train.py and its initialization/LR gates')
+     out=args.output.resolve()
+     out.mkdir(parents=True,exist_ok=True)
+     metrics,passed={},False
+diff --git a/src/test_rb_improve.py b/src/test_rb_improve.py
+new file mode 100644
+index 0000000..e90ba89
+--- /dev/null
++++ b/src/test_rb_improve.py
+@@ -0,0 +1,235 @@
++"""E-0029 rule 1 regressions; synthetic and real-operator checks run in PBS."""
++from dataclasses import replace
++
++import pytest
++import torch
++import torch.nn.functional as F
++from transformers import Qwen3Config, Qwen3ForCausalLM
++
++from bypass_core import LatentReader, elu_plus_one, process_sequence, rmsnorm_no_affine
++from bypass_model import BranchModel
++from rb_improve_init import (GradientCollector, basis_orthogonality_error, full_value_prefix, grouped_query_projection,
++                             mixed_gradient, pair_qk, scaled_subspace)
++from rb_improve_read import read_statistics
++from rb_improve_train import backbone_only, init_check
++from rb_tap_check import initial_state
++from rb_train import E0029_ARMS, PARAMETERS, adapter_config
++from v1_lora import LoRAConfig, UpLoRAModel
++
++
++def tiny_base():
++    torch.manual_seed(7)
++    config = Qwen3Config(vocab_size=48, hidden_size=16, intermediate_size=24,
++        num_hidden_layers=2, num_attention_heads=2, num_key_value_heads=1, head_dim=16,
++        max_position_embeddings=32, attention_dropout=0.)
++    config._attn_implementation = 'eager'
++    return Qwen3ForCausalLM(config).eval()
++
++
++def wrapped(arm):
++    base = tiny_base()
++    torch.manual_seed(19)
++    return BranchModel(base, replace(adapter_config(arm), layers=(0, 1), rank=4))
++
++
++def test_normalized_qk_tap_captures_exact_layernorm_and_v_projection():
++    model = wrapped('Q-N')
++    captured, handles, checks = {}, [], []
++    for index, layer in model.adapters().items():
++        def n_hook(module, args, output, index=index):
++            captured[index, 'n'] = output
++        def v_hook(module, args, output, index=index):
++            captured[index, 'v'] = output
++        def projection(module, args, index=index):
++            checks.append(torch.equal(args[0], captured[index, 'n']) and
++                          torch.equal(args[1], captured[index, 'n']) and
++                          torch.equal(args[2], captured[index, 'v']))
++        handles.extend([layer.original.input_layernorm.register_forward_hook(n_hook),
++            layer.original.self_attn.v_proj.register_forward_hook(v_hook),
++            layer.side.projection.register_forward_pre_hook(projection)])
++    try:
++        model(input_ids=torch.tensor([[1, 2, 3]]), use_cache=False)
++    finally:
++        for handle in handles:
++            handle.remove()
++    assert checks == [True, True]
++    assert initial_state(wrapped('Q-N'))[0] == initial_state(wrapped('X-01'))[0]
++
++
++@pytest.mark.parametrize('arm', ['P-T', 'P-N'])
++def test_pair_changes_only_Aq_and_keeps_independent_parameters(arm):
++    model = wrapped(arm)
++    _, reference = initial_state(model)
++    pair_qk(model)
++    assert init_check(model, arm, reference)['passed']
++    for layer in model.adapters().values():
++        projection = layer.side.projection
++        expected = projection.A_k if arm == 'P-N' else grouped_query_projection(projection.A_k, 2, 1, 16)
++        assert torch.equal(projection.A_q, expected)
++        assert projection.A_q is not projection.A_k
++        before = projection.A_k.detach().clone()
++        with torch.no_grad():
++            projection.A_q.add_(1)
++        assert torch.equal(projection.A_k, before)
++
++
++def test_gqa_head_mapping_has_two_adjacent_query_heads_per_kv_head():
++    A_k = torch.tensor([[1., 2.], [3., 4.], [5., 6.], [7., 8.]])
++    actual = grouped_query_projection(A_k, 4, 2, 2)
++    expected = torch.tensor([[1., 2.], [3., 4.], [1., 2.], [3., 4.],
++                             [5., 6.], [7., 8.], [5., 6.], [7., 8.]]) / 2 ** .5
++    assert torch.equal(actual, expected)
++    q = torch.arange(8.).reshape(1, -1)
++    grouped = (q.reshape(1, 2, 2, 2).sum(2) / 2 ** .5).reshape(1, 4)
++    torch.testing.assert_close(q @ actual, grouped @ A_k)
++
++
++@pytest.mark.parametrize('chunk', [1, 3, 64])
++def test_full_value_prefix_matches_explicit_causal_weights_and_latent_reader(chunk):
++    torch.manual_seed(61)
++    q, k, values = torch.randn(2, 7, 4), torch.randn(2, 7, 4), torch.randn(2, 7, 6)
++    valid = torch.tensor([[1, 1, 1, 1, 0, 0, 0], [1, 0, 1, 1, 1, 1, 0]], dtype=torch.bool)
++    reader = LatentReader(4)
++    reader.Rq.data.normal_()
++    p = full_value_prefix(q, k, values, reader, valid, chunk)
++    rho = elu_plus_one(rmsnorm_no_affine(q) @ reader.Rq)
++    keys = elu_plus_one(rmsnorm_no_affine(k))
++    expected = torch.zeros_like(p)
++    for b in range(2):
++        for t in range(7):
++            if valid[b, t]:
++                weights = rho[b, t] @ keys[b, :t+1].T * valid[b, :t+1]
++                expected[b, t] = weights @ values[b, :t+1] / (weights.sum() + reader.eps_read)
++    torch.testing.assert_close(p, expected, rtol=2e-6, atol=2e-6)
++    A_v = torch.randn(6, 4)
++    actual = process_sequence(q, k, values @ A_v, reader, valid=valid, impl='prefix').outputs
++    torch.testing.assert_close(actual, reader.eta * (p @ A_v @ reader.Ro), rtol=3e-5, atol=5e-7)
++
++
++def test_mixed_gradient_includes_indirect_prompt_positions_and_excludes_padding():
++    p = torch.tensor([[[1., 2.], [3., 4.], [900., 800.]]])
++    d = torch.tensor([[[5., 6.], [7., 8.], [700., 600.]]])
++    valid = torch.tensor([[True, True, False]])
++    B = torch.zeros(2, 2, requires_grad=True)
++    ((p @ B) * d * valid[..., None]).sum().backward()
++    assert torch.equal(mixed_gradient(p, d, valid), B.grad)
++
++
++@pytest.mark.parametrize('arm', ['G-T', 'G-QN', 'G-N'])
++def test_collected_gradient_matches_virtual_full_rank_autograd_per_example(arm):
++    model = wrapped(arm)
++    collector = GradientCollector(model)
++    ids = torch.tensor([[1, 2, 3, 4, 5]])
++    valid = torch.ones_like(ids, dtype=torch.bool)
++    collector.valid = valid
++    # Only the last position is directly supervised; earlier positions affect it through attention.
++    F.cross_entropy(model(input_ids=ids, use_cache=False).logits[:, -2].float(), ids[:, -1]).div(2).backward()
++    actual = {index: stats['G'].clone() for index, stats in collector.stats.items()}
++    collector.close()
++    model.zero_grad(set_to_none=True)
++    matrices, pending, handles = {}, {}, []
++    for index, layer in model.adapters().items():
++        projection = layer.side.projection
++        matrices[index] = torch.zeros(projection.A_v.shape[0], 24, requires_grad=True)
++        def capture(module, args, output, index=index, reader=layer.side.reader):
++            pending[index] = full_value_prefix(output[0], output[1], args[2], reader, valid)
++        def dense(module, args, output, index=index):
++            return output + pending[index] @ matrices[index]
++        handles.extend([projection.register_forward_hook(capture),
++                        layer.original.mlp.up_proj.register_forward_hook(dense)])
++    try:
++        F.cross_entropy(model(input_ids=ids, use_cache=False).logits[:, -2].float(), ids[:, -1]).div(2).backward()
++    finally:
++        for handle in handles:
++            handle.remove()
++    for index in matrices:
++        torch.testing.assert_close(actual[index], matrices[index].grad, rtol=1e-5, atol=1e-7)
++        assert torch.isfinite(actual[index]).all() and actual[index].norm() > 0
++    assert all(p.grad is None for name, p in model.named_parameters() if not p.requires_grad)
++
++
++def test_svd_basis_is_orthogonal_and_scaled_readout_matches_random_RMS():
++    torch.manual_seed(31)
++    p, d = torch.randn(29, 6), torch.randn(29, 8)
++    reader, rank = LatentReader(3), 3
++    random_A = torch.randn(6, rank)
++    random_Z = reader.eta * p @ random_A
++    value, info = scaled_subspace(p.T @ d, p.T @ p, random_Z.square().sum().item(), reader, rank)
++    basis = value / info['scale']
++    torch.testing.assert_close(basis.T @ basis, torch.eye(rank), rtol=1e-5, atol=1e-6)
++    torch.testing.assert_close((reader.eta * p @ value).square().mean(), random_Z.square().mean(), rtol=1e-6, atol=1e-7)
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA precision regression')
++def test_orthogonality_check_measures_stored_columns_even_when_TF32_is_enabled():
++    previous = torch.backends.cuda.matmul.allow_tf32
++    try:
++        torch.backends.cuda.matmul.allow_tf32 = True
++        basis = torch.linalg.qr(torch.randn(1024, 32, device='cuda')).Q
++        assert basis_orthogonality_error(basis) < 1e-5
++        basis[:, 0].mul_(1.001)
++        # The unchanged1e-4 gate must still reject an actually non-unit column.
++        assert basis_orthogonality_error(basis) > 1e-3
++    finally:
++        torch.backends.cuda.matmul.allow_tf32 = previous
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA SVD precision regression')
++def test_ill_conditioned_task_gradient_produces_orthogonal_leading_singular_vectors():
++    torch.manual_seed(413)
++    left = torch.linalg.qr(torch.randn(128, 128, device='cuda', dtype=torch.float64)).Q
++    right = torch.linalg.qr(torch.randn(384, 128, device='cuda', dtype=torch.float64)).Q
++    singular = torch.logspace(0, -12, 128, device='cuda', dtype=torch.float64)
++    gradient = ((left * singular) @ right.T).float()
++    p = torch.randn(200, 128, device='cuda')
++    random_A = torch.randn(128, 32, device='cuda')
++    reader = LatentReader(32).cuda()
++    target = (reader.eta * p @ random_A).double().square().sum().item()
++    value, record = scaled_subspace(gradient, p.T @ p, target, reader, 32)
++    basis = value / record['scale']
++    assert record['svd_input_dtype'] == 'torch.float64' and record['svd_driver'] == 'gesvd'
++    assert record['unscaled_orthogonality_max_error'] < 1e-5
++    assert record['leading_singular_residual_relative'] < 1e-10
++    assert record['condition_number_descriptive'] > 1e8
++    actual_projector = basis.double() @ basis.double().T
++    expected_projector = left[:, :32] @ left[:, :32].T
++    torch.testing.assert_close(actual_projector, expected_projector, rtol=0, atol=2e-5)
++
++
++@pytest.mark.parametrize('rank,expected', [(56, 917504), (48, 786432)])
++def test_up_only_lora_identity_target_counts_and_checkpoint_roundtrip(rank, expected, tmp_path):
++    assert 4 * rank * (1024 + 3072) == expected == PARAMETERS[f'L-{rank}']
++    base = tiny_base()
++    ids = torch.tensor([[1, 2, 3, 4]])
++    reference = base(ids, use_cache=False).logits.detach()
++    model = UpLoRAModel(base, LoRAConfig(layers=(0, 1), rank=rank, alpha=rank))
++    assert set(model._targets) == {(0, 'mlp.up_proj'), (1, 'mlp.up_proj')}
++    torch.testing.assert_close(model(ids, use_cache=False).logits, reference, rtol=0, atol=0)
++    with backbone_only(model) as original:
++        torch.testing.assert_close(original(ids, use_cache=False).logits, reference, rtol=0, atol=0)
++    for adapter in model._targets.values():
++        assert adapter.scale == 1 and adapter.B.count_nonzero() == 0
++        adapter.B.data.normal_(std=.01)
++    expected_logits = model(ids, use_cache=False).logits.detach()
++    model.export_adapter(tmp_path)
++    loaded = UpLoRAModel.load_adapter(tiny_base(), tmp_path)
++    torch.testing.assert_close(loaded(ids, use_cache=False).logits, expected_logits, rtol=0, atol=0)
++
++
++def test_read_weights_are_normalized_and_prefix_bins_count_valid_tokens():
++    reader = LatentReader(3)
++    q = torch.zeros(1, 4, 3)
++    valid = torch.tensor([[1, 1, 1, 0]], dtype=torch.bool)
++    stats = read_statistics(q, q, reader, valid)
++    torch.testing.assert_close(stats['self_weight'][0, :3], torch.tensor([1., .5, 1/3]))
++    torch.testing.assert_close(stats['maximum_weight'][0, :3], torch.tensor([1., .5, 1/3]))
++    torch.testing.assert_close(stats['n_eff'][0, :3], torch.tensor([1., 2., 3.]))
++
++
++def test_arm_registry_has_only_the_prespecified_eight_variants():
++    assert E0029_ARMS == ('G-T', 'G-QN', 'G-N', 'Q-N', 'P-T', 'P-N', 'L-56', 'L-48')
++    assert adapter_config('Q-N').tap == adapter_config('G-QN').tap == 'normalized_qk'
++    for arm in E0029_ARMS[:6]:
++        cfg = adapter_config(arm)
++        assert cfg.layers == (6, 13, 20, 27) and cfg.steps == 1 and cfg.rank == 32
++        assert cfg.fusion == 'C_up' and cfg.eta == .25 and cfg.mode == 'inclusive'
+diff --git a/src/test_rb_improve_analysis.py b/src/test_rb_improve_analysis.py
+new file mode 100644
+index 0000000..a3770e4
+--- /dev/null
++++ b/src/test_rb_improve_analysis.py
+@@ -0,0 +1,58 @@
++from fractions import Fraction
++
++import pytest
++
++from rb_improve_analysis import rule_outcomes
++from rb_improve_lr import endpoint
++from rb_train import E0029_ARMS
++
++
++def scores():
++    return {arm: Fraction(7, 10) for arm in (*E0029_ARMS, 'RB1-09', 'RB1-07', 'Base', 'X-01')}
++
++
++def test_implementation_failure_or_pending_x01_withholds_all_rule_results():
++    with pytest.raises(ValueError, match='implementation'):
++        rule_outcomes(scores(), False)
++    incomplete = scores()
++    del incomplete['X-01']
++    with pytest.raises(ValueError, match='pending'):
++        rule_outcomes(incomplete)
++
++
++@pytest.mark.parametrize('arm', ['L-56', 'L-48'])
++def test_H0023_includes_exact_one_pp_boundary_and_activates_H0027(arm):
++    values = scores()
++    values[arm] += Fraction(1, 100)
++    result = rule_outcomes(values)['3_H0023']
++    assert result['outcome'] == 'challenges' and result['activate_H0027']
++    values[arm] -= Fraction(1, 10000)
++    assert rule_outcomes(values)['3_H0023']['outcome'] == 'supports'
++
++
++@pytest.mark.parametrize('arm,rule', [('G-T', '4_H0024'), ('G-QN', '4_H0024'),
++    ('G-N', '4_H0024'), ('P-T', '5_H0025'), ('P-N', '5_H0025'), ('Q-N', '6_H0026')])
++def test_gain_rules_include_one_pp_and_zero_and_preserve_inconclusive(arm, rule):
++    values = scores()
++    assert rule_outcomes(values)[rule]['outcome'] == 'challenges'
++    values[arm] += Fraction(1, 200)
++    assert rule_outcomes(values)[rule]['outcome'] == 'inconclusive'
++    values[arm] += Fraction(1, 200)
++    assert rule_outcomes(values)[rule]['outcome'] == 'supports'
++
++
++def test_IG_win_over_all7_lora_requires_GA_control_in_replication():
++    values = scores()
++    values['G-N'] += Fraction(1, 100)
++    result = rule_outcomes(values)
++    assert result['7_LoRA']['new_two_seed_replication'] == ['G-N']
++    assert result['7_LoRA']['LoRA_GA_required_in_replication'] == ['G-N']
++    assert result['8_evidence']['hypothesis_status_changes'] is False
++
++
++def test_up_lora_lr_endpoint_extension_is_once_in_the_correct_direction():
++    assert endpoint({1e-4: 1., 3e-4: 1.1, 1e-3: 1.2}) == 3e-5
++    assert endpoint({1e-4: 1.2, 3e-4: 1.1, 1e-3: 1.}) == 3e-3
++    assert endpoint({1e-4: 1.1, 3e-4: 1., 1e-3: 1.2}) is None
++    with pytest.raises(ValueError):
++        endpoint({1e-4: 1.})
+diff --git a/src/test_rb_improve_lr.py b/src/test_rb_improve_lr.py
+new file mode 100644
+index 0000000..d85684c
+--- /dev/null
++++ b/src/test_rb_improve_lr.py
+@@ -0,0 +1,65 @@
++import json
++
++import pytest
++
++from rb_improve_lr import lock, verify_lock
++
++
++def candidate(root, lr, nll=1., source='a'*40):
++    out = root/f'{lr:g}'
++    out.mkdir()
++    metrics = {'learning_rate': lr, 'source.commit': source, 'environment.lock_sha256': 'b'*64,
++        'split_manifest.sha256': 'c'*64, 'plan.order_sha256': 'd'*64, 'plan.steps': 391,
++        'plan.input_tokens': 200000, 'train.input_tokens': 200000, 'train.steps': 391,
++        'init.parameters.sha256': 'e'*64, 'failed': False, 'dev_read': False, 'calibration.nll': nll}
++    rows = []
++    for task in ('piqa', 'boolq'):
++        for i in range(2048):
++            rows.append({'task': task, 'split': 'calibration', 'id': i, 'gold': 0, 'prediction': 0,
++                'scores': [-nll, -nll-1], 'gold_nll_sum': nll, 'gold_loss_tokens': 1})
++        metrics.update({f'calibration.{task}.nll': nll, f'calibration.{task}.accuracy': 1.,
++            f'calibration.{task}.examples': 2048, f'calibration.{task}.loss_tokens': 2048})
++    (out/'predictions.json').write_text(json.dumps(rows))
++    (out/'config.json').write_text(json.dumps({'arm': 'L-56', 'stage': 'calibration', 'phase': 'V0',
++        'seed': 0, 'lr': lr, 'smoke_steps': None, 'eval_limit': None}))
++    (out/'steps.jsonl').write_text(''.join(json.dumps({'step': i+1, 'input_tokens': 512 if i < 390 else 320})+'\n'
++        for i in range(391)))
++    path = out/'manifest.json'
++    path.write_text(json.dumps({'status': 'complete', 'contract': 'E-0029@1', 'arm': 'L-56',
++        'family': 'RBc-UP', 'stage': 'calibration', 'phase': 'V0', 'seed': 0,
++        'validator': {'passed': True}, 'metrics': metrics}))
++    return path
++
++
++def test_lr_lock_selects_smallest_LR_within_one_percent_and_rebuilds(tmp_path):
++    paths = [candidate(tmp_path, 1e-4, 1.009), candidate(tmp_path, 3e-4, 1.), candidate(tmp_path, 1e-3, 1.02)]
++    value = lock(paths)
++    assert value['locked_lrs'] == {'RBc-UP': 1e-4}
++    path = tmp_path/'lr-lock.json'
++    path.write_text(json.dumps(value))
++    assert verify_lock(path) == value
++    predictions = paths[0].parent/'predictions.json'
++    predictions.write_text(predictions.read_text()+' ')
++    with pytest.raises(ValueError, match='reconstruct'):
++        verify_lock(path)
++
++
++def test_lr_endpoint_requires_exactly_one_extension(tmp_path):
++    paths = [candidate(tmp_path, 1e-4, .9), candidate(tmp_path, 3e-4, 1.), candidate(tmp_path, 1e-3, 1.1)]
++    assert lock(paths, final=False)['required_extension'] == 3e-5
++    with pytest.raises(ValueError, match='extension'):
++        lock(paths)
++    paths.append(candidate(tmp_path, 3e-5, .91))
++    assert lock(paths)['locked_lrs'] == {'RBc-UP': 1e-4}
++
++
++def test_lr_candidates_reject_changed_source_and_spurious_dev_metrics(tmp_path):
++    paths = [candidate(tmp_path, 1e-4), candidate(tmp_path, 3e-4, source='f'*40), candidate(tmp_path, 1e-3)]
++    with pytest.raises(ValueError, match='mismatch'):
++        lock(paths)
++    value = json.loads(paths[1].read_text())
++    value['metrics']['source.commit'] = 'a'*40
++    value['metrics']['dev.piqa.accuracy'] = .8
++    paths[1].write_text(json.dumps(value))
++    with pytest.raises(ValueError, match='dev'):
++        lock(paths)
+diff --git a/src/v1_lora.py b/src/v1_lora.py
+index 82335eb..cf0dd54 100644
+--- a/src/v1_lora.py
++++ b/src/v1_lora.py
+@@ -60,6 +60,8 @@ def _get_parent(root, path):
+ 
+ class LoRAModel(nn.Module):
+     """Attach LoRA to Q/K/V/O and gate/up/down projections in selected layers."""
++    target_names = TARGETS
++
+     def __init__(self, model, config=None):
+         super().__init__()
+         self.model = model
+@@ -71,8 +73,8 @@ class LoRAModel(nn.Module):
+         self._targets = {}
+         for index in self.config.layers:
+             layer = layers[index]
+-            paths = [f'self_attn.{name}' for name in TARGETS[:4]] + [
+-                f'mlp.{name}' for name in TARGETS[4:]]
++            paths = [f'{"self_attn" if name in TARGETS[:4] else "mlp"}.{name}'
++                     for name in self.target_names]
+             for path in paths:
+                 parent, name = _get_parent(layer, path)
+                 base = getattr(parent, name)
+@@ -113,3 +115,8 @@ class LoRAModel(nn.Module):
+                     getattr(adapter, name).copy_(state[f'{i}.{path}.{name}'])
+         return result
+ 
++
++class UpLoRAModel(LoRAModel):
++    """Same zero-exit LoRA, restricted to up_proj in the configured layers."""
++    target_names = ('up_proj',)
++
