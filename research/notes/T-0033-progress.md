@@ -174,3 +174,12 @@ Independent fixes are implemented, awaiting PBS checks and review recheck:
   a partial manifest and cannot call the A2 reader or write an opening receipt.
 
 Tests and thresholds were not relaxed. No A2 access or formal training occurred.
+
+The independent fixes above are committed at
+`909b5f01b7c3e49ff70a6878af42c12927ba8521`. PBS review-fix checks RUN-0377 /
+ATT-0377-1 are running as `3780297.opbs`, one debug-mig instance, 2-minute
+walltime based on the earlier 73-second checks. They also validate the actual
+pinned E-0013 audit and E-0027 dev-reference artifacts in compute. Outputs:
+`research/artifacts/ATT-0377-1/`, notification `N-20261103-033130-1992`.
+Next: inspect/import these outputs and usage, obtain the coordinator's answer
+to MSG-0950, incorporate that exact protocol, and request RV-0097's recheck.
