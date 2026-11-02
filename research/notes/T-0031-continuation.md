@@ -1,5 +1,22 @@
 # T-0031 continuation
 
+## Current checkpoint: RV-0088 passed; inherited coverage disposition pending
+
+RV-0088 passed with0findings. First formal X-01 registration is RUN-0321 /
+ATT-0321-1, prepared only. It has not been submitted; no formal workload has
+run. The explicit inherited reviews plus RV-0088 still give4stale inherited
+paths (bypass_model, rb_sink_read, test_rb_sink_read, test_rb1_artifacts).
+See `T-0031-review-coverage.md` for inspected evidence. The coordinator was
+asked to resolve this remaining flag before costly launch; wait for that
+answer. No code change is needed or authorized just to silence the flag.
+
+Once released, reuse ATT-0321-1 for X-01 and follow the formal-plan JSON for
+the other12trainings plus baseline evaluation. Exact source remains0f22cd6;
+both cost and scientific review gates passed. Add RV-0078/0079 as applicable
+for the unchanged bypass_model file, and record the coordinator disposition
+for any remaining automatic stale tag. Do not run or duplicate ATT-0321-1
+before that disposition.
+
 ## Latest checkpoint: waiting for RV-0088
 
 RV-0088 is review2of2 in the RV-0087 round, assigned to reviewer-2. Its exact
