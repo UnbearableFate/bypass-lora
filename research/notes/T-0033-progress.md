@@ -540,3 +540,65 @@ attempt, do not submit another of the same seed. On same-profile dev failure
 or A2 encoding failure, follow the D-0072 stop/receipt audit rules. Only when
 seed 4 is COMPLETE, dev rows exact and receipt/provenance valid, tell
 coordinator and submit seeds 5 (1g) and 3 (2g), without awaiting a reply.
+
+MSG-0993 / seed 4 completion: independently verified metadata only, without
+reading A2 condition scores. ATT-0397-1 is complete/validator passed on
+confirmed mg1109/3, actual torch 1g.24gb. The dev gate is exact, zero flips,
+same training hardware; off equals Base, all seven conditions and 2,000 A2
+rows are reported, and encodability passed 1,000 per task. Exactly one receipt
+and provenance bind seed 4, job 3781926.opbs, the unchanged lock and
+confirmation D-0073 (opening protocol marker D-0072). This also demonstrates
+seed 4's 1g same-profile reproduction across training mg1111 and evaluation
+mg1109; it does not establish the still-unrun seed 5 gate.
+
+Imported RES-0371 (arm A2 matches the RunSpec, no arm mismatch) and U-0407:
+0.606111 measured MIG-hour = 0.15152775 node-hour, from scheduler walltime
+00:36:22. Usage is annotated with actual 1g rather than the ledger's 2g label.
+Central a2-execution-state.json now selects ATT-0397-1 for seed 4 and releases
+seeds 5/3. Completed measured task cost is 4.38451375 node-hour. Gate artifact
+T-0033/a2-budget-after-seed4.json reserves 80 minutes each for uncompleted
+seeds 3/5 plus three-minute analysis: 5.0636804167 node-hour, passed.
+The independent metadata check is ATT-0397-1-verified-metadata.json.
+
+The coordinator is being told the verified seed 4 outcome before the two
+authorized next submissions. A2 has now been read; source, lock, checkpoints,
+rules and confirmation decision remain frozen. Any subsequent same-profile
+failure is handled under D-0072's consumed/invalid rule, without repairs or
+relocking. Analysis and score inspection remain for the locked PBS analysis
+after all three successful seed outputs are available.
+
+Phase 2 submitted after the verified seed 4 success, as authorized in D-0073:
+
+| Seed | Run / attempt | PBS job | Notification |
+| --- | --- | --- | --- |
+| 5 | RUN-0398 / ATT-0398-1 | 3782396.opbs | N-20261103-081932-57c6 |
+| 3 | RUN-0399 / ATT-0399-1 | 3782400.opbs | N-20261103-081937-c713 |
+
+Both were observed queued at submission, not yet profile/dev-gate checked.
+Each is short-mig/select=1, 80-minute walltime, source 4e6e8df, arm A2 exactly,
+same unchanged cfd2e9b0 lock and confirmation D-0073, with training-profile
+restriction enabled. Required profiles: seed 5 = 1g, seed 3 = 2g. Each has its
+own sealed one-job notification with early_failure=true. notifyd is running;
+coordinator owns both listeners. MSG-0994 reports independently verified seed
+4 completion/import and the passing budget before these submissions.
+
+Both pre-submission budget artifacts reserve the queued/running attempt
+within the 80 minutes for its uncompleted seed, without double counting:
+4.38451375 measured ended + two A2 requests + three-minute analysis =
+5.0636804167 node-hour. The seed 5 job was queried and still queued before
+the seed 3 gate/submission. Central a2-phase2-prepared.json,
+a2-phase2-submitted.json and per-attempt submission/budget/observation files
+preserve exact pins and events. Source-only reusable RunSpecs are
+a2-run-RUN-0398-spec.json and a2-run-RUN-0399-spec.json. All three consecutive
+profile-miss counts remain zero; no seed has more than one active attempt.
+
+Resume on either notification. Import actual terminal partial/complete
+manifests and measured usage, updating a2-execution-state.json before any
+further submission. Profile misses alone may retry unchanged after the budget
+gate; at twenty misses or a failed gate, stop/report. Same-profile or encoding
+failures require the D-0072/D-0073 consumed/invalid handling; cancel only
+unstarted peer A2 jobs, let running jobs finish, then audit all receipts.
+When all three seeds have valid complete outputs, run the frozen analysis at
+4e6e8df under this lock with every executed task attempt and measured cost,
+including all diagnostics, replays, lock and any misses/failures. No source,
+checkpoint, comparison or rule changes after the first A2 read.
