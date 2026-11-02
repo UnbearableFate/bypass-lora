@@ -216,6 +216,27 @@ def test_up_only_lora_identity_target_counts_and_checkpoint_roundtrip(rank, expe
     torch.testing.assert_close(loaded(ids, use_cache=False).logits, expected_logits, rtol=0, atol=0)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CPU/CUDA initialization portability')
+@pytest.mark.parametrize('rank', [48, 56])
+def test_up_only_initial_parameters_are_identical_on_cpu_and_cuda_bases(rank):
+    from copy import deepcopy
+    from rb_data import BASE_SEED, STUDY
+    from v1_data import derive_seed
+    config = LoRAConfig(layers=(0, 1), rank=rank, alpha=rank)
+    cpu_base = tiny_base()
+    cuda_base = deepcopy(cpu_base).cuda()
+    seed = derive_seed(BASE_SEED, STUDY, 'V0', 'init', 0)
+    torch.manual_seed(seed)
+    cpu_model = UpLoRAModel(cpu_base, config)
+    torch.manual_seed(seed)
+    cuda_model = UpLoRAModel(cuda_base, config)
+    assert initial_state(cpu_model)[0] == initial_state(cuda_model)[0]
+    for key, adapter in cpu_model._targets.items():
+        other = cuda_model._targets[key]
+        assert torch.equal(adapter.A, other.A.cpu())
+        assert torch.equal(adapter.B, other.B.cpu()) and not other.B.count_nonzero()
+
+
 def test_read_weights_are_normalized_and_prefix_bins_count_valid_tokens():
     reader = LatentReader(3)
     q = torch.zeros(1, 4, 3)
