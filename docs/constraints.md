@@ -24,6 +24,7 @@ where the CLI reads them.
     - 新的合成关系/图任务，`study_id=concat_loop_v2`，按 phase/purpose 派生新 seed，不复用旧验证集。
     - PIQA、BoolQ：从官方 train 切出 train/dev/calibration；官方 validation 封存为确认集，只在配置、训练规则与分析脚本锁定后开封一次。
     - RB 线确认集 [协调者默认，D-0025]：官方 validation 由 E-0013 开封后不再作确认。RB 线从 V1 train 中每任务切出 1,000 条作新的确认集，按 derive_seed(20261101, "residual_la_v21", "RB5", "confirmation") 抽取，登记 id 清单与 SHA256 后封存；RB 线训练用其余 train 行；按上面的确认集规则只开封一次。
+    - A2 用于分段协议的确认 [用户 2026-11-02]：E-0027 记为 inconclusive（三个 seed 的 BoolQ gain 平均 +2.933 pp，门槛 +3 pp）后，协调者建议不在 dev 上加 seed，而是先等 E-0028、E-0029 的结论，再在分段协议上用 A2 做一次预先登记的确认；如果它们找到更强的侧支算子，就用新算子。用户回复“按照你的建议做”，同意为此动用 A2。A2 仍只开封一次：比较、门槛与分析脚本在开封前锁定，届时其他需要确认的 RB 线比较放进同一次开封；开封后 A2 不再用于确认。没有更强的算子时，沿用 E-0027 的配置（r128 R_res + KernelMatrix S1）[协调者默认]。
     - WikiText-103 固定版本的保留 split，只作能力保持指标。
     - 公开数据集与模型可以在登录节点下载到 HF 缓存 [协调者默认]。
   - 旧证据 [plan §18；用户 2026-11-01]：UnbearableFate/LoopLora @ `a255e814740ff85ab3b4ec4836c88f0a8f802b2d`（GitHub 公开仓库），只作只读审计与参考。旧 S-RE checkpoint 不在本文件系统上，按计划 fallback 跳过冻结 S-RE 读算子诊断（plan §6.1–6.2，H-0007）。不得声称旧指标已在本地复现。
