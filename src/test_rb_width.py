@@ -134,7 +134,7 @@ def test_lora_learnability_sets_main_comparison_evidence_level_at_inclusive_boun
     rows = _labels(Base=(700, 700), **{'W-03': (710, 710), 'W-02': (750, 750)})
     rules, _ = decide(rows, rows['W-02/normal'], True)
     assert rules['rule2_learnability']['lora_control_not_learned'] is False
-    assert {rules[k]['evidence_level'] for k in ('evidence_level',)} | {
+    assert {rules['evidence_level']} | {
         rules[k]['evidence_level'] for k in ('rule3_H0018', 'rule4_practical_advantage', 'rule5_history')} == {'screening'}
     assert evidence_line(rules) == 'Evidence level for rules 3-5: screening.'
 
