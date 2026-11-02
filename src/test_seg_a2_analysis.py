@@ -126,6 +126,7 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
         'evaluation_source': 'b' * 40, 'inputs': {'SEG-05': entry},
         'job_id': '123.server', 'hardware': 'MIG-2g',
         'confirmation_decision': 'D-9999',
+        'opening_protocol_decision': 'D-0072',
     }
     provenance_path = a2_root / 'provenance.json'
     provenance_path.write_text(json.dumps(provenance))
@@ -135,6 +136,7 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
         'pbs_job_id': '123.server', 'hardware': 'MIG-2g',
         'time_utc': '2026-11-03T00:00:00+00:00',
         'confirmation_decision': 'D-9999',
+        'opening_protocol_decision': 'D-0072',
     }) + '\n')
     encoding_path = a2_root/'a2-encodability.json'
     encoding_path.write_text(json.dumps({'passed': True, 'checked': {'piqa': 1000, 'boolq': 1000},
@@ -151,7 +153,9 @@ def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_
                     'path.dev_gate': gate, 'off.identical_to_Base_seg': True},
         'artifacts': artifacts, 'validator': {'passed': True},
     }
-    eval_manifest['metrics'].update({'confirmation_decision': 'D-9999', 'a2.opened': True})
+    eval_manifest['opened'] = True
+    eval_manifest['metrics'].update({'confirmation_decision': 'D-9999', 'a2.opened': True,
+                                     'opening_protocol_decision': 'D-0072'})
     manifest_path = a2_root / 'manifest.json'
     manifest_path.write_text(json.dumps(eval_manifest))
     lock = {'training_source': 'a' * 40, 'evaluation_source': 'b' * 40,

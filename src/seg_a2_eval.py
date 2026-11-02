@@ -8,7 +8,8 @@ import time
 import torch
 
 from rb1_artifacts import read, reference
-from seg_a2_data import ARMS, SEEDS, CONTRACT, verify_lock, read_a2, confirmation_decision
+from seg_a2_data import (ARMS, SEEDS, CONTRACT, OPENING_PROTOCOL_DECISION,
+                         verify_lock, read_a2, confirmation_decision)
 from seg_a2_predata import prepare_preopening
 from seg_artifacts import validate, validate_rows
 from seg_eval import evaluate
@@ -72,28 +73,54 @@ def run(args):
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     passed, values, start = False, {}, time.monotonic()
     try:
-        if not args.unseal:
+        if args.dev_replay_only and (args.unseal or args.require_training_profile):
+            raise ValueError('dev replay mode cannot unseal or restrict the slice')
+        if not args.unseal and not args.dev_replay_only:
             raise ValueError('A2 evaluation requires --unseal after coordinator confirmation')
         lock = verify_lock(args.lock, args.lock_sha256)
-        decision = confirmation_decision(args.confirmation_decision)
+        decision = None if args.dev_replay_only else confirmation_decision(args.confirmation_decision)
         values['confirmation_decision'] = decision
+        values['opening_protocol_decision'] = OPENING_PROTOCOL_DECISION
+        values['mode'] = 'dev_replay_only' if args.dev_replay_only else 'a2_evaluation'
         hardware = torch.cuda.get_device_name()
         entries = lock['runs'][str(args.seed)]
         manifests, adapters = {}, {}
         for arm in ARMS:
             manifests[arm], _, adapters[arm] = validate(entries[arm]['root'], arm, lock['training_source'], args.seed)
+        training_hardware = manifests['SEG-05']['metrics']['hardware']
+        values.update({'hardware': hardware, 'training_hardware': training_hardware,
+            'exec.pbs_job_id': os.environ.get('PBS_JOBID'), 'lock.sha256': args.lock_sha256,
+            'source.commit': os.environ['SR_CODE_COMMIT'],
+            'require_training_profile': args.require_training_profile})
+        if args.require_training_profile and hardware != training_hardware:
+            values['failure_reason'] = 'retry_profile_miss'
+            values['failure_action'] = 'retry_unchanged_on_training_profile; stop after five consecutive profile misses'
+            raise ValueError('D-0072 retry did not land on training profile; no dev or A2 read')
         tok = tokenizer()
         dev = prepare_preopening(args.data_dir, Path(lock['split_manifest']['path']))
         model = make_model('SEG-05', adapters['SEG-05'], seed=args.seed).eval()
         dm, dp, da = evaluate(model, 'SEG-05', dev, tok)
         gate = dev_gate(dp, read(entries['SEG-05']['predictions']['path']), hardware,
-                        manifests['SEG-05']['metrics']['hardware'])
+                        training_hardware)
         write_json(out/'dev-reproduction.json', {'check': gate, 'metrics': dm, 'predictions': dp, 'audit': da})
         values.update({'hardware': hardware, 'exec.pbs_job_id': os.environ.get('PBS_JOBID'),
                       'lock.sha256': args.lock_sha256, 'path.dev_gate': gate,
                       'source.commit': os.environ['SR_CODE_COMMIT']})
+        if args.dev_replay_only:
+            # D-0072(5) observes cross-profile mismatch counts without imposing
+            # a new gate. A same-profile mismatch remains an implementation fault.
+            values['dev_replay.cross_profile_gate_enforced'] = False
+            if gate['same_hardware'] and not gate['rows_identical']:
+                values['failure_reason'] = 'same_profile_dev_gate_failure'
+                values['failure_action'] = 'repair_review_and_relock_before_confirmation'
+                raise ValueError('same-profile dev replay differs; A2 was not read')
+            passed = True
+            return
         if not gate['passed']:
-            values['failure_reason'] = 'dev_reproduction_gate_failed'
+            values['failure_reason'] = ('same_profile_dev_gate_failure' if gate['same_hardware'] else
+                                        'cross_profile_dev_gate_failure')
+            values['failure_action'] = ('cancel_unstarted_peer_jobs_and_audit_all_receipts' if gate['same_hardware'] else
+                                        'retry_unchanged_on_training_profile; stop after five consecutive profile misses')
             raise ValueError('pre-opening dev reproduction gate failed; A2 remains unopened by this job')
         del model; gc.collect(); torch.cuda.empty_cache()
         _, a2 = read_a2(args.lock, args.lock_sha256, args.data_dir, out, args.seed,
@@ -108,7 +135,7 @@ def run(args):
         write_json(out/'provenance.json', {'lock': reference(args.lock), 'seed': args.seed,
             'training_source': lock['training_source'], 'evaluation_source': os.environ['SR_CODE_COMMIT'],
             'inputs': entries, 'hardware': hardware, 'job_id': os.environ['PBS_JOBID'],
-            'confirmation_decision': decision})
+            'confirmation_decision': decision, 'opening_protocol_decision': OPENING_PROTOCOL_DECISION})
         if not off_ok:
             raise ValueError('A2 iv_off differs from same-job Base_seg; A2 results invalid')
         passed = True
@@ -116,7 +143,8 @@ def run(args):
         values['a2.opened'] = (out/'a2-read.jsonl').exists()
         values['elapsed_s'] = time.monotonic()-start
         write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': CONTRACT,
-            'arm': 'A2', 'seed': args.seed, 'stage': 'a2_evaluation', 'metrics': values,
+            'arm': 'A2', 'seed': args.seed, 'stage': 'dev_replay' if args.dev_replay_only else 'a2_evaluation',
+            'opened': values['a2.opened'], 'metrics': values,
             'spec_digest': os.environ['SR_SPEC_DIGEST'],
             'artifacts': [{'path': str(out/name), 'role': name} for name in
                           ('dev-reproduction.json', 'conditions.json', 'provenance.json', 'a2-read.jsonl',
@@ -133,7 +161,10 @@ def main():
     p.add_argument('--data-dir', required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--unseal', action='store_true')
-    p.add_argument('--confirmation-decision', required=True)
+    p.add_argument('--confirmation-decision')
+    p.add_argument('--dev-replay-only', action='store_true')
+    p.add_argument('--require-training-profile', action='store_true',
+                   help='D-0072 cross-profile engineering retries only; never use on first attempts')
     run(p.parse_args())
 
 

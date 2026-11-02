@@ -11,7 +11,7 @@ import time
 from rb1_analysis import measured_cost
 from rb1_artifacts import read, reference
 from rb_history import donor_indices
-from seg_a2_data import ARMS, CONTRACT, SEEDS, verify_lock, confirmation_decision
+from seg_a2_data import ARMS, CONTRACT, SEEDS, OPENING_PROTOCOL_DECISION, verify_lock, confirmation_decision
 from seg_a2_rules import IMPLEMENTATION_CHECKS, analyze as apply_rules
 from seg_a2_descriptive import describe_a2, describe_dev, compare_dev_to_e0027, load_e0027_dev_reference
 from seg_artifacts import validate_rows as validate_dev_rows
@@ -172,7 +172,10 @@ def _verify_eval(seed, root, lock, lock_path, lock_sha256, expected_ids):
             raise ValueError(f'seed {seed} A2 artifact {role} path is invalid')
     provenance = read(root / 'provenance.json')
     decision = confirmation_decision(provenance.get('confirmation_decision'))
-    if metrics.get('confirmation_decision') != decision or metrics.get('a2.opened') is not True:
+    if (metrics.get('confirmation_decision') != decision or metrics.get('a2.opened') is not True or
+            manifest.get('opened') is not True or
+            metrics.get('opening_protocol_decision') != OPENING_PROTOCOL_DECISION or
+            provenance.get('opening_protocol_decision') != OPENING_PROTOCOL_DECISION):
         raise ValueError(f'seed {seed} confirmation decision or opening record differs')
     lock_ref = reference(lock_path)
     if (provenance.get('lock') != lock_ref or provenance.get('seed') != seed or
@@ -190,7 +193,8 @@ def _verify_eval(seed, root, lock, lock_path, lock_sha256, expected_ids):
     if (receipt.get('lock_sha256') != lock_sha256 or receipt.get('seed') != seed or
             receipt.get('arm') != 'SEG-05' or receipt.get('pbs_job_id') != provenance.get('job_id') or
             receipt.get('hardware') != provenance.get('hardware') or not receipt.get('time_utc') or
-            receipt.get('confirmation_decision') != decision):
+            receipt.get('confirmation_decision') != decision or
+            receipt.get('opening_protocol_decision') != OPENING_PROTOCOL_DECISION):
         raise ValueError(f'seed {seed} A2 read receipt differs from its job/provenance')
     encodability = read(root/'a2-encodability.json')
     if encodability != {'passed': True, 'checked': {'piqa': 1000, 'boolq': 1000},

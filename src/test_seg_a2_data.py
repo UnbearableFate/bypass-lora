@@ -80,7 +80,8 @@ def make_lock(tmp_path, monkeypatch):
             'seed': derive_seed(a2.BASE_SEED, a2.STUDY, 'A2', 'iv_swap'),
             'method': 'within_task_fixed_derangement',
         },
-        'preopening_checks': {'passed': True, 'checks': ['synthetic-fixture']},
+        'preopening_checks': {'passed': True, 'checks': ['synthetic-fixture'],
+                             'opening_protocol_decision': 'D-0072'},
     }
     lock_path = write_json(tmp_path / 'a2-lock.json', lock)
     monkeypatch.setenv('SR_CODE_COMMIT', 'a' * 40)

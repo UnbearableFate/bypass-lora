@@ -7,7 +7,8 @@ import time
 from calibrate import REVISION
 from rb1_artifacts import read, reference
 from rb_data import BASE_SEED, STUDY
-from seg_a2_data import CONTRACT, SEEDS, ARMS, EVALUATION, BOOTSTRAP, SPLIT_MANIFEST_SHA256, verify_lock
+from seg_a2_data import (CONTRACT, SEEDS, ARMS, EVALUATION, BOOTSTRAP, SPLIT_MANIFEST_SHA256,
+                         OPENING_PROTOCOL_DECISION, verify_lock)
 from seg_a2_rules import IMPLEMENTATION_CHECKS
 from seg_artifacts import validate
 from v1_data import derive_seed
@@ -115,6 +116,14 @@ def make_lock(inputs):
         'derangement': {'seed': derive_seed(BASE_SEED, STUDY, 'A2', 'iv_swap'),
                         'method': 'within_task_fixed_derangement'},
         'preopening_checks': {'passed': True, 'checks': checks, 'deterministic': checks_ref, 'smoke': smoke_ref,
+            'opening_protocol_decision': OPENING_PROTOCOL_DECISION,
+            'opening_failure_policy': {
+                'first_attempt_slice_restricted': False,
+                'cross_profile_gate_failure': 'engineering retry unchanged lock/source/config/checkpoints/rules/confirmation decision on training profile',
+                'consecutive_profile_miss_limit': 5,
+                'same_profile_gate_failure': 'cancel unstarted peer jobs; after batch ends audit all receipts; repair/review/relock only if none exist, otherwise invalid A2 and no hypothesis conclusion',
+                'unencodable_a2': 'no A2 scores; stop without repair or relock; coordinator reports user',
+                'before_confirmation': 'run dev-replay-only for every seed under this lock and source; report profiles and mismatches'},
             'e0013_full_v1_train_encodability': e0013_audit,
             'rules': {'2': 'same slice exact dev rows; other slice <=10 class mismatches; A2 off equals same-job Base',
                       '3': 'gain_s=Keep-max(Reset,T0); lora_s=Keep-LoRA; swap_s=Keep-swap',

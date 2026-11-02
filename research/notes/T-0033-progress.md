@@ -183,3 +183,26 @@ pinned E-0013 audit and E-0027 dev-reference artifacts in compute. Outputs:
 `research/artifacts/ATT-0377-1/`, notification `N-20261103-033130-1992`.
 Next: inspect/import these outputs and usage, obtain the coordinator's answer
 to MSG-0950, incorporate that exact protocol, and request RV-0097's recheck.
+
+D-0072 has now been read in full and implemented, including its additions.
+The runtime classifies cross/same-profile gate failures, exits non-zero without
+an A2 receipt, and writes `opened=false`. Cross-profile retries may require the
+training profile and exit before dev on another profile. The record-driven
+retry limit and same-profile batch cancellation/receipt audit are documented
+in `T-0033-A2-runbook.md`; five consecutive profile misses stop for coordinator
+action. The lock pins D-0072 and its failure policy. The same evaluator now
+supports `--dev-replay-only` without unsealing or confirmation, for all three
+actual final checkpoints before the coordinator receives the lock. It reports
+cross-profile discrepancies without a new threshold; same-profile discrepancies
+remain an implementation failure. Regression tests cover both failure classes,
+retry early exit, and dev replay without any A2 read.
+
+The earlier review-fix checks ATT-0377-1 were validated: 410 passed, zero
+skipped/failures/errors; actual torch 2g.24gb on mg1103, confirmed compute
+allocation. Its pinned E-0013 audit and E-0027 reference also validated.
+Measured usage is 0.02 MIG-hour = 0.005 node-hour, making total measured
+task usage 0.040139 node-hour before D-0072 final-source checks/training.
+The new required real-checkpoint dev replays add an estimated 0.1 node-hour;
+the conservative full projection is about 4.41 node-hour before the next check,
+within the 5.5 cap. Per MSG-0954, run final-source PBS checks before requesting
+RV-0097's recheck; no formal training until that review passes.

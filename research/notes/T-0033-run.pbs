@@ -47,9 +47,17 @@ case "$SEG_STAGE" in
   a2)
     : "${SEG_SEED:?registered seed required}" "${SEG_LOCK:?confirmed lock required}" \
       "${SEG_LOCK_SHA256:?confirmed lock digest required}" "${SEG_CONFIRMATION_DECISION:?coordinator decision required}"
+    RETRY=()
+    if [ "${SEG_REQUIRE_TRAINING_PROFILE:-0}" = 1 ]; then RETRY=(--require-training-profile); fi
     exec "$SEG_PY" src/seg_a2_eval.py --seed "$SEG_SEED" --lock "$SEG_LOCK" --lock-sha256 "$SEG_LOCK_SHA256" \
       --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT" --unseal \
-      --confirmation-decision "$SEG_CONFIRMATION_DECISION"
+      --confirmation-decision "$SEG_CONFIRMATION_DECISION" "${RETRY[@]}"
+    ;;
+  dev-replay)
+    : "${SEG_SEED:?registered seed required}" "${SEG_LOCK:?preconfirmation lock required}" \
+      "${SEG_LOCK_SHA256:?preconfirmation lock digest required}"
+    exec "$SEG_PY" src/seg_a2_eval.py --seed "$SEG_SEED" --lock "$SEG_LOCK" --lock-sha256 "$SEG_LOCK_SHA256" \
+      --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT" --dev-replay-only
     ;;
   analysis)
     : "${SEG_INPUT:?analysis input required}" "${SEG_LOCK:?confirmed lock required}" \

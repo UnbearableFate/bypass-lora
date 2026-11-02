@@ -92,6 +92,7 @@ def test_make_lock_separates_training_and_evaluation_sources(tmp_path, monkeypat
     lock = lock_module.make_lock(inputs)
     assert lock['training_source'] == training_source
     assert lock['evaluation_source'] == evaluation_source
+    assert lock['preopening_checks']['opening_protocol_decision'] == 'D-0072'
     assert calls and {source for _, source, _ in calls} == {training_source}
     assert lock['preopening_checks']['e0013_full_v1_train_encodability'] == {
         'attempt': 'ATT-0129-1',

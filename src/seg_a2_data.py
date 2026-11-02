@@ -15,6 +15,7 @@ import re
 from rb_data import confirmation_manifest
 
 CONTRACT = 'E-0030@1'
+OPENING_PROTOCOL_DECISION = 'D-0072'
 SEEDS = (3, 4, 5)
 ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
 EVALUATION_ARMS = ('SEG-00', *ARMS)
@@ -153,6 +154,8 @@ def verify_lock(path, sha256):
     checks = lock['preopening_checks']
     if not isinstance(checks, dict) or checks.get('passed') is not True:
         raise ValueError('A2 pre-opening checks are not recorded as passed')
+    if checks.get('opening_protocol_decision') != OPENING_PROTOCOL_DECISION:
+        raise ValueError('A2 lock lacks the D-0072 opening protocol')
     return lock
 
 
@@ -209,6 +212,7 @@ def read_a2(lock_path, lock_sha256, data_dir, output, seed, arm, hardware, *,
         'seed': seed, 'arm': arm, 'hardware': hardware,
         'evaluated_conditions': EVALUATION['conditions'],
         'confirmation_decision': decision,
+        'opening_protocol_decision': OPENING_PROTOCOL_DECISION,
     }
     with (receipt_path / 'a2-read.jsonl').open('a') as handle:
         handle.write(json.dumps(receipt, sort_keys=True, separators=(',', ':')) + '\n')
