@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import rb1_latency as latency
-from rb_train import FAMILIES, PARAMETERS, adapter_config
+from rb_train import FAMILIES, LORA_RANKS, PARAMETERS, adapter_config, contract
 from v1_lora import LoRAConfig
 from v1_run import lr_factor
 from calibrate import REVISION
@@ -35,8 +35,8 @@ def _formal_run(root, arm):
                        'lr': learning_rate, 'lr_lock': str(lock), 'split_manifest': str(split),
                        'eval_limit': None, 'smoke_steps': None, 'three_epochs': False}
     (run / 'config.json').write_text(json.dumps(training_config))
-    model_config = (LoRAConfig(layers=(6, 13, 20, 27), rank=7, alpha=7)
-                    if arm == 'RB1-07' else adapter_config(arm))
+    model_config = (LoRAConfig(layers=(6, 13, 20, 27), rank=LORA_RANKS[arm], alpha=LORA_RANKS[arm])
+                    if arm in LORA_RANKS else adapter_config(arm))
     (adapter / 'config.json').write_text(json.dumps(asdict(model_config)))
     (adapter / 'adapter.pt').write_bytes((arm + '-weights').encode())
     checkpoint = {}
@@ -61,7 +61,7 @@ def _formal_run(root, arm):
         'plan.examples': 3908, 'train.examples': 3908, 'train.last_epoch': 0,
         'plan.order_sha256': accepted_lock['plan_order_sha256']}
     (run / 'manifest.json').write_text(json.dumps({
-        'status': 'complete', 'contract': latency.CONTRACT, 'arm': arm, 'family': FAMILIES[arm],
+        'status': 'complete', 'contract': contract(arm, 'train'), 'arm': arm, 'family': FAMILIES[arm],
         'phase': 'R1', 'seed': 0, 'stage': 'train',
         'metrics': metrics,
         'validator': {'passed': True}}))

@@ -1,0 +1,51 @@
+#!/bin/bash
+# E-0026 formal training for one width arm (W-01/W-02/W-03), seed0, RB1 order/budget.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${W_ARM:?registered arm required}"
+: "${W_LR:?locked family learning rate required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+LOCK="$SRC/research/artifacts/T-0024/lr-lock.json"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0029-train"
+mkdir -p "$TMPDIR"
+# D-0018/D-0019: profile metadata only for ordinary training/evaluation.
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+"$PY" - "$LOCK" "$SPLIT" "$W_ARM" "$W_LR" "$OUT" <<'PY'
+import hashlib,json,os,sys
+from pathlib import Path
+lock_path,split_path,arm,rate,out=sys.argv[1:]
+def ref(path):
+    path=Path(path).resolve();data=path.read_bytes()
+    return dict(path=str(path),sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
+lock_ref=ref(lock_path)
+assert lock_ref['sha256']=='38b8ee24af3ded8aee398a4cc3dfaa5a1dfece4737a6cde34642fbff7bf1012d'
+lock=json.loads(Path(lock_path).read_text())
+assert len(lock['inputs'])==16 and all(ref(item['path'])==item for item in lock['inputs'])
+split_ref=ref(split_path)
+assert split_ref['sha256']==lock['split_manifest_sha256']=='34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc'
+families={'W-01':'RBc-T','W-02':'RBc-R','W-03':'RBc-L'}
+assert arm in families and float(rate)==lock['locked_lrs'][families[arm]]
+Path(out,'release-preflight.json').write_text(json.dumps(dict(passed=True,contract='E-0026@1',arm=arm,
+    learning_rate=float(rate),source_commit=os.environ['SR_CODE_COMMIT'],lr_lock=lock_ref,
+    split_manifest=split_ref),indent=2)+'\n')
+PY
+exec "$PY" src/rb_train.py run --stage train --phase R1 --seed 0 \
+  --arm "$W_ARM" --lr "$W_LR" --lr-lock "$LOCK" \
+  --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT"

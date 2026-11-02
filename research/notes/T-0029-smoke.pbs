@@ -1,0 +1,67 @@
+#!/bin/bash
+# E-0026 smoke: unit tests, implementation parameter registration and paired
+# init check, then a short r128 training smoke per arm for step time / memory.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+SMOKE_STEPS="${W_SMOKE_STEPS:-80}"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0029"
+mkdir -p "$TMPDIR"
+# D-0018/D-0019: profile is metadata only for tests and smoke.
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+status=0
+set +e
+"$PY" -m pytest -q -p no:cacheprovider src/test_rb_width.py src/test_rb_train.py \
+  src/test_rb1_artifacts.py src/test_rb1_latency.py src/test_rb1_intervene.py \
+  src/test_rb1_analysis.py > "$OUT/pytest.txt" 2>&1
+pytest_rc=$?
+"$PY" src/rb_width_check.py --output "$OUT" > "$OUT/registration.log" 2>&1
+registration_rc=$?
+declare -A LR=([W-01]=0.003 [W-02]=0.003 [W-03]=0.0003)
+smoke_rc=0
+for arm in W-01 W-02 W-03; do
+  "$PY" src/rb_train.py run --stage smoke --phase R1 --seed 0 --arm "$arm" --lr "${LR[$arm]}" \
+    --split-manifest "$SPLIT" --data-dir "$P/data/v1" --smoke-steps "$SMOKE_STEPS" --eval-limit 16 \
+    --output "$OUT/smoke-$arm" > "$OUT/smoke-$arm.log" 2>&1 || smoke_rc=1
+done
+set -e
+[ "$pytest_rc" -eq 0 ] && [ "$registration_rc" -eq 0 ] && [ "$smoke_rc" -eq 0 ] || status=1
+"$PY" - "$OUT" "$pytest_rc" "$registration_rc" "$smoke_rc" <<'PYEOF'
+import json, os, sys
+from pathlib import Path
+out = Path(sys.argv[1]); pytest_rc, registration_rc, smoke_rc = map(int, sys.argv[2:])
+smoke = {}
+for arm in ('W-01', 'W-02', 'W-03'):
+    path = out/f'smoke-{arm}'/'manifest.json'
+    if path.is_file():
+        m = json.loads(path.read_text())['metrics']
+        smoke[arm] = {k: m.get(k) for k in ('params.stored', 'params.trainable', 'params.with_grad',
+                      'train.steps', 'train.steady_step_seconds', 'train.peak_cuda_bytes', 'train.seconds',
+                      'init_eval.seconds', 'intermediate.seconds', 'eval.seconds', 'reload.identical',
+                      'load.seconds', 'hardware')}
+passed = pytest_rc == registration_rc == smoke_rc == 0
+json.dump({'status': 'complete' if passed else 'failed', 'contract': 'E-0026@1',
+           'spec_digest': os.environ['SR_SPEC_DIGEST'], 'stage': 'smoke',
+           'metrics': {'pytest_exit': pytest_rc, 'registration_exit': registration_rc,
+                       'smoke_exit': smoke_rc, 'smoke': smoke},
+           'artifacts': [{'path': str(p), 'role': p.name} for p in sorted(out.iterdir()) if p.is_file() and p.name != 'manifest.json'],
+           'validator': {'name': 'e0026_smoke', 'passed': passed}}, open(out/'manifest.json', 'w'), indent=1)
+PYEOF
+exit "$status"
