@@ -1,5 +1,54 @@
 # E-0028 measured cost gate
 
+## Revised gate after D-0060 (before formal training)
+
+The deterministic PBS audit ATT-0316-1 / PBS3775143 passed and returned
+**4.542691585 node-hours** for the initial grid and **5.207572029 node-hours**
+with both allowed endpoint trainings. Both are within the unchanged5.5cap.
+The audit's immutable calculation and input hashes are in
+`/work/xg24i002/x10041/bypass-lora/runs/ATT-0316-1/cost.json`.
+
+Planning uses the **observed2g.24gb measurements from ATT-0314-1**, which are
+comparable to the accepted RB1 references. The D-0060 fix does not change the
+training operator; its additional passes are reserved separately. The revised
+estimate includes one fallback Base dev pass for every one of the up-to15
+new training arms, one extra legacy-source dev pass for baseline compatibility,
+all X-01 interventions including donor forwarding, both completed smokes at
+their native measured cost, and120s for other checks/selection/analysis.
+X-02/X-03 no longer get a calibration pass. These are projected costs, with
+actual scheduler usage recorded as work completes; they are not a guarantee
+against failures. Any retry or revised projection must still fit the5.5cap.
+
+| Per-arm class (2g timing, fallback reserved) | Expected total seconds | Requested walltime planning (about1.5x) |
+|---|---:|---|
+| X-01 and ETA-X candidates | 4820.620418 | 02:05:00 |
+| X-02 | 4322.335647 | 01:50:00 |
+| X-03 | 4320.202516 | 01:50:00 |
+| ETA-QK candidates | 4753.657976 | 02:00:00 |
+
+The recheck smoke ATT-0315-1 / RES-0284 ran on **MIG1g.24gb**, as recorded by
+both nvidia-smi and torch, despite the executor ledger's generic2g hardware
+label. Its112tests, full initialization registration and32-row same-job
+old/new-source GPU comparison passed. The PBS audit additionally verified
+all4representative arms' step0 predictions equal their same-allocation Base
+predictions (32rows each). Thus the cross-profile execution branch was
+exercised, without a tolerance or slice restriction.
+
+The observed1g short-smoke timings were slightly faster here; no claim that1g
+is slower is assumed. They are retained as a descriptive comparison, yielding
+4.982964924node-hours under the same worst-case reserve model. The planning
+number remains the2g-based5.207572029 above. The two smokes cost678s and696s;
+their native measured usage totals0.0954165node-hours (six-decimal ledger
+rounding), before the audit's terminal usage. The audit itself used1scheduler
+second and is covered by the120s check/analysis reserve.
+
+All scientific files and the training/smoke launchers still exactly match
+`0f22cd60f45674ec20b800fdd455f80c2b6d46dd`. Subsequent commits contain only
+task notes, native observation exports and the standalone deterministic audit
+wrapper; none changes the reviewed training/evaluation/selection paths.
+
+## Original pre-review measurements
+
 Pre-review smoke ATT-0314-1 / RES-0283 / PBS3774818 completed successfully on
 verified allocation mg1098. Scheduler walltime678s, one MIG instance. Native
 ledger usage is0.188333 MIG instance-hours; exact-second conversion is

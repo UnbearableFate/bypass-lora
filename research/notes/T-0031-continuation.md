@@ -1,5 +1,40 @@
 # T-0031 continuation
 
+## Latest checkpoint: waiting for RV-0088
+
+RV-0088 is review2of2 in the RV-0087 round, assigned to reviewer-2. Its exact
+scientific source is0f22cd60f45674ec20b800fdd455f80c2b6d46dd; source and the
+two training/smoke launchers are unchanged. Leave reviewed files unchanged
+until its answer. Later commits contain only task records/notes and a small
+standalone cost-audit PBS wrapper.
+
+Recheck smoke ATT-0315-1 is imported as **RES-0284**, ended/success. Native
+usage0.193333MIGh was imported once from the terminal observation. The logged
+nvidia-smi AND torch profile is **1g.24gb**, despite the executor ledger's
+generic2g label. All112tests, full paired initialization/tap/count registry,
+and32-row same-job legacy/new-source GPU comparison passed. NoT0calibration
+artifact was written. The D-0060 Base-reference branch executed on this
+actual1g allocation (mg1097, PBS3774971).
+
+Cost/reference audit ATT-0316-1 / PBS3775143 is imported as **RES-0289**,
+ended/success,1scheduler second /0.000278nativeMIGh. Its compute guard passed
+onmg1097. It verifies all4representative initial predictions exactly equal
+their same-allocation Base predictions. It projects **4.542691585node-hours**
+for the initial grid and **5.207572029node-hours** with both endpoint
+extensions, including fallback passes for every training, baseline legacy
+dev, both measured smokes and120s of other checks/analysis. It uses comparable
+2g timings from ATT-0314-1; the1g short-smoke timings happened slightly faster
+and are descriptive. Cap remains5.5node-hours. See `T-0031-cost.md` and
+`/work/xg24i002/x10041/bypass-lora/runs/ATT-0316-1/cost.json`.
+
+Next: read RV-0088. If it passes, follow `T-0031-formal-plan.json` to register
+and launch the13new initial trainings plus accepted RB1-09 dev/calibration
+re-evaluation at the exact0f22cd6 source. Explicitly name inherited reviews
+and RV-0088; resolve any stale check with coordinator. No formal attempt has
+been registered or submitted yet. If medium-or-higher findings remain after
+RV-0088, coordinator owns the round decision. No PartBdev aggregation until
+the calibration-only eta-lock is written and its SHA256 recorded.
+
 ## Current checkpoint after RV-0087
 
 The first smoke completed successfully (RES-0283), all99tests and registration
