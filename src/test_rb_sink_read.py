@@ -177,3 +177,56 @@ def test_manifest_counts_arms_from_an_earlier_attempt(tmp_path, monkeypatch):
     assert {a['path'] for a in manifest['artifacts']} == {
         str(out/ARMS[0]/'sink.json'), *(str(earlier/arm/'sink.json') for arm in ARMS[1:]), str(out/'summary.json')}
     assert write_manifest(Namespace(output=out, elapsed_s=1., arms_from=None))['validator']['passed'] is False
+
+
+@pytest.mark.parametrize('kind', ['normal', 'iv_window8'])
+def test_same_allocation_gate_uses_reviewed_evaluator_and_rejects_perturbed_gold_outputs(rbbase, monkeypatch, kind):
+    """The gate reference comes from rb1_intervene.evaluate_history, never the gold-only path."""
+    from transformers import AutoTokenizer
+    import rb1_intervene
+    import rb_sink_read
+    from calibrate import MODEL, REVISION
+    from rb_train import adapter_config
+    from test_model import nonzero_exits
+    from test_rb_model import attached
+    from v1_data import encode_candidates
+    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
+    tok.pad_token_id = tok.eos_token_id
+    rows = {'piqa': [{'task': 'piqa', 'id': i, 'goal': 'Move the object ' + 'very '*(3*i) + 'carefully.',
+                      'solutions': ['Lift it up.', 'Drop the table.'], 'label': i % 2} for i in range(3)],
+            'boolq': [{'task': 'boolq', 'id': i, 'passage': 'A red object is on the table. '*(1+2*i),
+                       'question': 'Is there an object on the table?', 'label': i % 2 == 0} for i in range(3)]}
+    splits = {'splits': {task: {'dev': value} for task, value in rows.items()}}
+    encoded = {task: [encode_candidates(tok, row)[rb_sink_read.gold_index(row)] for row in value]
+               for task, value in rows.items()}
+    calls = []
+    real = rb1_intervene.evaluate_history
+
+    def spy(*args, **kwargs):
+        calls.append(args[3] if len(args) > 3 else kwargs.get('kind'))
+        result = real(*args, **kwargs)
+        calls.append(result)
+        return result
+    monkeypatch.setattr(rb1_intervene, 'evaluate_history', spy)
+    sentinel = {'recorded': True}
+    with attached(rbbase, adapter_config('RB1-02')) as model, torch.no_grad():
+        model.eval()
+        nonzero_exits(model)
+        assert rb_sink_read.gating_reference(model, splits, tok, kind, sentinel, False) is sentinel
+        assert not calls
+        summaries, _, nll = rb_sink_read.run_condition(model, rows, encoded, kind,
+            {'piqa': [0, 1], 'boolq': [0, 2]}, 1, tok.pad_token_id)
+        gate = rb_sink_read.gating_reference(model, splits, tok, kind, sentinel, True)
+    # One evaluator call with the condition's kind; the gate is exactly its output.
+    assert calls[0] == (None if kind == 'normal' else kind)
+    _, predictions, reads = calls[1]
+    assert gate == {'predictions': predictions, 'read_diagnostics': reads}
+    # Both candidates were scored by the evaluator (gold-only outputs carry no scores).
+    assert all(len(row['scores']) == 2 for row in gate['predictions'])
+    assert rb_sink_read.compare_reference(gate, kind, summaries, nll)['passed']
+    key = next(iter(nll))
+    bad_nll = {**nll, key: nll[key] + 2e-4}
+    assert not rb_sink_read.compare_reference(gate, kind, summaries, bad_nll)['passed']
+    bad = [dict(r, nonempty_means=dict(r['nonempty_means'])) for r in summaries]
+    bad[0]['nonempty_means']['n_eff'] *= 1 + 1e-5
+    assert not rb_sink_read.compare_reference(gate, kind, bad, nll)['passed']

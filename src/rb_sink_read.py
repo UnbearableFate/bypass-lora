@@ -187,6 +187,20 @@ def compare_reference(reference, condition, summaries, nll, nll_tolerance=NLL_TO
             'passed': passed}
 
 
+def gating_reference(model, splits, tokenizer, condition, recorded, same_allocation):
+    """The gate: the recorded E-0021 run, or E-0021's reviewed evaluator rerun here.
+
+    The same-allocation reference scores both candidates through
+    rb1_intervene.evaluate_history (HistoryView); it never reuses gold-only outputs.
+    """
+    if not same_allocation:
+        return recorded
+    import rb1_intervene
+    _, predictions, reads = rb1_intervene.evaluate_history(
+        model, splits, tokenizer, None if condition == 'normal' else condition)
+    return {'predictions': predictions, 'read_diagnostics': reads}
+
+
 def run(args):
     from rb1_artifacts import validate_formal_run
     out = args.output.resolve()
@@ -221,23 +235,19 @@ def run(args):
         tick = time.monotonic()
         summaries, accumulator, nll = run_condition(model, rows_by_task, encoded_by_task, condition,
                                                     sampled, 1, tokenizer.pad_token_id)
-        gate_reference = reference[condition]
-        e0021_check = None
-        if args.same_allocation_reference:
-            # The reviewed E-0021 batch-one evaluator on this allocation is the gate;
-            # the recorded E-0021 run (another MIG profile) is compared descriptively.
-            from rb1_intervene import evaluate_history
-            _, predictions, reads = evaluate_history(model, splits, tokenizer,
-                                                     None if condition == 'normal' else condition)
-            gate_reference = {'predictions': predictions, 'read_diagnostics': reads}
-            e0021_check = compare_reference(reference[condition], condition, summaries, nll)
+        gate = gating_reference(model, splits, tokenizer, condition, reference[condition],
+                                args.same_allocation_reference)
+        # With a same-allocation gate, the recorded E-0021 run (another MIG profile)
+        # is compared descriptively only (slice rounding, D-0018/D-0019).
+        e0021_check = (compare_reference(reference[condition], condition, summaries, nll)
+                       if args.same_allocation_reference else None)
         result['conditions'][condition] = {
             'e0021_record_check': e0021_check,
             'answer_question_level': accumulator.finish(),
             'read_summary': summaries,
             'window8_share0_max_late': accumulator.window_violation if condition == 'iv_window8' else None,
             'window8_answer_positions_before_8': accumulator.window_short_positions if condition == 'iv_window8' else None,
-            'reference_check': compare_reference(gate_reference, condition, summaries, nll),
+            'reference_check': compare_reference(gate, condition, summaries, nll),
             'elapsed_s': time.monotonic()-tick}
         write_json(out/'sink.json', result)
         if not result['conditions'][condition]['reference_check']['passed']:
@@ -305,6 +315,11 @@ def summarize(args):
         value = json.loads(Path(path).read_text())
         reference = json.loads((Path(value['provenance']['reference_run'])/'conditions.json').read_text())
         value['concentrated'] = concentrated_layers(reference['normal'])
+        value['source'] = {'attempt': Path(path).resolve().parents[1].name,
+                           'commit': value['provenance']['source_commit'],
+                           'gate_reference': value['provenance'].get('gate_reference', 'recorded E-0021 run'),
+                           'hardware': value['provenance']['hardware'],
+                           'reference_hardware': value['provenance'].get('reference_hardware')}
         arms[value['arm']] = value
     report = build_report(arms)
     write_json(args.output, report)
@@ -322,8 +337,10 @@ def build_report(arms):
     passed = (all(c['strict_ok'] and c['window8_ok'] for c in checks.values()) and
               all(all(v.values()) for v in references.values()))
     report = {'contract': 'E-0024@1', 'arms': {arm: {'concentrated': v['concentrated'],
+              'source': v.get('source'),
               'position0_token': v['position0_token'], 'conditions': {
-                  c: {k: v['conditions'][c][k] for k in ('answer_question_level', 'reference_check',
+                  c: {k: v['conditions'][c].get(k) for k in ('answer_question_level', 'reference_check',
+                      'e0021_record_check',
                       'window8_share0_max_late', 'window8_answer_positions_before_8', 'elapsed_s')}
                   for c in CONDITIONS}} for arm, v in arms.items()},
               'consistency': checks, 'reference_checks_passed': references, 'checks_passed': passed,
