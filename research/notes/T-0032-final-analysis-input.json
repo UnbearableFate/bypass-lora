@@ -1,0 +1,36 @@
+{
+  "training_source_commit": "dc82cfc6c1f642f9380596a6be3244dafd4147a4",
+  "up_lr_lock": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0362-1/lr-lock.json",
+  "up_lr_lock_sha256": "dcd6488206ce249b5aa4233c1517d1aede7fcda31c34df3927d67f4467975062",
+  "smoke_manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0354-1/manifest.json",
+  "e0028_analysis": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0345-1/analysis.json",
+  "x01_source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "base_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1",
+  "reference_runs": {
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1",
+    "X-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1"
+  },
+  "training_runs": {
+    "G-T": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0363-1",
+    "G-QN": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0364-1",
+    "G-N": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0365-1",
+    "Q-N": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0366-1",
+    "P-T": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0367-1",
+    "P-N": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0368-1",
+    "L-56": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0369-1",
+    "L-48": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0370-1"
+  },
+  "ig_initializations": {
+    "G-T": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0354-1/ig-G-T",
+    "G-QN": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0355-1",
+    "G-N": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0356-1"
+  },
+  "reference_diagnostics": {
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0371-1/read-diagnostics.json",
+    "X-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0372-1/read-diagnostics.json"
+  },
+  "observations": [
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-2/research/notes/T-0032-final-scheduler-usage.json"
+  ]
+}
