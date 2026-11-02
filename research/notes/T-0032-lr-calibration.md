@@ -30,7 +30,45 @@ Notification N-20261103-000608-66da /T0032-up-lora-portable-grid is sealed3,
 earlyfailure enabled. Daemon is running; coordinator was sent its listener
 command in MSG-0915. The NEW input list is
 T-0032-up-lr-grid-portable-input.json. Never use the historical f46 input list
-or any candidate from it. Current results/usage are unreported until completion.
+or any candidate from it.
+
+The fresh three-candidate grid passed. All have initial parameter SHA
+b70142c4659891f51bcf7e73877414bc5328e3d19784850f888835e5f84767bf across
+runtime1g/2g slices, same pinned source/environment/split,1096steps,
+2192examples,200229tokens and full4096 calibration rows. No dev read.
+RES-0331/0332/0333 and U-0364/0365/0366 imported; usage respectively
+.159722/.139167/.144722 MIG-h, PBS575/501/521seconds.
+
+PBS planner ATT-0360-1 /3778462.opbs passed (RES-0334), validating all
+paired membership, first-full-step accounting and config/prediction/step
+inventories. Common calibration membership SHA
+9456fa1135867074cd55cd7fcc8a13cda750505a1609515ee64a6229e1fb3786.
+Raw NLLs:1e-4=1.6332635864615674,3e-4=1.6198896945761796,
+1e-3=1.5845674809325805. Its lr-plan.json SHA is
+60430bc8e55dc30e9b37b5f46c25e63def387a23d63775dba073b94ee3d5acb5;
+required_extension=.003 and locked_lrs is empty. U-0367=.003333MIG-h
+for12PBSseconds. Measured total now.4090965node-h, before endpoint usage.
+
+The ONE prescribed endpoint3e-3 is ATT-0361-1 /3778478.opbs, submitted at
+00:22JST on dc82cfc; expected575s, wall14:30, no slice pinning. Notification
+N-20261103-002234-3b6f /T0032-up-lora-portable-endpoint is sealed1 and
+earlyfailure enabled. MSG-0918 sent its listener to the coordinator; daemon
+is running. No LR has been selected/locked and no formal/dev run submitted.
+
+On endpoint completion, verify the same common init and full budget/membership
+(or typed nonfinite exclusion), import result/terminal/exactusage, then
+register/run PBS lr-lock with T-0032-up-lr-final-portable-input.json. This
+four-manifest list replaces only the planner input; keep the three-manifest
+input immutable because RES-0334 refers to it. No additional extensions.
+Inspect the artifact-bound lock before registering all8 formal arms.
+
+Formal source stays dc82cfc (later commits are notes only). Use locked up LR
+for L-56/L-48 and.001 for six side arms, and pass the new up lock to every
+formal arm. Reuse G-T initialization runs/ATT-0354-1/ig-G-T, G-QN
+runs/ATT-0355-1, G-N runs/ATT-0356-1. The source table forecasts each formal
+arm3928–4449seconds; choose short-mig and walltime approximately1.5x its
+measured forecast, not the8h queue cap. Create a NEW expected8 notification,
+send its listener/id to coordinator, record task WAIT, then end the turn.
 
 RV-0090/RV-0092 passed. RV-0092's remaining low is accepted for this run:
 without X-01 the implementation conservatively defers some already decidable
