@@ -130,3 +130,21 @@ running as PBS `3780105.opbs` (debug-mig, 2-minute walltime from measured
 The coordinator must resume this role on the review answer or job notification.
 Before formal runs, inspect/import these outputs and measured usage, resolve
 review findings and rerun affected checks if the candidate source changes.
+
+Candidate checks ATT-0376-1 are now independently validated and imported as
+RES-0350. The complete manifest pins `61cd97b` and the correct RunSpec digest;
+checks.log and checks.xml agree on 397 passed, zero failures/errors/skips.
+The in-job allocation record confirms compute host mg1098 and PBS 3780105;
+torch reports the actual 2g.24gb slice. U-0385 records 0.020278 MIG-hour
+(73 scheduler seconds), or 0.0050695 node-hour. Total measured task usage
+before review/training is 0.035139 node-hour. Adding this check to the earlier
+projection conservatively gives 4.30562506125148 node-hour (the earlier
+checks/analysis reserve remains included).
+
+ATT-0376-1 manifest SHA256:
+`73feb6a959e91be180b05ccf9d47f05bd6892ccea1c89e922488b3ea598cc350`.
+checks.xml SHA256:
+`2fd857ed4cf97a3e08bc9eaaa9c8928edfdc40eb6dc1342ecbc68c0fa003466a`.
+The PBS ledger application verdict is verified_success. RV-0097 is still
+pending with reviewer-2; no reviewed file changed, and no formal training or
+A2 evaluation has been registered. Resume on that review answer.
