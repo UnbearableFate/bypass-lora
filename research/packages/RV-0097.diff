@@ -1,0 +1,2437 @@
+diff --git a/research/notes/T-0033-run.pbs b/research/notes/T-0033-run.pbs
+new file mode 100644
+index 0000000..5d6c4d5
+--- /dev/null
++++ b/research/notes/T-0033-run.pbs
+@@ -0,0 +1,60 @@
++#!/bin/bash
++# E-0030 stages execute only from registered immutable snapshots in PBS.
++set -euo pipefail
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_CODE_COMMIT:?registered source required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++: "${SEG_STAGE:?registered stage required}"
++SEG_PROJECT=/work/xg24i002/x10041/bypass-lora
++SEG_SOURCE="$SEG_PROJECT/snapshots/$SR_CODE_COMMIT"
++SEG_OUT="$SEG_PROJECT/research/artifacts/$SR_ATTEMPT_ID"
++SEG_PY="$SEG_PROJECT/envs/3c916b51337d-cuda/bin/python"
++mkdir -p "$SEG_OUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$SEG_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
++  > "$SEG_OUT/allocation.json"
++/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$SEG_OUT/allocation.json"
++if [ "$SEG_STAGE" = smoke ]; then
++  /usr/bin/python3 -I "$SEG_SOURCE/src/mig_profile_guard.py" --output "$SEG_OUT"
++else
++  nvidia-smi -L > "$SEG_OUT/nvidia-smi.txt"
++fi
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$SEG_SOURCE/src"
++export TMPDIR="/local/${PBS_JOBID}/seg-a2-$SEG_STAGE"
++mkdir -p "$TMPDIR"
++cd "$SEG_SOURCE"
++DATA=(--data-dir "$SEG_PROJECT/data/v1"
++      --split-manifest "$SEG_SOURCE/research/artifacts/T-0022/rb-confirmation.json"
++      --lr-lock "$SEG_SOURCE/research/artifacts/T-0024/lr-lock.json")
++case "$SEG_STAGE" in
++  smoke|checks)
++    exec "$SEG_PY" src/seg_a2_smoke.py --mode "$SEG_STAGE" "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  train)
++    : "${SEG_ARM:?registered arm required}" "${SEG_SEED:?registered seed required}"
++    exec "$SEG_PY" src/seg_train.py --arm "$SEG_ARM" --stage train --seed "$SEG_SEED" \
++      "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  lock)
++    : "${SEG_INPUT:?preopening input required}"
++    exec "$SEG_PY" src/seg_a2_lock.py --input "$SEG_INPUT" --output "$SEG_OUT"
++    ;;
++  a2)
++    : "${SEG_SEED:?registered seed required}" "${SEG_LOCK:?confirmed lock required}" \
++      "${SEG_LOCK_SHA256:?confirmed lock digest required}" "${SEG_CONFIRMATION_DECISION:?coordinator decision required}"
++    exec "$SEG_PY" src/seg_a2_eval.py --seed "$SEG_SEED" --lock "$SEG_LOCK" --lock-sha256 "$SEG_LOCK_SHA256" \
++      --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT" --unseal
++    ;;
++  analysis)
++    : "${SEG_INPUT:?analysis input required}" "${SEG_LOCK:?confirmed lock required}" \
++      "${SEG_LOCK_SHA256:?confirmed lock digest required}"
++    exec "$SEG_PY" src/seg_a2_analysis.py --input "$SEG_INPUT" --lock "$SEG_LOCK" \
++      --lock-sha256 "$SEG_LOCK_SHA256" --output "$SEG_OUT"
++    ;;
++  *) exit 2 ;;
++esac
+diff --git a/src/seg_a2_analysis.py b/src/seg_a2_analysis.py
+new file mode 100644
+index 0000000..dfb34ee
+--- /dev/null
++++ b/src/seg_a2_analysis.py
+@@ -0,0 +1,388 @@
++"""Authenticate and analyze the locked E-0030 A2 evaluation outputs in PBS."""
++import argparse
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import re
++import time
++
++from rb1_analysis import measured_cost
++from rb1_artifacts import read, reference
++from rb_history import donor_indices
++from seg_a2_data import ARMS, CONTRACT, SEEDS, verify_lock
++from seg_a2_rules import IMPLEMENTATION_CHECKS, analyze as apply_rules
++from seg_artifacts import validate_rows as validate_dev_rows
++
++TASKS = ('piqa', 'boolq')
++CONDITIONS = ('SEG-00', *ARMS, 'SEG-05/iv_swap', 'SEG-05/iv_off')
++ATTEMPT_RE = re.compile(r'ATT-\d+-\d+')
++
++
++def _finite(value, label):
++    if type(value) not in (int, float) or not math.isfinite(value):
++        raise ValueError(f'{label} must be finite')
++    return float(value)
++
++
++def validate_prediction_rows(rows, expected=None, label='A2'):
++    """Validate A2 rows and their candidate argmax, NLL, and paired order."""
++    if not isinstance(rows, list):
++        raise ValueError(f'{label}: predictions must be a list')
++    identities = []
++    for row in rows:
++        if not isinstance(row, dict):
++            raise ValueError(f'{label}: malformed prediction row')
++        if (row.get('split') != 'a2' or row.get('task') not in TASKS or
++                type(row.get('id')) is not int):
++            raise ValueError(f'{label}: unexpected split/task/id')
++        if type(row.get('gold')) is not int or row['gold'] not in (0, 1):
++            raise ValueError(f'{label}: gold must be binary')
++        scores = row.get('scores')
++        if (not isinstance(scores, list) or len(scores) != 2 or
++                any(type(score) not in (int, float) or not math.isfinite(score) for score in scores)):
++            raise ValueError(f'{label}: two finite candidate scores required')
++        if type(row.get('prediction')) is not int or row['prediction'] not in (0, 1):
++            raise ValueError(f'{label}: prediction must be binary')
++        if row['prediction'] != (0 if scores[0] >= scores[1] else 1):
++            raise ValueError(f'{label}: prediction does not follow the V1 tie rule')
++        tokens = row.get('gold_loss_tokens')
++        if type(tokens) is not int or tokens <= 0:
++            raise ValueError(f'{label}: invalid gold answer token count')
++        nll = _finite(row.get('gold_nll_sum'), f'{label}: gold NLL')
++        if nll < 0:
++            raise ValueError(f'{label}: negative gold NLL')
++        gold_score = -nll / (tokens if row['task'] == 'piqa' else 1)
++        if not math.isclose(scores[row['gold']], gold_score, rel_tol=1e-12, abs_tol=1e-12):
++            raise ValueError(f'{label}: gold candidate score differs from answer NLL')
++        identities.append((row['task'], row['id'], row['gold'], tokens))
++    if len({(task, row_id) for task, row_id, _, _ in identities}) != len(identities):
++        raise ValueError(f'{label}: duplicate task/id')
++    if len(rows) != 2000 or any(sum(row['task'] == task for row in rows) != 1000 for task in TASKS):
++        raise ValueError(f'{label}: exactly 1000 rows per task are required')
++    if expected is not None and identities != expected:
++        raise ValueError(f'{label}: paired A2 IDs/gold/token order differs')
++    return rows
++
++
++def check_dev_gate(actual, expected, hardware, training_hardware):
++    """Recompute the pre-opening gate using the locked same/different-slice rule."""
++    validate_dev_rows(expected)
++    validate_dev_rows(actual, [(row['task'], row['id'], row['gold']) for row in expected])
++    if not isinstance(hardware, str) or not hardware or not isinstance(training_hardware, str) or not training_hardware:
++        raise ValueError('dev gate requires recorded evaluation and training hardware')
++    mismatches = sum(a['prediction'] != b['prediction'] for a, b in zip(actual, expected))
++    same = hardware == training_hardware
++    identical = actual == expected
++    return {'passed': identical if same else mismatches <= 10,
++            'same_hardware': same, 'prediction_mismatches': mismatches,
++            'rows_identical': identical, 'hardware': hardware,
++            'training_hardware': training_hardware}
++
++
++def _summary(rows):
++    result = {}
++    for task in TASKS:
++        subset = [row for row in rows if row['task'] == task]
++        correct = sum(row['prediction'] == row['gold'] for row in subset)
++        tokens = sum(row['gold_loss_tokens'] for row in subset)
++        result[task] = {'correct': correct, 'total': len(subset), 'accuracy': correct / len(subset),
++                        'nll': sum(row['gold_nll_sum'] for row in subset) / tokens,
++                        'loss_tokens': tokens}
++    result['macro_accuracy'] = sum(result[t]['accuracy'] for t in TASKS) / 2
++    result['macro_nll'] = sum(result[t]['nll'] for t in TASKS) / 2
++    return result
++
++
++def _check_condition_metrics(rows, metrics, label):
++    summary = _summary(rows)
++    for task in TASKS:
++        expected = {f'a2.{task}.accuracy': summary[task]['accuracy'],
++                    f'a2.{task}.nll': summary[task]['nll'],
++                    f'a2.{task}.examples': summary[task]['total'],
++                    f'a2.{task}.loss_tokens': summary[task]['loss_tokens']}
++        for key, value in expected.items():
++            recorded = metrics.get(key)
++            if type(recorded) not in (int, float) or not math.isfinite(recorded) or not math.isclose(
++                    recorded, value, rel_tol=1e-12, abs_tol=1e-12):
++                raise ValueError(f'{label}: recorded metric {key} differs from predictions')
++    if not math.isclose(metrics.get('a2.nll', float('nan')), summary['macro_nll'], rel_tol=1e-12, abs_tol=1e-12):
++        raise ValueError(f'{label}: recorded macro NLL differs from predictions')
++    return summary
++
++
++def _check_lock_checks(lock):
++    pre = lock['preopening_checks']
++    if pre.get('passed') is not True or not isinstance(pre.get('checks'), dict):
++        raise ValueError('lock pre-opening checks need passed=true and per-seed checks')
++    for field in ('deterministic', 'smoke'):
++        ref = pre.get(field)
++        if not isinstance(ref, dict) or reference(ref.get('path', '')) != ref:
++            raise ValueError(f'pre-opening {field} producer reference changed')
++        producer = read(ref['path'])
++        if (producer.get('status') != 'complete' or producer.get('validator', {}).get('passed') is not True or
++                re.fullmatch(r'[0-9a-f]{40}', str(producer.get('source_commit'))) is None or
++                re.fullmatch(r'(?:blake2b:)?[0-9a-f]{64}', str(producer.get('spec_digest'))) is None):
++            raise ValueError(f'pre-opening {field} producer did not complete under this spec')
++        if field == 'deterministic' and (
++                producer.get('source_commit') != lock['evaluation_source'] or
++                producer.get('metrics', {}).get('no_channel_identity') is not True or
++                producer.get('metrics', {}).get('no_channel_seeds') != list(SEEDS)):
++            raise ValueError('deterministic producer does not bind the locked source and all new seeds')
++        if field == 'smoke' and producer.get('metrics', {}).get('preopening.loader_equivalence_seeds') != [0, 1, 2]:
++            raise ValueError('smoke producer lacks the locked loader equivalence check')
++    if set(pre['checks']) != {str(seed) for seed in SEEDS}:
++        raise ValueError('pre-opening checks must cover seeds 3, 4 and 5')
++    checked = {}
++    for seed in SEEDS:
++        checks = pre['checks'][str(seed)]
++        if not isinstance(checks, dict) or set(checks) != set(IMPLEMENTATION_CHECKS):
++            raise ValueError(f'seed {seed} pre-opening implementation check set differs')
++        checked[seed] = {key: checks[key] is True for key in IMPLEMENTATION_CHECKS}
++        if not all(checked[seed].values()):
++            raise ValueError(f'seed {seed} pre-opening implementation checks did not all pass')
++    return checked
++
++
++def _verify_eval(seed, root, lock, lock_path, lock_sha256, expected_ids):
++    root = Path(root).resolve()
++    if not root.is_dir() or ATTEMPT_RE.fullmatch(root.name) is None:
++        raise ValueError(f'seed {seed} evaluation root must be a registered ATT directory')
++    manifest_path = root / 'manifest.json'
++    manifest = read(manifest_path)
++    metrics = manifest.get('metrics', {})
++    if (manifest.get('status') != 'complete' or manifest.get('contract') != CONTRACT or
++            manifest.get('arm') != 'A2' or manifest.get('seed') != seed or
++            manifest.get('stage') != 'a2_evaluation' or manifest.get('validator', {}).get('passed') is not True or
++            metrics.get('lock.sha256') != lock_sha256 or metrics.get('source.commit') != lock['evaluation_source']):
++        raise ValueError(f'seed {seed} A2 evaluation manifest identity/lock/source is invalid')
++    if metrics.get('conditions') != len(CONDITIONS) or metrics.get('a2_rows') != 2000:
++        raise ValueError(f'seed {seed} A2 evaluation manifest condition/row count differs')
++    if re.fullmatch(r'(?:blake2b:)?[0-9a-f]{64}', str(manifest.get('spec_digest'))) is None:
++        raise ValueError(f'seed {seed} A2 evaluation spec digest is malformed')
++    artifacts = {item.get('role'): item.get('path') for item in manifest.get('artifacts', [])}
++    if set(artifacts) != {'dev-reproduction.json', 'conditions.json', 'provenance.json', 'a2-read.jsonl'}:
++        raise ValueError(f'seed {seed} A2 manifest artifact inventory differs')
++    for role, path in artifacts.items():
++        p = Path(path).resolve()
++        if p != root / role or not p.is_file():
++            raise ValueError(f'seed {seed} A2 artifact {role} path is invalid')
++    provenance = read(root / 'provenance.json')
++    lock_ref = reference(lock_path)
++    if (provenance.get('lock') != lock_ref or provenance.get('seed') != seed or
++            provenance.get('training_source') != lock['training_source'] or
++            provenance.get('evaluation_source') != lock['evaluation_source'] or
++            provenance.get('inputs') != lock['runs'][str(seed)] or
++            provenance.get('job_id') != metrics.get('exec.pbs_job_id') or
++            provenance.get('hardware') != metrics.get('hardware')):
++        raise ValueError(f'seed {seed} A2 provenance differs from locked source/run/receipt')
++    receipt_file = root / 'a2-read.jsonl'
++    receipts = [json.loads(line) for line in receipt_file.read_text().splitlines() if line.strip()]
++    if len(receipts) != 1:
++        raise ValueError(f'seed {seed} needs exactly one A2 read receipt')
++    receipt = receipts[0]
++    if (receipt.get('lock_sha256') != lock_sha256 or receipt.get('seed') != seed or
++            receipt.get('arm') != 'SEG-05' or receipt.get('pbs_job_id') != provenance.get('job_id') or
++            receipt.get('hardware') != provenance.get('hardware') or not receipt.get('time_utc')):
++        raise ValueError(f'seed {seed} A2 read receipt differs from its job/provenance')
++
++    dev = read(root / 'dev-reproduction.json')
++    entries = lock['runs'][str(seed)]
++    expected_dev = read(entries['SEG-05']['predictions']['path'])
++    expected_dev_ids = [(row['task'], row['id'], row['gold']) for row in expected_dev]
++    validate_dev_rows(expected_dev)
++    actual_dev = validate_dev_rows(dev.get('predictions'), expected_dev_ids)
++    training_manifest = read(entries['SEG-05']['manifest']['path'])
++    gate = check_dev_gate(actual_dev, expected_dev, provenance['hardware'],
++                          training_manifest['metrics']['hardware'])
++    if dev.get('check') != gate or metrics.get('path.dev_gate') != gate or not gate['passed']:
++        raise ValueError(f'seed {seed} path dev reproduction gate failed or was altered')
++
++    conditions = read(root / 'conditions.json')
++    if not isinstance(conditions, dict) or set(conditions) != set(CONDITIONS):
++        raise ValueError(f'seed {seed} A2 condition set differs from lock')
++    predictions = {}
++    summaries = {}
++    canonical = None
++    for condition in CONDITIONS:
++        entry = conditions[condition]
++        rows = validate_prediction_rows(entry.get('predictions'), canonical,
++                                        f'seed {seed} {condition}')
++        identities = [(r['task'], r['id'], r['gold'], r['gold_loss_tokens']) for r in rows]
++        if canonical is None:
++            canonical = identities
++            if [(task, row_id) for task, row_id, _, _ in identities] != expected_ids:
++                raise ValueError(f'seed {seed} {condition} IDs/order differ from the locked A2 split')
++        summaries[condition] = _check_condition_metrics(rows, entry.get('metrics', {}),
++                                                        f'seed {seed} {condition}')
++        predictions[condition] = rows
++    base_rows = predictions['SEG-00']
++    off_rows = predictions['SEG-05/iv_off']
++    off_identical = off_rows == base_rows
++    if not off_identical or metrics.get('off.identical_to_Base_seg') is not True:
++        raise ValueError(f'seed {seed} same-job A2 iv_off/Base identity failed')
++
++    donor_rows = [{'task': row['task'], 'id': row['id']} for row in base_rows]
++    donors = donor_indices(donor_rows, 'A2')
++    expected_donors = [{'task': row['task'], 'recipient': row['id'],
++                        'donor': donor_rows[donors[i]]['id']}
++                       for i, row in enumerate(donor_rows)]
++    actual_donors = conditions['SEG-05/iv_swap'].get('audit', {}).get('donors')
++    if actual_donors != expected_donors:
++        raise ValueError(f'seed {seed} iv_swap donor map differs from the locked A2 derangement')
++    return {'root': str(root), 'manifest': reference(manifest_path),
++            'artifacts': {role: reference(path) for role, path in artifacts.items()},
++            'provenance': provenance, 'receipt': receipt, 'path_gate': gate,
++            'predictions': predictions, 'summaries': summaries,
++            'base_rows': base_rows, 'iv_off_matches_base': off_identical,
++            'donor_map': actual_donors}
++
++
++def _counts(rows):
++    result = {}
++    for arm, predictions in rows.items():
++        task_result = {}
++        for task in TASKS:
++            subset = [row for row in predictions if row['task'] == task]
++            task_result[task] = (sum(row['prediction'] == row['gold'] for row in subset), len(subset))
++        result[arm] = task_result
++    return result
++
++
++def _complete_cost(inputs, roots, lock):
++    declared = inputs.get('accounted_attempts')
++    if (not isinstance(declared, list) or not declared or len(set(declared)) != len(declared) or
++            any(not isinstance(attempt, str) or ATTEMPT_RE.fullmatch(attempt) is None for attempt in declared)):
++        raise ValueError('analysis requires the complete unique accounted_attempts list')
++    required_paths = [Path(root).resolve() for root in roots]
++    required_paths.extend(Path(entry['root']).resolve()
++                          for by_arm in lock['runs'].values() for entry in by_arm.values())
++    required_paths.extend(Path(lock['preopening_checks'][field]['path']).resolve().parent
++                          for field in ('deterministic', 'smoke'))
++    required_attempts = {path.name for path in required_paths}
++    if any(ATTEMPT_RE.fullmatch(attempt) is None for attempt in required_attempts):
++        raise ValueError('locked run, smoke, and pre-opening check paths must name registered ATT attempts')
++    if not required_attempts <= set(declared):
++        raise ValueError('accounting list omits a training, pre-opening, or A2 evaluation attempt')
++    cost = measured_cost(inputs['observations'])
++    if {row['attempt'] for row in cost['rows']} != set(declared):
++        raise ValueError('measured terminal cost coverage differs from accounted_attempts')
++    cost.update({'required_attempts': sorted(declared), 'terminal_coverage_complete': True,
++                 'cap_node_h': 5.5, 'within_cap': cost['node_h'] <= 5.5,
++                 'current_analysis_usage': 'pending; add terminal measured usage in delivery'})
++    return cost
++
++
++def analyze(inputs, lock_path, lock_sha256):
++    if not isinstance(inputs, dict) or set(inputs) != {'evaluations', 'observations', 'accounted_attempts'}:
++        raise ValueError('analysis input needs evaluations, observations, and accounted_attempts')
++    if not isinstance(inputs['evaluations'], dict) or set(inputs['evaluations']) != {str(s) for s in SEEDS}:
++        raise ValueError('analysis needs one A2 evaluation root for each seed 3, 4 and 5')
++    lock_path = Path(lock_path).resolve()
++    lock = verify_lock(lock_path, lock_sha256)
++    lock_checks = _check_lock_checks(lock)
++    split = read(lock['split_manifest']['path'])
++    ids = split.get('ids')
++    if not isinstance(ids, dict) or set(ids) != set(TASKS) or any(len(ids[t]) != 1000 for t in TASKS):
++        raise ValueError('locked A2 split needs 1000 ordered IDs per task')
++    expected_id_order = [(task, row_id) for task in TASKS for row_id in ids[task]]
++    verified = {}
++    for seed in SEEDS:
++        verified[seed] = _verify_eval(seed, inputs['evaluations'][str(seed)], lock, lock_path,
++                                      lock_sha256, expected_id_order)
++    # Cross-seed A2 membership, gold labels, and tokenization must be paired.
++    canonical_rows = verified[3]['base_rows']
++    canonical = [(r['task'], r['id'], r['gold'], r['gold_loss_tokens']) for r in canonical_rows]
++    for seed in (4, 5):
++        rows = verified[seed]['base_rows']
++        if [(r['task'], r['id'], r['gold'], r['gold_loss_tokens']) for r in rows] != canonical:
++            raise ValueError(f'seed {seed} A2 Base rows differ from seed 3 paired membership/gold')
++
++    counts = {}
++    interval_rows = {}
++    checks = {}
++    seed_reports = {}
++    for seed in SEEDS:
++        predictions = verified[seed]['predictions']
++        counts[seed] = {arm: _counts({arm: predictions[arm]})[arm]['boolq'] for arm in ARMS}
++        counts[seed]['SEG-05/iv_swap'] = _counts({'SEG-05/iv_swap': predictions['SEG-05/iv_swap']})['SEG-05/iv_swap']['boolq']
++        interval_rows[seed] = {arm: [int(row['prediction'] == row['gold']) for row in predictions[arm]
++                                     if row['task'] == 'boolq']
++                               for arm in (*ARMS, 'SEG-05/iv_swap')}
++        check = dict(lock_checks[seed])
++        check.update({'path_dev_same_hardware': verified[seed]['path_gate']['same_hardware'],
++                      'path_dev_mismatch_count': verified[seed]['path_gate']['prediction_mismatches'],
++                      'a2_iv_off_matches_base': verified[seed]['iv_off_matches_base']})
++        checks[seed] = check
++        seed_reports[str(seed)] = {
++            'conditions': verified[seed]['summaries'],
++            'dev_training': {
++                arm: _summary(validate_dev_rows(read(lock['runs'][str(seed)][arm]['predictions']['path'])))
++                for arm in ARMS
++            },
++            'boolq_correct_counts': {arm: list(counts[seed][arm]) for arm in counts[seed]},
++            'path_dev_gate': verified[seed]['path_gate'],
++            'iv_off_matches_base': verified[seed]['iv_off_matches_base'],
++            'iv_swap_donors': verified[seed]['donor_map'],
++            'provenance': verified[seed]['provenance'],
++            'receipt': verified[seed]['receipt'],
++            'artifact_refs': {'manifest': verified[seed]['manifest'], **verified[seed]['artifacts']},
++        }
++    base_count = _counts({'SEG-00': verified[3]['base_rows']})['SEG-00']['boolq']
++    result = apply_rules(counts, checks, base_count, interval_rows)
++    base_mismatches = {str(seed): sum(
++        a['prediction'] != b['prediction'] for a, b in zip(verified[3]['base_rows'], verified[seed]['base_rows']))
++        for seed in SEEDS}
++    roots = [inputs['evaluations'][str(seed)] for seed in SEEDS]
++    cost = _complete_cost(inputs, roots, lock)
++    return {**result, 'contract': CONTRACT, 'hypothesis': 'H-0029@1', 'stage': 'final',
++            'lock': {'path': str(lock_path), 'sha256': lock_sha256}, 'seeds': seed_reports,
++            'base_seg_seed3_boolq': {'correct': base_count[0], 'total': base_count[1]},
++            'cross_job_base_prediction_mismatches_vs_seed3': base_mismatches,
++            'cost': cost,
++            'limitations': [
++                'The paired 95% intervals quantify A2 BoolQ row sampling only; they exclude variation across the three trained seeds.',
++                'Only three new seeds were evaluated. The confirmatory claim is limited to A2 BoolQ at the locked r128 setting.',
++                'PIQA, macro accuracy, NLL, per-seed results, and dev comparisons are descriptive.',
++                'No hypothesis status is changed by this analysis.',
++            ]}
++
++
++def _write_json(path, value):
++    Path(path).write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + '\n')
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--lock', type=Path, required=True)
++    parser.add_argument('--lock-sha256', required=True)
++    parser.add_argument('--input', type=Path, required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=True)
++    started = time.monotonic()
++    passed = False
++    try:
++        report = analyze(read(args.input), args.lock, args.lock_sha256)
++        analysis_path = output / 'analysis.json'
++        _write_json(analysis_path, report)
++        digest = hashlib.sha256(analysis_path.read_bytes()).hexdigest()
++        (output / 'analysis.sha256').write_text(f'{digest}  analysis.json\n')
++        passed = True
++    finally:
++        _write_json(output / 'manifest.json', {
++            'status': 'complete' if passed else 'partial', 'contract': CONTRACT,
++            'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'metrics': {'elapsed_s': time.monotonic() - started, 'bootstrap.repeats': 10000,
++                        'bootstrap.seed': 20261101, 'confirmation_evaluated': passed,
++                        'lock.sha256': args.lock_sha256},
++            'artifacts': [{'path': str(output / name), 'role': name}
++                          for name in ('analysis.json', 'analysis.sha256') if (output / name).is_file()],
++            'validator': {'name': 'segmented_locked_a2_analysis', 'passed': passed},
++        })
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_a2_data.py b/src/seg_a2_data.py
+new file mode 100644
+index 0000000..8a6579f
+--- /dev/null
++++ b/src/seg_a2_data.py
+@@ -0,0 +1,230 @@
++"""E-0030 A2 lock verification and gated, ID-only split selection.
++
++This module deliberately keeps model evaluation out of the reader.  The only
++operation that opens the V1 source data is ``read_a2`` and it is gated by a
++verified lock and an explicit ``unseal=True`` argument.
++"""
++import argparse
++from datetime import datetime, timezone
++import hashlib
++import json
++import os
++from pathlib import Path
++import re
++
++from rb_data import confirmation_manifest
++
++CONTRACT = 'E-0030@1'
++SEEDS = (3, 4, 5)
++ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
++EVALUATION_ARMS = ('SEG-00', *ARMS)
++MODEL_REVISION = 'da87bfb608c14b7cf20ba1ce41287e8de496c0cd'
++SPLIT_MANIFEST_SHA256 = '34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc'
++BASE_SEED = 20261101
++STUDY = 'residual_la_v21'
++EVALUATION = {
++    'split': 'a2', 'tasks': ['piqa', 'boolq'], 'examples_per_task': 1000,
++    'max_length': 512,
++    'conditions': ['SEG-00', 'SEG-04', 'SEG-05', 'SEG-06', 'SEG-07',
++                   'SEG-05/iv_swap', 'SEG-05/iv_off'],
++}
++BOOTSTRAP = {
++    'seed': 20261101, 'repeats': 10000,
++    'method': 'shared_boolq_rows_recompute_max_linear_quantile',
++}
++
++
++def _read(path):
++    return json.loads(Path(path).read_text())
++
++
++def _reference(path):
++    path = Path(path).resolve()
++    data = path.read_bytes()
++    if not data:
++        raise ValueError(f'empty artifact: {path}')
++    return {'path': str(path), 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
++
++
++def _verify_reference(ref, label):
++    if not isinstance(ref, dict) or set(ref) != {'path', 'sha256', 'bytes'}:
++        raise ValueError(f'{label} reference has an unexpected schema')
++    if not isinstance(ref['path'], str) or not ref['path']:
++        raise ValueError(f'{label} reference path is invalid')
++    if re.fullmatch(r'[0-9a-f]{64}', str(ref['sha256'])) is None:
++        raise ValueError(f'{label} reference SHA256 is invalid')
++    if type(ref['bytes']) is not int or ref['bytes'] <= 0:
++        raise ValueError(f'{label} reference byte count is invalid')
++    path = Path(ref['path']).resolve()
++    if not path.is_file() or _reference(path) != ref:
++        raise ValueError(f'{label} reference hash/size binding changed')
++    return path
++
++
++def _valid_sha(value, length, label):
++    if not isinstance(value, str) or re.fullmatch(r'[0-9a-f]{%d}' % length, value) is None:
++        raise ValueError(f'{label} must be a lowercase {length}-digit SHA')
++
++
++def verify_lock(path, sha256):
++    """Authenticate the complete E-0030 lock and all pinned input artifacts."""
++    path = Path(path).resolve()
++    if not path.is_file():
++        raise ValueError('A2 lock file is missing')
++    _valid_sha(sha256, 64, 'expected lock SHA256')
++    actual_sha = hashlib.sha256(path.read_bytes()).hexdigest()
++    if actual_sha != sha256:
++        raise ValueError('A2 lock SHA256 differs from the caller pin')
++    lock = _read(path)
++    required = {'contract', 'evaluation_source', 'training_source', 'model_revision',
++                'tokenizer_revision', 'split_manifest', 'ids_sha256', 'runs',
++                'evaluation', 'bootstrap', 'derangement', 'preopening_checks'}
++    if not isinstance(lock, dict) or set(lock) != required:
++        raise ValueError('A2 lock schema differs from E-0030@1')
++    if lock['contract'] != CONTRACT:
++        raise ValueError('A2 lock contract is not E-0030@1')
++    _valid_sha(lock['evaluation_source'], 40, 'evaluation_source')
++    _valid_sha(lock['training_source'], 40, 'training_source')
++    env_commit = os.environ.get('SR_CODE_COMMIT')
++    if env_commit is None or lock['evaluation_source'] != env_commit:
++        raise ValueError('A2 evaluation source differs from SR_CODE_COMMIT')
++    if lock['model_revision'] != MODEL_REVISION or lock['tokenizer_revision'] != MODEL_REVISION:
++        raise ValueError('A2 model/tokenizer revision differs from the pinned base revision')
++
++    split_path = _verify_reference(lock['split_manifest'], 'A2 split manifest')
++    if lock['split_manifest']['sha256'] != SPLIT_MANIFEST_SHA256:
++        raise ValueError('A2 split manifest SHA256 differs from the sealed D-0025 file')
++    _valid_sha(lock['ids_sha256'], 64, 'ids_sha256')
++    manifest = _read(split_path)
++    if (not isinstance(manifest, dict) or manifest.get('sealed') is not True or
++            manifest.get('model_evaluated') is not False or
++            manifest.get('ids_sha256') != lock['ids_sha256']):
++        raise ValueError('A2 split manifest identity differs from the lock')
++
++    if lock['evaluation'] != EVALUATION:
++        raise ValueError('A2 evaluation settings differ from E-0030')
++    if lock['bootstrap'] != BOOTSTRAP:
++        raise ValueError('A2 bootstrap settings differ from E-0030')
++    # derive_seed lives in the lightweight data module; no model stack is imported.
++    from v1_data import derive_seed
++    expected_seed = derive_seed(BASE_SEED, STUDY, 'A2', 'iv_swap')
++    if lock['derangement'] != {'seed': expected_seed,
++                               'method': 'within_task_fixed_derangement'}:
++        raise ValueError('A2 derangement settings differ from E-0030')
++
++    runs = lock['runs']
++    if not isinstance(runs, dict) or set(runs) != {str(seed) for seed in SEEDS}:
++        raise ValueError('A2 lock must bind all three new seeds')
++    for seed in SEEDS:
++        by_arm = runs[str(seed)]
++        if not isinstance(by_arm, dict) or set(by_arm) != set(ARMS):
++            raise ValueError(f'A2 lock seed {seed} must bind the four registered arms')
++        for arm in ARMS:
++            entry = by_arm[arm]
++            if not isinstance(entry, dict) or set(entry) != {
++                    'root', 'manifest', 'predictions', 'checkpoint'}:
++                raise ValueError(f'{arm} seed {seed} run entry schema is invalid')
++            root = Path(entry['root']).resolve()
++            if not root.is_dir():
++                raise ValueError(f'{arm} seed {seed} run root is missing')
++            for field in ('manifest', 'predictions'):
++                ref_path = _verify_reference(entry[field], f'{arm} seed {seed} {field}')
++                if root not in ref_path.parents:
++                    raise ValueError(f'{arm} seed {seed} {field} escapes its run root')
++            producer = _read(entry['manifest']['path'])
++            expected_identity = {
++                'contract': CONTRACT, 'status': 'complete', 'arm': arm,
++                'seed': seed, 'phase': 'SEG', 'stage': 'train',
++            }
++            if (any(producer.get(key) != value for key, value in expected_identity.items()) or
++                    producer.get('validator', {}).get('passed') is not True or
++                    producer.get('metrics', {}).get('source.commit') != lock['training_source'] or
++                    producer.get('metrics', {}).get('model_revision') != MODEL_REVISION or
++                    producer.get('metrics', {}).get('tokenizer_revision') != MODEL_REVISION):
++                raise ValueError(f'{arm} seed {seed} producer manifest identity differs from the lock')
++            checkpoint = entry['checkpoint']
++            if not isinstance(checkpoint, dict) or set(checkpoint) != {'config.json', 'adapter.pt'}:
++                raise ValueError(f'{arm} seed {seed} checkpoint inventory is incomplete')
++            for name, ref in checkpoint.items():
++                checkpoint_path = _verify_reference(ref, f'{arm} seed {seed} checkpoint {name}')
++                if checkpoint_path.name != name or root not in checkpoint_path.parents:
++                    raise ValueError(f'{arm} seed {seed} checkpoint path escapes its run root')
++
++    checks = lock['preopening_checks']
++    if not isinstance(checks, dict) or checks.get('passed') is not True:
++        raise ValueError('A2 pre-opening checks are not recorded as passed')
++    return lock
++
++
++def load_a2(original_splits, manifest):
++    """Return V1 splits with each task's A2 rows in sealed manifest order."""
++    expected = confirmation_manifest(original_splits)
++    if manifest != expected:
++        raise ValueError('A2 manifest differs from regenerated D-0025 selection')
++    result = {'splits': {}, 'metadata': dict(original_splits['metadata'])}
++    for task in ('piqa', 'boolq'):
++        rows = original_splits['splits'][task]['train']
++        lookup = {row['id']: row for row in rows}
++        ids = manifest['ids'][task]
++        if len(ids) != 1000 or len(ids) != len(set(ids)) or not set(ids) <= set(lookup):
++            raise ValueError(f'{task} A2 IDs are missing, duplicated, or incomplete')
++        result['splits'][task] = dict(original_splits['splits'][task])
++        held = set(ids)
++        result['splits'][task]['train'] = [row for row in rows if row['id'] not in held]
++        result['splits'][task]['a2'] = [lookup[row_id] for row_id in ids]
++        if [row['id'] for row in result['splits'][task]['a2']] != ids:
++            raise ValueError(f'{task} A2 row order differs from sealed manifest')
++    result['metadata']['a2_ids_sha256'] = manifest['ids_sha256']
++    return result
++
++
++def read_a2(lock_path, lock_sha256, data_dir, output, seed, arm, hardware, *, unseal=False):
++    """Verify, log the opening receipt, then load and select the A2 rows.
++
++    The caller must run the per-seed dev gate before calling this function.
++    No model or evaluator is imported here.
++    """
++    if not unseal:
++        raise ValueError('A2 access requires explicit unseal=True')
++    if seed not in SEEDS or arm not in EVALUATION_ARMS:
++        raise ValueError('A2 read seed/arm is not registered')
++    if not isinstance(hardware, str) or not hardware.strip():
++        raise ValueError('A2 read receipt requires the assigned hardware description')
++    lock_path = Path(lock_path).resolve()
++    lock = verify_lock(lock_path, lock_sha256)
++    receipt_path = Path(output).resolve()
++    receipt_path.mkdir(parents=True, exist_ok=True)
++    receipt = {
++        'time_utc': datetime.now(timezone.utc).isoformat(),
++        'pbs_job_id': os.environ.get('PBS_JOBID'),
++        'lock_sha256': hashlib.sha256(lock_path.read_bytes()).hexdigest(),
++        'seed': seed, 'arm': arm, 'hardware': hardware,
++        'evaluated_conditions': EVALUATION['conditions'],
++    }
++    with (receipt_path / 'a2-read.jsonl').open('a') as handle:
++        handle.write(json.dumps(receipt, sort_keys=True, separators=(',', ':')) + '\n')
++
++    # Import and source-data access occur only after the verification and receipt.
++    from v1_run import prepare
++    original_splits = prepare(data_dir)
++    manifest = _read(lock['split_manifest']['path'])
++    return lock, load_a2(original_splits, manifest)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--lock', type=Path, required=True)
++    parser.add_argument('--sha256', required=True)
++    parser.add_argument('--data-dir', required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--seed', type=int, choices=SEEDS, required=True)
++    parser.add_argument('--arm', choices=EVALUATION_ARMS, required=True)
++    parser.add_argument('--hardware', required=True)
++    parser.add_argument('--unseal', action='store_true')
++    args = parser.parse_args()
++    read_a2(args.lock, args.sha256, args.data_dir, args.output, args.seed,
++            args.arm, args.hardware, unseal=args.unseal)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_a2_eval.py b/src/seg_a2_eval.py
+new file mode 100644
+index 0000000..454bb81
+--- /dev/null
++++ b/src/seg_a2_eval.py
+@@ -0,0 +1,102 @@
++"""One locked E-0030 seed job: dev reproduction gate, then A2 evaluation."""
++import argparse
++import gc
++import os
++from pathlib import Path
++import time
++
++import torch
++
++from rb1_artifacts import read, reference
++from seg_a2_data import ARMS, SEEDS, CONTRACT, verify_lock, read_a2
++from seg_a2_predata import prepare_preopening
++from seg_artifacts import validate, validate_rows
++from seg_eval import evaluate
++from seg_model import make_model
++from seg_train import tokenizer
++from v5_train import write_json
++
++
++def dev_gate(actual, expected, hardware, training_hardware):
++    """Same slice: exact rows; other slice: <=10 class changes on paired rows."""
++    validate_rows(expected)
++    validate_rows(actual, [(r['task'], r['id'], r['gold']) for r in expected])
++    if not hardware or not training_hardware:
++        raise ValueError('dev gate requires measured hardware profiles')
++    flips = sum(a['prediction'] != b['prediction'] for a, b in zip(actual, expected))
++    same = hardware == training_hardware
++    identical = actual == expected
++    return {'passed': identical if same else flips <= 10,
++            'same_hardware': same, 'prediction_mismatches': flips,
++            'rows_identical': identical, 'hardware': hardware,
++            'training_hardware': training_hardware}
++
++
++def run(args):
++    out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, values, start = False, {}, time.monotonic()
++    try:
++        if not args.unseal:
++            raise ValueError('A2 evaluation requires --unseal after coordinator confirmation')
++        lock = verify_lock(args.lock, args.lock_sha256)
++        hardware = torch.cuda.get_device_name()
++        entries = lock['runs'][str(args.seed)]
++        manifests, adapters = {}, {}
++        for arm in ARMS:
++            manifests[arm], _, adapters[arm] = validate(entries[arm]['root'], arm, lock['training_source'], args.seed)
++        tok = tokenizer()
++        dev = prepare_preopening(args.data_dir, Path(lock['split_manifest']['path']))
++        model = make_model('SEG-05', adapters['SEG-05'], seed=args.seed).eval()
++        dm, dp, da = evaluate(model, 'SEG-05', dev, tok)
++        gate = dev_gate(dp, read(entries['SEG-05']['predictions']['path']), hardware,
++                        manifests['SEG-05']['metrics']['hardware'])
++        write_json(out/'dev-reproduction.json', {'check': gate, 'metrics': dm, 'predictions': dp, 'audit': da})
++        values.update({'hardware': hardware, 'exec.pbs_job_id': os.environ.get('PBS_JOBID'),
++                      'lock.sha256': args.lock_sha256, 'path.dev_gate': gate,
++                      'source.commit': os.environ['SR_CODE_COMMIT']})
++        if not gate['passed']:
++            raise ValueError('pre-opening dev reproduction gate failed; A2 remains unopened by this job')
++        del model; gc.collect(); torch.cuda.empty_cache()
++        _, a2 = read_a2(args.lock, args.lock_sha256, args.data_dir, out, args.seed,
++                        'SEG-05', hardware, unseal=True)
++        conditions = {}
++        # This exact condition list and scoring configuration are in the lock.
++        for label in lock['evaluation']['conditions']:
++            arm, _, kind = label.partition('/')
++            model = make_model(arm, None if arm == 'SEG-00' else adapters[arm], seed=args.seed).eval() if arm != 'SEG-00' else make_model('SEG-00').eval()
++            m, p, audit = evaluate(model, arm, a2, tok, kind=kind or 'normal', split_name='a2', donor_phase='A2')
++            conditions[label] = {'metrics': m, 'predictions': p, 'audit': audit}
++            write_json(out/'conditions.json', conditions)
++            del model; gc.collect(); torch.cuda.empty_cache()
++        off_ok = conditions['SEG-05/iv_off']['predictions'] == conditions['SEG-00']['predictions']
++        values.update({'off.identical_to_Base_seg': off_ok, 'conditions': len(conditions), 'a2_rows': 2000})
++        write_json(out/'provenance.json', {'lock': reference(args.lock), 'seed': args.seed,
++            'training_source': lock['training_source'], 'evaluation_source': os.environ['SR_CODE_COMMIT'],
++            'inputs': entries, 'hardware': hardware, 'job_id': os.environ['PBS_JOBID']})
++        if not off_ok:
++            raise ValueError('A2 iv_off differs from same-job Base_seg; A2 results invalid')
++        passed = True
++    finally:
++        values['elapsed_s'] = time.monotonic()-start
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': CONTRACT,
++            'arm': 'A2', 'seed': args.seed, 'stage': 'a2_evaluation', 'metrics': values,
++            'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'artifacts': [{'path': str(out/name), 'role': name} for name in
++                          ('dev-reproduction.json', 'conditions.json', 'provenance.json', 'a2-read.jsonl')
++                          if (out/name).is_file()],
++            'validator': {'name': 'segmented_locked_a2_evaluation', 'passed': passed}})
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--lock', type=Path, required=True)
++    p.add_argument('--lock-sha256', required=True)
++    p.add_argument('--seed', type=int, choices=SEEDS, required=True)
++    p.add_argument('--data-dir', required=True)
++    p.add_argument('--output', type=Path, required=True)
++    p.add_argument('--unseal', action='store_true')
++    run(p.parse_args())
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_a2_lock.py b/src/seg_a2_lock.py
+new file mode 100644
+index 0000000..aed9482
+--- /dev/null
++++ b/src/seg_a2_lock.py
+@@ -0,0 +1,104 @@
++"""PBS-only E-0030 pre-opening audit and lock creation; no A2 field access."""
++import argparse
++import os
++from pathlib import Path
++import time
++
++from calibrate import REVISION
++from rb1_artifacts import read, reference
++from rb_data import BASE_SEED, STUDY
++from seg_a2_data import CONTRACT, SEEDS, ARMS, EVALUATION, BOOTSTRAP, SPLIT_MANIFEST_SHA256, verify_lock
++from seg_a2_rules import IMPLEMENTATION_CHECKS
++from seg_artifacts import validate
++from v1_data import derive_seed
++from v5_train import write_json
++
++
++def make_lock(inputs):
++    source = os.environ['SR_CODE_COMMIT']
++    if inputs['training_source'] != source:
++        raise ValueError('training/evaluation/analysis source must be the same reviewed commit')
++    checks_ref = inputs['deterministic_checks']; smoke_ref = inputs['smoke']
++    for ref in (checks_ref, smoke_ref):
++        if reference(ref['path']) != ref:
++            raise ValueError('preopening check or smoke reference changed')
++        check = read(ref['path'])
++        if check.get('status') != 'complete' or check.get('validator', {}).get('passed') is not True:
++            raise ValueError('preopening test or smoke job did not pass')
++    deterministic = read(checks_ref['path'])
++    if (deterministic.get('source_commit') != source or
++            deterministic['metrics'].get('no_channel_identity') is not True or
++            deterministic['metrics'].get('no_channel_seeds') != list(SEEDS)):
++        raise ValueError('no-channel checks are not at the final reviewed source for all seeds')
++    smoke = read(smoke_ref['path'])
++    if smoke['metrics'].get('preopening.loader_equivalence_seeds') != [0, 1, 2]:
++        raise ValueError('masking loader lacks legacy plan/exclusion equivalence checks')
++    exclusion_ref = smoke['metrics']['preopening.excluded_audit_reference']
++    if reference(exclusion_ref['path']) != exclusion_ref:
++        raise ValueError('registered exclusion audit reference changed')
++    split_ref = reference(inputs['split_manifest'])
++    if split_ref['sha256'] != SPLIT_MANIFEST_SHA256:
++        raise ValueError('A2 IDs file differs from the sealed manifest')
++    split = read(split_ref['path'])
++    runs, checks = {}, {}
++    for seed in SEEDS:
++        roots = inputs['runs'][str(seed)]
++        if set(roots) != set(ARMS):
++            raise ValueError('exactly four arms per seed required')
++        runs[str(seed)] = {}; manifests = {}
++        for arm in ARMS:
++            root = Path(roots[arm]).resolve()
++            manifest, _, _ = validate(root, arm, source, seed)
++            manifests[arm] = manifest
++            train_ids = {(r['task'], r['id']) for r in read(root/'seams-train.json')}
++            held = {(t, i) for t, ids in split['ids'].items() for i in ids}
++            if train_ids & held:
++                raise ValueError('training rows overlap held A2 IDs')
++            if read(root/'excluded-train.json') != read(smoke['metrics']['preopening.excluded_audit_reference']['path']):
++                raise ValueError('training exclusion audit differs from E-0027')
++            runs[str(seed)][arm] = {'root': str(root), 'manifest': reference(root/'manifest.json'),
++                'predictions': reference(root/'predictions.json'), 'checkpoint': read(root/'checkpoint.json')}
++        initial = {a: m['metrics']['initial.adapter_sha256'] for a, m in manifests.items()}
++        check = {k: True for k in IMPLEMENTATION_CHECKS}
++        check['initial_parameters_identical'] = initial['SEG-05'] == initial['SEG-06'] == initial['SEG-07']
++        if not all(check.values()):
++            raise ValueError('initial parameter identity failed')
++        checks[str(seed)] = check
++    return {'contract': CONTRACT, 'evaluation_source': source, 'training_source': source,
++        'model_revision': REVISION, 'tokenizer_revision': REVISION,
++        'split_manifest': split_ref, 'ids_sha256': split['ids_sha256'], 'runs': runs,
++        'evaluation': EVALUATION, 'bootstrap': BOOTSTRAP,
++        'derangement': {'seed': derive_seed(BASE_SEED, STUDY, 'A2', 'iv_swap'),
++                        'method': 'within_task_fixed_derangement'},
++        'preopening_checks': {'passed': True, 'checks': checks, 'deterministic': checks_ref, 'smoke': smoke_ref,
++            'rules': {'2': 'same slice exact dev rows; other slice <=10 class mismatches; A2 off equals same-job Base',
++                      '3': 'gain_s=Keep-max(Reset,T0); lora_s=Keep-LoRA; swap_s=Keep-swap',
++                      '4': '10000 paired BoolQ row draws shared by all arms/seeds; recompute maximum; linear quantile',
++                      '5': 'G>0 and lower95>0 -> supported; G<=0 -> challenged; otherwise inconclusive',
++                      '6': 'only after primary support: L>0 and lower95>0 confirms LoRA comparison'}}}
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--input', type=Path, required=True)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, start = False, time.monotonic()
++    try:
++        lock = make_lock(read(args.input))
++        write_json(out/'a2-lock.json', lock)
++        sha = reference(out/'a2-lock.json')['sha256']
++        verify_lock(out/'a2-lock.json', sha)
++        (out/'a2-lock.sha256').write_text(sha+'\n')
++        passed = True
++    finally:
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': CONTRACT,
++            'stage': 'preopening_lock', 'source_commit': os.environ['SR_CODE_COMMIT'],
++            'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'metrics': {'preopening.passed': passed, 'confirmation_evaluated': False, 'elapsed_s': time.monotonic()-start},
++            'artifacts': [{'path': str(f), 'role': f.name} for f in out.iterdir() if f.is_file() and f.name != 'manifest.json'],
++            'validator': {'name': 'E0030_preopening_lock', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_a2_predata.py b/src/seg_a2_predata.py
+new file mode 100644
+index 0000000..150b2fa
+--- /dev/null
++++ b/src/seg_a2_predata.py
+@@ -0,0 +1,187 @@
++"""Pre-opening V1 data preparation that never materializes sealed A2 fields.
++
++The fixed source files are hashed as bytes first. Rows whose IDs are in the
++sealed A2 manifest become ID-only placeholders; PIQA JSON and labels are not
++decoded for them, and BoolQ parquet columns are filtered before ``to_pylist``.
++"""
++import hashlib
++import json
++from pathlib import Path
++
++from rb_data import apply_confirmation
++from v1_data import make_v1_splits
++
++PIQA_SHA256 = 'f805f9c96518d7b59f2f870d90f712457cda949979469d9fa3fd706ce22e0a1a'
++PIQA_LABELS_SHA256 = 'df8ae080c41f02f88e81f6932d425f4b7ee72f433ad552e6a30d45e358e8f8bb'
++BOOLQ_SHA256 = '4f028e992c0bd4df30b9f056f4946b64f5c23028034ff0ed5ea467d8538cc623'
++SPLIT_MAPPING_SHA256 = '47cf5c777d07863b8def6903487697eafc970b0cd5b5d80babb7f20ded98571b'
++CONFIRMATION_MANIFEST_SHA256 = '34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc'
++SOURCES = {
++    'piqa': {'repo': 'ybisk/ybisk.github.io',
++             'revision': '21edab439af693b961be2f069e8690a88d3b4e37'},
++    'boolq': {'repo': 'google/boolq',
++              'revision': '35b264d03638db9f4ce671b711558bf7ff0f80d5'},
++}
++
++
++def _sha256(path):
++    digest = hashlib.sha256()
++    with Path(path).open('rb') as handle:
++        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def _nonblank_lines(path):
++    with Path(path).open('r', encoding='utf-8') as handle:
++        for line in handle:
++            value = line.strip()
++            if value:
++                yield value
++
++
++def _piqa_records(jsonl_lines, label_lines, held_ids):
++    """Parse allowed PIQA rows, substituting ID-only placeholders for held IDs."""
++    held_ids = set(held_ids)
++    rows = []
++    labels = iter(label_lines)
++    for line in jsonl_lines:
++        if not line.strip():
++            continue
++        try:
++            label_text = next(labels)
++        except StopIteration as exc:
++            raise ValueError('PIQA row/label count mismatch') from exc
++        row_id = len(rows)
++        if row_id in held_ids:
++            rows.append({'task': 'piqa', 'id': row_id})
++            continue
++        try:
++            value = json.loads(line)
++        except json.JSONDecodeError as exc:
++            raise ValueError(f'PIQA row {row_id} is not valid JSON') from exc
++        if not isinstance(value, dict):
++            raise ValueError(f'PIQA row {row_id}: expected a JSON object')
++        try:
++            label = int(label_text)
++        except (TypeError, ValueError) as exc:
++            raise ValueError(f'PIQA label {row_id} is not an integer') from exc
++        if label not in (0, 1):
++            raise ValueError(f'PIQA label {row_id} must be 0 or 1')
++        if not all(isinstance(value.get(key), str) for key in ('goal', 'sol1', 'sol2')):
++            raise ValueError(f'PIQA row {row_id} is missing string goal/sol1/sol2 fields')
++        rows.append({'task': 'piqa', 'id': row_id, 'goal': value['goal'],
++                     'solutions': [value['sol1'], value['sol2']], 'label': label})
++    try:
++        next(labels)
++    except StopIteration:
++        pass
++    else:
++        raise ValueError('PIQA row/label count mismatch')
++    return rows
++
++
++def _boolq_record(row, row_id):
++    if not isinstance(row.get('passage'), str) or not isinstance(row.get('question'), str):
++        raise ValueError(f'BoolQ row {row_id} is missing string passage/question fields')
++    answer = row.get('answer')
++    if not isinstance(answer, bool):
++        raise ValueError(f'BoolQ row {row_id} answer must be a JSON boolean')
++    return {'task': 'boolq', 'id': row_id, 'passage': row['passage'],
++            'question': row['question'], 'label': answer}
++
++
++def _boolq_records_parquet(table, held_ids):
++    """Filter Arrow rows before Python conversion, reading only ID values first."""
++    import pyarrow as pa
++
++    if 'id' in table.column_names:
++        ids = table['id'].to_pylist()
++    else:
++        ids = list(range(table.num_rows))
++    if len(ids) != table.num_rows:
++        raise ValueError('BoolQ Arrow ID count differs from row count')
++    held_ids = set(held_ids)
++    keep = [row_id not in held_ids for row_id in ids]
++    allowed = iter(table.filter(pa.array(keep, type=pa.bool_())).to_pylist())
++    result = []
++    for row_id in ids:
++        if row_id in held_ids:
++            result.append({'task': 'boolq', 'id': row_id})
++        else:
++            result.append(_boolq_record(next(allowed), row_id))
++    try:
++        next(allowed)
++    except StopIteration:
++        pass
++    else:
++        raise ValueError('BoolQ Arrow filtering returned extra rows')
++    return result
++
++
++def _read_boolq(path, held_ids):
++    path = Path(path)
++    if path.suffix.lower() != '.parquet':
++        raise ValueError('pre-opening BoolQ reader requires the pinned parquet source')
++    try:
++        import pyarrow.parquet as parquet
++    except ImportError as exc:
++        raise RuntimeError('reading BoolQ parquet requires pyarrow') from exc
++    return _boolq_records_parquet(parquet.read_table(path), held_ids)
++
++
++def _read_manifest(path):
++    path = Path(path)
++    if _sha256(path) != CONFIRMATION_MANIFEST_SHA256:
++        raise ValueError('A2 ID manifest differs from the sealed D-0025 file')
++    manifest = json.loads(path.read_text(encoding='utf-8'))
++    if manifest.get('sealed') is not True or manifest.get('model_evaluated') is not False:
++        raise ValueError('A2 ID manifest is not sealed or records model evaluation')
++    return manifest
++
++
++def prepare_preopening(data_dir, split_manifest):
++    """Build the usual V1 splits while keeping A2 row text/labels inaccessible."""
++    data_dir = Path(data_dir)
++    files = {
++        'piqa': data_dir / 'piqa-train.jsonl',
++        'piqa_labels': data_dir / 'piqa-train-labels.lst',
++        'boolq': data_dir / 'boolq-train.parquet',
++    }
++    expected = {'piqa': PIQA_SHA256, 'piqa_labels': PIQA_LABELS_SHA256,
++                'boolq': BOOLQ_SHA256}
++    for key, path in files.items():
++        if _sha256(path) != expected[key]:
++            raise ValueError(f'source checksum mismatch: {key}')
++    manifest = _read_manifest(split_manifest)
++    if not isinstance(manifest.get('ids'), dict) or set(manifest['ids']) != {'piqa', 'boolq'}:
++        raise ValueError('A2 manifest task ID map is invalid')
++
++    piqa = _piqa_records(_nonblank_lines(files['piqa']),
++                         _nonblank_lines(files['piqa_labels']), manifest['ids']['piqa'])
++    boolq = _read_boolq(files['boolq'], manifest['ids']['boolq'])
++    original = make_v1_splits(
++        piqa, boolq, source_files=files, source_metadata=SOURCES,
++    )
++    if any(original['metadata']['source_files'][key]['sha256'] != digest
++           for key, digest in expected.items()):
++        raise ValueError('source files changed while constructing the V1 split')
++    if original['metadata']['split_mapping_sha256'] != SPLIT_MAPPING_SHA256:
++        raise ValueError('split mapping differs from the pinned V1 mapping')
++    # This regenerates the manifest from IDs alone, compares it exactly, then
++    # removes placeholders and held IDs from the training rows.
++    filtered = apply_confirmation(original, manifest)
++    for task in ('piqa', 'boolq'):
++        if any(not {'task', 'id', 'label'} <= set(row)
++               for row in filtered['splits'][task]['train']):
++            raise ValueError(f'{task} training rows still contain an A2 placeholder')
++    return filtered
++
++
++def load_data(data_dir, split_manifest, tok):
++    """Pre-opening RB-style loader returning filtered splits and audit exclusions."""
++    from v1_data import audit_training_exclusions
++
++    splits = prepare_preopening(data_dir, split_manifest)
++    excluded = audit_training_exclusions(splits, tok)
++    return splits, excluded
+diff --git a/src/seg_a2_rules.py b/src/seg_a2_rules.py
+new file mode 100644
+index 0000000..32faaa7
+--- /dev/null
++++ b/src/seg_a2_rules.py
+@@ -0,0 +1,218 @@
++"""Pure E-0030 A2 BoolQ statistics and preregistered rules.
++
++No artifacts are read here. ``counts`` maps each seed (3, 4, 5) to exact
++``(correct, total)`` pairs for SEG-04..07 and SEG-05/iv_swap. ``checks`` maps
++each seed to the diagnostic booleans and path-check observations documented
++in :data:`IMPLEMENTATION_CHECKS` and :data:`PATH_CHECKS`. ``base`` is the
++SEG-00 pair. ``intervals`` maps each seed and arm label to one binary outcome
++per paired A2 BoolQ row; its row order must be identical across every entry.
++The function returns exact Fraction-backed point estimates and the locked
++shared-row bootstrap intervals.
++"""
++from fractions import Fraction
++import math
++
++import numpy as np
++
++SEEDS = (3, 4, 5)
++ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
++LABELS = (*ARMS, 'SEG-05/iv_swap')
++IMPLEMENTATION_CHECKS = (
++    'off_matches_base_dev',
++    'initial_matches_base_dev',
++    'no_channel_identity',
++    'reload_identical',
++    'initial_parameters_identical',
++    'train_ids_disjoint_a2',
++    'a2_ids_and_hashes_match',
++)
++PATH_CHECKS = ('path_dev_same_hardware', 'path_dev_mismatch_count', 'a2_iv_off_matches_base')
++BOOTSTRAP_REPEATS = 10_000
++BOOTSTRAP_SEED = 20261101
++MAX_DIFFERENT_HARDWARE_MISMATCHES = 10
++
++
++def number(value):
++    """Serialize an exact score/difference (unit accuracy) as a fraction and pp."""
++    return {'numerator': value.numerator, 'denominator': value.denominator,
++            'pp': float(100 * value)}
++
++
++def _fraction(pair, label):
++    if (not isinstance(pair, (tuple, list)) or len(pair) != 2 or
++            type(pair[0]) is not int or type(pair[1]) is not int or
++            pair[1] <= 0 or not 0 <= pair[0] <= pair[1]):
++        raise ValueError(f'invalid exact BoolQ counts for {label}')
++    return Fraction(pair[0], pair[1])
++
++
++def _seed_quantities(seed_counts):
++    if set(seed_counts) != set(LABELS):
++        raise ValueError('each seed needs SEG-04..07 and SEG-05/iv_swap')
++    totals = {pair[1] for pair in seed_counts.values() if isinstance(pair, (tuple, list)) and len(pair) == 2}
++    scores = {label: _fraction(pair, f'{label}') for label, pair in seed_counts.items()}
++    if len(totals) != 1:
++        raise ValueError('paired BoolQ row counts differ within a seed')
++    gain = scores['SEG-05'] - max(scores['SEG-06'], scores['SEG-07'])
++    lora = scores['SEG-05'] - scores['SEG-04']
++    swap = scores['SEG-05'] - scores['SEG-05/iv_swap']
++    return scores, gain, lora, swap
++
++
++def _validate_intervals(intervals, totals):
++    if set(intervals) != set(SEEDS):
++        raise ValueError('bootstrap outcomes are required for seeds 3, 4 and 5')
++    binary = {}
++    row_count = None
++    for seed in SEEDS:
++        if set(intervals[seed]) != set(LABELS):
++            raise ValueError(f'seed {seed} bootstrap outcomes need SEG-04..07 and iv_swap')
++        binary[seed] = {}
++        for label in LABELS:
++            values = np.asarray(intervals[seed][label])
++            if values.ndim != 1 or values.size != totals[seed]:
++                raise ValueError('bootstrap vectors must be one-dimensional and match count totals')
++            if values.dtype.kind not in 'biu' or np.any((values != 0) & (values != 1)):
++                raise ValueError('bootstrap outcomes must contain only binary integer values')
++            if row_count is None:
++                row_count = values.size
++            elif values.size != row_count:
++                raise ValueError('all arms and seeds must share the same paired row count')
++            binary[seed][label] = values.astype(np.int64, copy=False)
++    return binary, row_count
++
++
++def _bootstrap(binary, row_count):
++    """Paired BoolQ bootstrap with one shared draw matrix and per-draw max control."""
++    rng = np.random.default_rng(BOOTSTRAP_SEED)
++    g = np.empty(BOOTSTRAP_REPEATS, dtype=np.float64)
++    l = np.empty(BOOTSTRAP_REPEATS, dtype=np.float64)
++    # Chunking bounds memory while consuming the same Generator stream as a
++    # single (repeats, rows) integer draw.
++    cursor = 0
++    while cursor < BOOTSTRAP_REPEATS:
++        end = min(cursor + 128, BOOTSTRAP_REPEATS)
++        indices = rng.integers(0, row_count, size=(end - cursor, row_count))
++        seed_gain_counts = np.zeros(end - cursor, dtype=np.int64)
++        seed_lora_counts = np.zeros(end - cursor, dtype=np.int64)
++        for seed in SEEDS:
++            correct = {arm: binary[seed][arm][indices].sum(axis=1) for arm in ARMS}
++            seed_gain_counts += correct['SEG-05'] - np.maximum(correct['SEG-06'], correct['SEG-07'])
++            seed_lora_counts += correct['SEG-05'] - correct['SEG-04']
++        denominator = len(SEEDS) * row_count
++        g[cursor:end] = seed_gain_counts / denominator
++        l[cursor:end] = seed_lora_counts / denominator
++        cursor = end
++    return {
++        'G': [float(x) for x in np.quantile(g, [0.025, 0.975])],
++        'L': [float(x) for x in np.quantile(l, [0.025, 0.975])],
++    }
++
++
++def _check_bool(checks, seed, name):
++    return checks[seed].get(name) is True
++
++
++def analyze(counts, checks, base, intervals):
++    """Apply E-0030 rules to exact BoolQ counts and paired row outcomes.
++
++    Diagnostic input keys per seed are the seven :data:`IMPLEMENTATION_CHECKS`
++    plus the three :data:`PATH_CHECKS`. The path mismatch count is an integer:
++    same hardware requires zero mismatches; different hardware permits at most
++    ten. Caller supplies the iv_off/Base identity result as a boolean.
++    """
++    if set(counts) != set(SEEDS) or set(checks) != set(SEEDS):
++        raise ValueError('E-0030 requires counts and checks for seeds 3, 4 and 5')
++    quantities = {}
++    totals = {}
++    for seed in SEEDS:
++        scores, gain, lora, swap = _seed_quantities(counts[seed])
++        quantities[seed] = {'scores': scores, 'gain': gain, 'lora': lora, 'swap': swap}
++        totals[seed] = next(iter(counts[seed].values()))[1]
++    base_score = _fraction(base, 'SEG-00 Base_seg')
++    if any(totals[s] != base[1] for s in SEEDS):
++        raise ValueError('Base_seg row count differs from arm rows')
++    binary, row_count = _validate_intervals(intervals, totals)
++    if any(row_count != totals[s] for s in SEEDS):
++        raise ValueError('bootstrap row count differs from point-count rows')
++    for seed in SEEDS:
++        for label in LABELS:
++            if int(binary[seed][label].sum()) != counts[seed][label][0]:
++                raise ValueError(f'bootstrap outcomes disagree with exact correct count for seed {seed} {label}')
++
++    implementation = {}
++    path = {}
++    for seed in SEEDS:
++        c = checks[seed]
++        mismatch_count = c.get('path_dev_mismatch_count')
++        if type(mismatch_count) is not int or mismatch_count < 0:
++            raise ValueError(f'seed {seed} path_dev_mismatch_count must be a nonnegative integer')
++        if type(c.get('path_dev_same_hardware')) is not bool:
++            raise ValueError(f'seed {seed} path_dev_same_hardware must be boolean')
++        same_hardware = c.get('path_dev_same_hardware') is True
++        dev_ok = mismatch_count == 0 if same_hardware else mismatch_count <= MAX_DIFFERENT_HARDWARE_MISMATCHES
++        implementation[seed] = {name: _check_bool(checks, seed, name) for name in IMPLEMENTATION_CHECKS}
++        path[seed] = {
++            'dev_reproduction': bool(dev_ok),
++            'path_dev_same_hardware': same_hardware,
++            'path_dev_mismatch_count': mismatch_count,
++            'a2_iv_off_matches_base': _check_bool(checks, seed, 'a2_iv_off_matches_base'),
++        }
++    implementation_ok = all(all(v.values()) for v in implementation.values())
++    path_ok = all(v['dev_reproduction'] and v['a2_iv_off_matches_base'] for v in path.values())
++
++    G = sum((quantities[s]['gain'] for s in SEEDS), Fraction()) / len(SEEDS)
++    L = sum((quantities[s]['lora'] for s in SEEDS), Fraction()) / len(SEEDS)
++    W = sum((quantities[s]['swap'] for s in SEEDS), Fraction()) / len(SEEDS)
++    ci = _bootstrap(binary, row_count)
++    # The threshold comparison is strict, as preregistered.
++    g_lower_positive = ci['G'][0] > 0
++    supported = G > 0 and g_lower_positive
++    challenged = G <= 0
++    direction = ('invalid_implementation' if not implementation_ok or not path_ok else
++                 'supported' if supported else 'challenged' if challenged else 'inconclusive')
++    secondary_confirmed = direction == 'supported' and L > 0 and ci['L'][0] > 0
++
++    threshold = base_score + Fraction(1, 100)
++    learned = {s: {a: quantities[s]['scores'][a] >= threshold for a in ARMS} for s in SEEDS}
++    unlearned_controls = {s: not learned[s]['SEG-06'] and not learned[s]['SEG-07'] for s in SEEDS}
++    per_seed = {str(s): {
++        'gain': number(quantities[s]['gain']),
++        'lora': number(quantities[s]['lora']),
++        'swap': number(quantities[s]['swap']),
++        'boolq': {label: number(score) for label, score in quantities[s]['scores'].items()},
++    } for s in SEEDS}
++    gains = [quantities[s]['gain'] for s in SEEDS]
++    gain_sd = math.sqrt(sum(float((x - G) ** 2) for x in gains) / len(gains))
++    rules = {
++        '1': {'level': 'diagnostic', 'passed': implementation_ok, 'checks': {str(s): implementation[s] for s in SEEDS},
++              'action': 'interpret' if implementation_ok else 'repair_no_conclusion'},
++        '2': {'level': 'diagnostic', 'passed': path_ok, 'checks': {str(s): path[s] for s in SEEDS},
++              'action': 'interpret' if path_ok else 'invalid_a2_no_conclusion'},
++        '3': {'level': 'descriptive', 'per_seed': per_seed, 'G': number(G), 'L': number(L), 'W': number(W),
++              'gain_positive_seed_count': sum(x > 0 for x in gains),
++              'gain_seed_sd_population': gain_sd,
++              'weights': 'equal over seeds 3,4,5'},
++        '4': {'level': 'descriptive', 'bootstrap': {'method': 'paired BoolQ row bootstrap',
++              'repeats': BOOTSTRAP_REPEATS, 'seed': BOOTSTRAP_SEED, 'shared_indices': True,
++              'max_control_recomputed_each_draw': True, 'quantile': 'numpy linear default',
++              'G_ci95': ci['G'], 'L_ci95': ci['L']}},
++        '5': {'level': 'confirmatory', 'outcome': direction if direction != 'invalid_implementation' else 'not_evaluated',
++              'G_positive': G > 0, 'G_ci_lower_positive': g_lower_positive,
++              'challenged_G_nonpositive': G <= 0},
++        '6': {'level': 'confirmatory' if direction == 'supported' else 'descriptive',
++              'evaluated': direction == 'supported', 'confirmed': secondary_confirmed,
++              'L_positive': L > 0, 'L_ci_lower_positive': ci['L'][0] > 0,
++              'reason': 'confirmed' if secondary_confirmed else
++                        'fixed_sequence_not_reached' if direction != 'supported' else 'criterion_not_met'},
++        '7': {'level': 'descriptive', 'threshold': number(threshold),
++              'learned': {str(s): learned[s] for s in SEEDS},
++              'no_history_r128_controls_unlearned': {str(s): unlearned_controls[s] for s in SEEDS},
++              'mean_mainly_one_seed': direction == 'supported' and sum(x > 0 for x in gains) < 2},
++        '8': {'level': 'descriptive', 'other_metrics': 'PIQA, macro, NLL, and dev comparisons supplied/reported by caller',
++              'hypothesis_status_changed': False},
++    }
++    return {'rules': rules, 'direction': direction,
++            'eligible_edge': direction if direction in ('supported', 'challenged') else None,
++            'secondary_confirmed': secondary_confirmed, 'G': number(G), 'L': number(L), 'W': number(W),
++            'ci95': {'G': ci['G'], 'L': ci['L']}, 'per_seed': per_seed}
+diff --git a/src/seg_a2_smoke.py b/src/seg_a2_smoke.py
+new file mode 100644
+index 0000000..6f6b3cf
+--- /dev/null
++++ b/src/seg_a2_smoke.py
+@@ -0,0 +1,198 @@
++"""E-0030 PBS checks and cost smoke; never calls the A2 reader.
++
++New seed orders are derived from RB train only. Timing uses a 1% uniformly
++spaced step sample at seed 3 and 32 dev rows per task, with scores discarded.
++Only iv_off is rehearsed on dev. A2 timing is estimated from the normal and
++iv_off forward counts; no A2 content is selected, encoded or evaluated.
++"""
++import argparse
++import gc
++import json
++import math
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++import numpy as np
++import torch
++
++from seg_data import ORDER_SHA256, ORDER_SHA256_BY_SEED
++from seg_eval import evaluate
++from seg_model import make_model, KEEP, PARAMETERS, FAMILIES, parameter_digest
++from seg_train import tokenizer, prepare_plan, train
++from v5_train import write_json
++
++FILES = ['src/test_seg_seeds.py', 'src/test_seg_rules.py', 'src/test_seg_data.py', 'src/test_seg_model.py',
++         'src/test_seg_artifacts.py', 'src/test_seg_analysis.py', 'src/test_core.py', 'src/test_rb_core.py',
++         'src/test_seg_a2_data.py', 'src/test_seg_a2_predata.py', 'src/test_seg_a2_rules.py',
++         'src/test_seg_a2_eval.py', 'src/test_seg_a2_analysis.py']
++NEW_ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
++NEW_SEEDS = (3, 4, 5)
++CAP_NODE_H = 5.5
++
++
++def checks(out):
++    with (out/'checks.log').open('w') as log:
++        result = subprocess.run([sys.executable, '-m', 'pytest', *FILES, '-q', '-p', 'no:cacheprovider',
++            '-o', 'junit_family=legacy', '--junitxml='+str(out/'checks.xml')], stdout=log, stderr=subprocess.STDOUT)
++    cases = list(ET.parse(out/'checks.xml').getroot().iter('testcase'))
++    failed = sum(c.find('failure') is not None or c.find('error') is not None for c in cases)
++    skipped = sum(c.find('skipped') is not None for c in cases)
++    if result.returncode != 0 or failed or skipped or not cases:
++        raise RuntimeError('E-0030 PBS deterministic checks failed; see checks.log/checks.xml')
++    # Passing seeded no-channel cases (rule 1(c)); ids carry 'seed1'/'seed2'.
++    seeded = [c.get('name', '') for c in cases if c.get('name', '').startswith('test_no_channel_identity_at_new_seed')]
++    seeds = sorted({s for s in NEW_SEEDS if any(f'seed{s}' in n for n in seeded)})
++    return {'checks.cases': len(cases), 'checks.failed': failed, 'checks.skipped': skipped,
++            'no_channel_identity': seeds == list(NEW_SEEDS), 'no_channel_seeds': seeds,
++            'zero_initialization_identity': True, 'synthetic_rule_boundaries': True}
++
++
++def plans(args, tok):
++    result, kept = {}, None
++    args.preopening = True
++    baseline_excluded = json.loads(Path('/work/xg24i002/x10041/bypass-lora/runs/ATT-0306-1/excluded-train.json').read_text())
++    for seed in (0, 1, 2, *NEW_SEEDS):
++        args.seed = seed
++        splits, batches, metadata, excluded, lock = prepare_plan(args, tok, require_registered=False)
++        if excluded != baseline_excluded:
++            raise ValueError('E-0030 masking loader exclusion audit differs from E-0027')
++        if seed == 3:
++            kept = splits, batches, lock
++        result[seed] = {**metadata,
++            'segment1_tokens_keep': sum(len(e['segment1_ids']) for b in batches for e in b),
++            'segment2_tokens': sum(len(e['input_ids']) for b in batches for e in b),
++            'loss_tokens': sum(sum(x != -100 for x in e['labels'][1:]) for b in batches for e in b),
++            'registered': ORDER_SHA256_BY_SEED[seed]}
++        if ORDER_SHA256_BY_SEED[seed] not in (None, metadata['plan.order_sha256']):
++            raise ValueError(f'seed {seed} order differs from its registered hash')
++    if result[0]['plan.order_sha256'] != ORDER_SHA256:
++        raise ValueError('fixed-step plan does not reproduce E-0025 seed 0')
++    if len({r['plan.order_sha256'] for r in result.values()}) != 6:
++        raise ValueError('seed orders are not distinct')
++    return result, kept
++
++
++def digests():
++    result = {}
++    for seed in NEW_SEEDS:
++        result[seed] = {}
++        for arm in NEW_ARMS:
++            model = make_model(arm, seed=seed)
++            result[seed][arm] = parameter_digest(model)
++            del model; gc.collect(); torch.cuda.empty_cache()
++        if not result[seed]['SEG-05'] == result[seed]['SEG-06'] == result[seed]['SEG-07']:
++            raise ValueError(f'seed {seed} r128 initial parameters differ across SEG-05/06/07')
++    if len({result[s]['SEG-05'] for s in result}) != 3 or len({result[s]['SEG-04'] for s in result}) != 3:
++        raise ValueError('new seeds did not change the initialization')
++    return result
++
++
++def timing(tok, out, plan_info, seed1):
++    splits, full_plan, lock = seed1
++    size = math.ceil(len(full_plan)*.01)
++    indices = np.linspace(0, len(full_plan)-1, size, dtype=int).tolist()
++    batches = [full_plan[i] for i in indices]
++    arms = {}
++    for arm in NEW_ARMS:
++        root = out/arm; root.mkdir(parents=True, exist_ok=True)
++        tick = time.monotonic(); model = make_model(arm, seed=3); load = time.monotonic()-tick
++        m = train(model, arm, batches, tok, lock['locked_lrs'][FAMILIES[arm]], root)
++        if m['params.with_grad'] != PARAMETERS[arm]:
++            raise ValueError('smoke parameter-gradient coverage differs')
++        tick = time.monotonic(); _, before, audit = evaluate(model, arm, splits, tok, limit=32)
++        eval_s = time.monotonic()-tick
++        interventions = {}
++        if arm in KEEP:
++            for kind in ('iv_off',):
++                tick = time.monotonic(); evaluate(model, arm, splits, tok, limit=32, kind=kind)
++                interventions[kind] = time.monotonic()-tick
++        tick = time.monotonic(); model.export_adapter(root/'adapter'); save_s = time.monotonic()-tick
++        del model; gc.collect(); torch.cuda.empty_cache()
++        tick = time.monotonic(); reloaded = make_model(arm, root/'adapter', seed=3)
++        _, after, _ = evaluate(reloaded, arm, splits, tok, limit=32); reload_s = time.monotonic()-tick
++        if before != after:
++            raise ValueError('smoke same-job reload identity failed')
++        arms[arm] = {**m, 'load.seconds': load, 'eval32.seconds': eval_s, 'eval32.forward_seconds': audit['forward_seconds'],
++                     'save.seconds': save_s, 'reload32.seconds': reload_s, 'reload.identical': True,
++                     'interventions32.seconds': interventions}
++        del reloaded, before, after; gc.collect(); torch.cuda.empty_cache()
++    base = make_model('SEG-00')
++    tick = time.monotonic(); evaluate(base, 'SEG-00', splits, tok, limit=32); base_eval = (time.monotonic()-tick)*1000/32
++    del base; gc.collect(); torch.cuda.empty_cache()
++    projected = {}
++    for arm, m in arms.items():
++        eval_full = m['eval32.seconds']*1000/32
++        # Load, steady steps, three curve evals + final + reload, save; R_keep adds
++        # the same-job Base_seg and initial evaluations.
++        cost = 45+m['load.seconds']+m['train.steady_step_seconds']*len(full_plan)+5*eval_full+m['save.seconds']
++        cost += base_eval+2*eval_full if arm in KEEP else eval_full
++        projected[arm] = {'expected_seconds': cost, 'training_step_seconds': m['train.steady_step_seconds'],
++                          'full_dev_seconds': eval_full}
++    keep = arms['SEG-05']
++    # A2: one dev Keep repeat, Base, all four arms, off, and swap. Swap executes
++    # one additional donor forward per row; conservatively charge 2x normal.
++    a2 = (90+4*keep['load.seconds']+base_eval+
++          sum(p['full_dev_seconds'] for p in projected.values())+
++          3*projected['SEG-05']['full_dev_seconds']+
++          keep['interventions32.seconds']['iv_off']*1000/32)
++    per_seed = sum(p['expected_seconds'] for p in projected.values())+a2
++    # MIG instance seconds -> node-h at 1/4 (constraints): seconds/3600*0.25.
++    node_h = lambda seconds: seconds/14400
++    total = 3*node_h(per_seed)+node_h(60+90)+.05
++    return {'smoke.steps': size, 'smoke.seed': 3, 'uniform_sample_indices': indices, 'arms': arms,
++            'projection': {'arms_seconds': {a: p['expected_seconds'] for a, p in projected.items()},
++                'arms': projected, 'a2_seconds': a2, 'per_seed_node_h': node_h(per_seed),
++                'three_seeds_node_h': 3*node_h(per_seed), 'checks_analysis_reserve_node_h': node_h(150)+.05,
++                'total_before_smoke_usage_node_h': total, 'cap_node_h': CAP_NODE_H, 'cost_gate': total <= CAP_NODE_H,
++                'walltime_rule': '1.5x measured part model, round up to 10 min'},
++            'plans': {str(k): {kk: vv for kk, vv in v.items() if kk != 'plan.epoch_end_steps'} for k, v in plan_info.items()}}
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--mode', choices=('smoke', 'checks'), required=True)
++    p.add_argument('--data-dir')
++    p.add_argument('--split-manifest', type=Path)
++    p.add_argument('--lr-lock', type=Path)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, values, start = False, {}, time.monotonic()
++    try:
++        values.update(checks(out))
++        if not values['no_channel_identity']:
++            raise RuntimeError('seeded no-channel identity tests did not cover all three new seeds')
++        if args.mode == 'smoke':
++            tok = tokenizer()
++            plan_info, seed1 = plans(args, tok)
++            values['plans'] = {str(s): {k: v for k, v in r.items()} for s, r in plan_info.items()}
++            from rb1_artifacts import reference
++            values['preopening.loader_equivalence_seeds'] = [0, 1, 2]
++            values['preopening.excluded_audit_reference'] = reference('/work/xg24i002/x10041/bypass-lora/runs/ATT-0306-1/excluded-train.json')
++            write_json(out/'seed-plans.json', values['plans'])
++            values['initial_digests'] = {str(s): d for s, d in digests().items()}
++            write_json(out/'initial-digests.json', values['initial_digests'])
++            smoke = timing(tok, out, plan_info, seed1)
++            write_json(out/'cost-smoke.json', smoke)
++            values.update({'smoke.all_arms': len(smoke['arms']), 'smoke.reload_identical': True,
++                'smoke.no_dev_scores_retained': True, 'projection.node_h': smoke['projection']['total_before_smoke_usage_node_h'],
++                'projection.within_cap_before_actual_smoke': smoke['projection']['cost_gate']})
++        values['confirmation_evaluated'] = False
++        values['hardware'] = torch.cuda.get_device_name()
++        values['exec.pbs_job_id'] = os.environ.get('PBS_JOBID')
++        passed = True
++    finally:
++        values['elapsed_s'] = time.monotonic()-start
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0030@1',
++            'spec_digest': os.environ['SR_SPEC_DIGEST'], 'source_commit': os.environ['SR_CODE_COMMIT'],
++            'stage': 'seed_smoke' if args.mode == 'smoke' else 'deterministic_checks', 'metrics': values,
++            'artifacts': [{'path': str(f), 'role': f.name} for f in (out/'checks.xml', out/'checks.log',
++                out/'seed-plans.json', out/'initial-digests.json', out/'cost-smoke.json') if f.exists()],
++            'validator': {'name': 'segmented_seed_checks', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_artifacts.py b/src/seg_artifacts.py
+index 1c2474a..d4916d8 100644
+--- a/src/seg_artifacts.py
++++ b/src/seg_artifacts.py
+@@ -65,6 +65,10 @@ def validate(root, arm, source_commit, seed=0):
+     mandatory = {'config.json', 'predictions.json', 'seams-train.json', 'excluded-train.json', 'evaluation-audit.json'}
+     if stage == 'train':
+         mandatory |= {'checkpoint.json', 'steps.jsonl', *(f'dev-step-{math.ceil(STEPS*f)}.json' for f in (.25, .5, .75))}
++        if seed in (3, 4, 5):
++            mandatory.add('initial-predictions.json')
++            if arm == 'SEG-05':
++                mandatory.add('iv-off-dev.json')
+     if not mandatory <= {Path(ref['path']).name for ref in artifacts}:
+         raise ValueError('segmented producer artifact inventory incomplete')
+     if m.get('model_revision') != REVISION or m.get('tokenizer_revision') != REVISION:
+@@ -148,4 +152,9 @@ def validate(root, arm, source_commit, seed=0):
+         if arm in KEEP:
+             if m.get('initial.identical_to_Base_seg') is not True or read(root/'initial-base-predictions.json') != read(root/'initial-predictions.json'):
+                 raise ValueError('segmented zero-initialization identity failed')
++        if seed in (3, 4, 5):
++            validate_rows(read(root/'initial-predictions.json'), [(r['task'], r['id'], r['gold']) for r in rows])
++            if arm == 'SEG-05' and (m.get('off.identical_to_Base_seg') is not True or
++                    read(root/'iv-off-dev.json')['predictions'] != read(root/'initial-base-predictions.json')):
++                raise ValueError('E-0030 dev off/Base same-allocation identity failed')
+     return manifest, refs, root/'adapter'
+diff --git a/src/seg_data.py b/src/seg_data.py
+index d4e9599..1a6be1b 100644
+--- a/src/seg_data.py
++++ b/src/seg_data.py
+@@ -11,10 +11,14 @@ STEPS, EXAMPLES = 13115, 26230
+ # E-0027: seed 0 is E-0025; seeds 1 and 2 use the first STEPS batches of their
+ # own R1 stream (same sample/step budget). Their order hashes are registered
+ # from the PBS smoke ATT-0304-1 before formal training.
+-SEEDS = (0, 1, 2)
++SEEDS = (0, 1, 2, 3, 4, 5)
+ ORDER_SHA256_BY_SEED = {0: ORDER_SHA256,
+                         1: '03c16b099e04ed3906b5ec775a46b3c3f2c7bd8e36d94e29043f45789fb8d716',
+-                        2: '0485e356affdd9baf1d122027b6d924f805979dad343de0c68105eabf4acf608'}
++                        2: '0485e356affdd9baf1d122027b6d924f805979dad343de0c68105eabf4acf608',
++                        # E-0030: registered from PBS ATT-0375-1 before formal training.
++                        3: '108aec8c1c9684c5e4a58f91da0c5b7aa56e91aab25c7b07d45874e418774b14',
++                        4: '1c94716a5e449bb711b7135751f6161f062c2456a29065de5e557b144e1f5644',
++                        5: '6005c84bf0e8610f1dda085736c9fc8f3cdd3aa3d63a0a38211939c5aa22bb23'}
+ 
+ 
+ def seam_edits(reference, segmented):
+diff --git a/src/seg_eval.py b/src/seg_eval.py
+index dc7a055..ccf123c 100644
+--- a/src/seg_eval.py
++++ b/src/seg_eval.py
+@@ -32,10 +32,12 @@ def token_losses(model, arm, encoded, pad_id, kind='normal', donor_memory=None,
+ 
+ 
+ @torch.no_grad()
+-def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
++def evaluate(model, arm, splits, tok, limit=None, kind='normal', split_name='dev', donor_phase='R1'):
+     model.eval()
+-    rows = [r for task in ('piqa', 'boolq') for r in splits['splits'][task]['dev'][:limit]]
+-    donors = donor_indices(rows, 'R1') if kind == 'iv_swap' else None
++    if split_name not in ('dev', 'a2'):
++        raise ValueError('unknown segmented evaluation split')
++    rows = [r for task in ('piqa', 'boolq') for r in splits['splits'][task][split_name][:limit]]
++    donors = donor_indices(rows, donor_phase) if kind == 'iv_swap' else None
+     metrics, predictions, audit, donor_map = {}, [], [], []
+     start = time.monotonic()
+     segment_seconds = {'segment1': 0., 'segment2': 0.}
+@@ -64,7 +66,7 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
+             scores.append(-total/(counts[-1] if row['task'] == 'piqa' else 1))
+         gold = int(row['label']) if row['task'] == 'piqa' else (0 if row['label'] else 1)
+         prediction = 0 if scores[0] >= scores[1] else 1
+-        predictions.append({'task': row['task'], 'split': 'dev', 'id': row['id'], 'gold': gold,
++        predictions.append({'task': row['task'], 'split': split_name, 'id': row['id'], 'gold': gold,
+                             'prediction': prediction, 'scores': scores,
+                             'gold_nll_sum': sums[gold], 'gold_loss_tokens': counts[gold]})
+     for task in ('piqa', 'boolq'):
+@@ -73,10 +75,10 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal'):
+             raise ValueError('both tasks need nonempty dev rows')
+         nll = sum(r['gold_nll_sum'] for r in selected)
+         tokens = sum(r['gold_loss_tokens'] for r in selected)
+-        metrics.update({f'dev.{task}.accuracy': sum(r['prediction'] == r['gold'] for r in selected)/len(selected),
+-                        f'dev.{task}.examples': len(selected), f'dev.{task}.nll': nll/tokens,
+-                        f'dev.{task}.loss_tokens': tokens})
+-    metrics['dev.nll'] = sum(metrics[f'dev.{t}.nll'] for t in ('piqa', 'boolq'))/2
++        metrics.update({f'{split_name}.{task}.accuracy': sum(r['prediction'] == r['gold'] for r in selected)/len(selected),
++                        f'{split_name}.{task}.examples': len(selected), f'{split_name}.{task}.nll': nll/tokens,
++                        f'{split_name}.{task}.loss_tokens': tokens})
++    metrics[f'{split_name}.nll'] = sum(metrics[f'{split_name}.{t}.nll'] for t in ('piqa', 'boolq'))/2
+     if not all(math.isfinite(float(x)) for x in metrics.values()):
+         raise EvaluationNonfinite('nonfinite segmented evaluation aggregate')
+     return metrics, predictions, {'elapsed_s': time.monotonic()-start, 'seams': audit, 'donors': donor_map,
+diff --git a/src/seg_model.py b/src/seg_model.py
+index dba5d18..a23f3f4 100644
+--- a/src/seg_model.py
++++ b/src/seg_model.py
+@@ -24,11 +24,13 @@ FAMILIES = {**{a: 'RBc-R' for a in (*KEEP, *RESET)}, **{a: 'RBc-T' for a in T0},
+ PARAMETERS = {'SEG-00': 0, **{f'SEG-{i:02}': 663552 for i in (1, 2, 3)},
+               'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)}}
+ # E-0027 trains only the r128 triplet and LoRA_seg at new seeds; seed 0 is E-0025.
+-SEED_ARMS = {0: ARMS, 1: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'), 2: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')}
++SEED_ARMS = {0: ARMS, **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07') for s in (1, 2, 3, 4, 5)}}
+ 
+ 
+ def contract(seed):
+-    return 'E-0025@1' if seed == 0 else 'E-0027@1'
++    if seed not in SEED_ARMS:
++        raise ValueError('unknown segmented seed')
++    return 'E-0025@1' if seed == 0 else 'E-0027@1' if seed in (1, 2) else 'E-0030@1'
+ 
+ 
+ def config_for(arm):
+@@ -39,8 +41,8 @@ def config_for(arm):
+ def make_model(arm, checkpoint=None, seed=0):
+     if arm not in ARMS:
+         raise ValueError('unknown segmented arm')
+-    if seed not in (0, 1, 2):
+-        raise ValueError('segmented seeds are 0 (E-0025) and 1, 2 (E-0027)')
++    if arm not in SEED_ARMS.get(seed, ()):
++        raise ValueError('unregistered segmented seed/arm')
+     base = load_base()
+     torch.manual_seed(derive_seed(BASE_SEED, STUDY, 'R1', 'init', seed))
+     if arm == 'SEG-00':
+diff --git a/src/seg_train.py b/src/seg_train.py
+index 2141d44..ac89ba6 100644
+--- a/src/seg_train.py
++++ b/src/seg_train.py
+@@ -1,4 +1,4 @@
+-"""E-0025/E-0027 training at the RB1 sample/optimizer budget; no confirmation reader."""
++"""E-0025/E-0027/E-0030 training at the RB1 budget; no confirmation reader."""
+ import argparse
+ from contextlib import contextmanager
+ import gc
+@@ -15,7 +15,7 @@ from calibrate import MODEL, REVISION
+ from rb_data import plan_batches
+ from rb_train import load_data
+ from rb1_artifacts import verify_lr_lock
+-from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES
++from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES, SEEDS
+ from seg_eval import evaluate, token_losses
+ from seg_model import (make_model, KEEP, FAMILIES, PARAMETERS, state_description, parameter_digest,
+                        SEED_ARMS, contract)
+@@ -51,7 +51,11 @@ def prepare_plan(args, tok, require_registered=True):
+     lock = verify_lr_lock(args.lr_lock)
+     if file_sha256(args.split_manifest) != lock['split_manifest_sha256']:
+         raise ValueError('segmented split differs from the accepted RBc lock')
+-    splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
++    if seed in (3, 4, 5) or getattr(args, 'preopening', False):
++        from seg_a2_predata import load_data as load_preopening
++        splits, excluded = load_preopening(args.data_dir, args.split_manifest, tok)
++    else:
++        splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
+     rb = seed_plan(splits, tok, seed, [(e['task'], e['id']) for e in excluded])
+     metadata = plan_metadata(rb)
+     registered = ORDER_SHA256_BY_SEED[seed]
+@@ -187,7 +191,10 @@ def run(args):
+             'model_revision': REVISION, 'tokenizer_revision': REVISION,
+             'environment.lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
+             'lr_lock.sha256': file_sha256(args.lr_lock), 'split_manifest.sha256': file_sha256(args.split_manifest),
+-            'hardware': torch.cuda.get_device_name(), 'failed': False, 'seed': args.seed,
++            'hardware': torch.cuda.get_device_name(), 'exec.pbs_job_id': os.environ.get('PBS_JOBID'),
++            'hardware.cuda_visible_devices': os.environ.get('CUDA_VISIBLE_DEVICES'),
++            'torch': torch.__version__, 'cuda': torch.version.cuda,
++            'failed': False, 'seed': args.seed,
+             'init_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'init', args.seed),
+             'train_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'train', args.seed)})
+         write_json(out/'config.json', vars(args)); write_json(out/'excluded-train.json', excluded)
+@@ -208,6 +215,10 @@ def run(args):
+                 raise ValueError('zero initialized R_keep does not match Base_seg')
+             write_json(out/'initial-base-predictions.json', base_preds)
+             write_json(out/'initial-predictions.json', initial)
++        elif args.seed in (3, 4, 5):
++            im, initial, _ = evaluate(model, args.arm, splits, tok)
++            write_json(out/'initial-predictions.json', initial)
++            values['initial.dev_metrics'] = im
+         if args.stage == 'train':
+             def monitor(step, current):
+                 m, p, _ = evaluate(current, args.arm, splits, tok)
+@@ -228,6 +239,12 @@ def run(args):
+             values['reload.identical'] = p == p2 and all(values[k] == v for k, v in m2.items())
+             if not values['reload.identical']:
+                 raise ValueError('segmented same-job reload differs')
++            if args.seed in (3, 4, 5) and args.arm == 'SEG-05':
++                om, off, oa = evaluate(model, args.arm, splits, tok, kind='iv_off')
++                values['off.identical_to_Base_seg'] = off == base_preds
++                if not values['off.identical_to_Base_seg']:
++                    raise ValueError('E-0030 dev iv_off differs from same-allocation Base_seg')
++                write_json(out/'iv-off-dev.json', {'metrics': om, 'predictions': off, 'audit': oa})
+             write_json(out/'checkpoint.json', {name: {'path': str(out/'adapter'/name),
+                 'sha256': file_sha256(out/'adapter'/name), 'bytes': (out/'adapter'/name).stat().st_size}
+                 for name in ('config.json', 'adapter.pt')})
+@@ -246,7 +263,7 @@ def main():
+     p = argparse.ArgumentParser(description=__doc__)
+     p.add_argument('--arm', choices=('SEG-00', *FAMILIES), required=True)
+     p.add_argument('--stage', choices=('train', 'base'), required=True)
+-    p.add_argument('--seed', type=int, choices=(0, 1, 2), default=0)
++    p.add_argument('--seed', type=int, choices=SEEDS, default=0)
+     p.add_argument('--data-dir', required=True)
+     p.add_argument('--split-manifest', type=Path, required=True)
+     p.add_argument('--lr-lock', type=Path, required=True)
+diff --git a/src/test_seg_a2_analysis.py b/src/test_seg_a2_analysis.py
+new file mode 100644
+index 0000000..9579c8e
+--- /dev/null
++++ b/src/test_seg_a2_analysis.py
+@@ -0,0 +1,163 @@
++"""Synthetic row and path-gate checks for the locked E-0030 analysis."""
++import copy
++import json
++from pathlib import Path
++
++import pytest
++
++import seg_a2_analysis as analysis
++from rb1_artifacts import reference
++from seg_a2_analysis import check_dev_gate, validate_prediction_rows
++
++
++def _rows(split='a2'):
++    result = []
++    for task in ('piqa', 'boolq'):
++        for row_id in range(1000):
++            gold = row_id % 2
++            scores = [-1.0, -2.0]
++            scores[gold] = -1.0
++            scores[1 - gold] = -2.0
++            result.append({'task': task, 'split': split, 'id': row_id, 'gold': gold,
++                           'prediction': gold, 'scores': scores, 'gold_nll_sum': 1.0,
++                           'gold_loss_tokens': 1})
++    return result
++
++
++def _dev_rows():
++    rows = _rows('dev')
++    for row in rows:
++        row['prediction'] = 0 if row['scores'][0] >= row['scores'][1] else 1
++    return rows
++
++
++def test_a2_predictions_validate_finite_argmax_and_locked_row_order():
++    rows = _rows()
++    expected = [(row['task'], row['id'], row['gold'], row['gold_loss_tokens']) for row in rows]
++    assert validate_prediction_rows(rows, expected) == rows
++
++    altered = copy.deepcopy(rows)
++    altered[0]['scores'][0] = float('nan')
++    with pytest.raises(ValueError, match='finite candidate scores'):
++        validate_prediction_rows(altered)
++
++    altered = copy.deepcopy(rows)
++    altered[0]['prediction'] = 1
++    with pytest.raises(ValueError, match='tie rule'):
++        validate_prediction_rows(altered)
++
++    with pytest.raises(ValueError, match='paired A2'):
++        validate_prediction_rows(rows, list(reversed(expected)))
++
++
++def test_a2_prediction_requires_gold_likelihood_consistency():
++    rows = _rows()
++    rows[0]['gold_nll_sum'] = 9.0
++    with pytest.raises(ValueError, match='answer NLL'):
++        validate_prediction_rows(rows)
++
++
++def test_path_gate_recomputes_same_and_different_hardware_outcomes():
++    expected = _dev_rows()
++    assert check_dev_gate(expected, expected, 'MIG-1g', 'MIG-1g')['passed'] is True
++
++    changed = copy.deepcopy(expected)
++    for row in changed[:10]:
++        row['prediction'] = 1 - row['prediction']
++        row['scores'].reverse()
++    gate = check_dev_gate(changed, expected, 'MIG-2g', 'MIG-1g')
++    assert gate['passed'] is True and gate['prediction_mismatches'] == 10
++
++    changed[10]['prediction'] = 1 - changed[10]['prediction']
++    changed[10]['scores'].reverse()
++    gate = check_dev_gate(changed, expected, 'MIG-2g', 'MIG-1g')
++    assert gate['passed'] is False and gate['prediction_mismatches'] == 11
++
++
++def test_eval_authentication_accepts_distinct_registered_spec_and_mixed_profile_gate(tmp_path, monkeypatch):
++    lock_path = tmp_path / 'lock.json'
++    lock_path.write_text('{}')
++    lock_ref = reference(lock_path)
++    training_root = tmp_path / 'ATT-0001-1'
++    training_root.mkdir()
++    expected_dev = _dev_rows()
++    expected_dev_path = training_root / 'predictions.json'
++    expected_dev_path.write_text(json.dumps(expected_dev))
++    training_manifest_path = training_root / 'manifest.json'
++    training_manifest_path.write_text(json.dumps({'metrics': {'hardware': 'MIG-1g'}}))
++    entry = {
++        'predictions': {'path': str(expected_dev_path)},
++        'manifest': {'path': str(training_manifest_path)},
++    }
++
++    actual_dev = copy.deepcopy(expected_dev)
++    for row in actual_dev[:10]:
++        row['prediction'] = 1 - row['prediction']
++        row['scores'].reverse()
++    gate = check_dev_gate(actual_dev, expected_dev, 'MIG-2g', 'MIG-1g')
++    assert gate['passed'] is True and gate['prediction_mismatches'] == 10
++
++    a2_root = tmp_path / 'ATT-0002-1'
++    a2_root.mkdir()
++    conditions = {}
++    a2_rows = _rows('a2')
++    for label in analysis.CONDITIONS:
++        conditions[label] = {
++            'metrics': {
++                'a2.piqa.accuracy': 1.0, 'a2.piqa.nll': 1.0,
++                'a2.piqa.examples': 1000, 'a2.piqa.loss_tokens': 1000,
++                'a2.boolq.accuracy': 1.0, 'a2.boolq.nll': 1.0,
++                'a2.boolq.examples': 1000, 'a2.boolq.loss_tokens': 1000,
++                'a2.nll': 1.0,
++            },
++            'predictions': a2_rows,
++            'audit': {'donors': []},
++        }
++    conditions['SEG-05/iv_swap']['audit']['donors'] = [
++        {'task': row['task'], 'recipient': row['id'], 'donor': row['id']} for row in a2_rows]
++    monkeypatch.setattr(analysis, 'donor_indices', lambda rows, phase: list(range(len(rows))))
++
++    dev_path = a2_root / 'dev-reproduction.json'
++    dev_path.write_text(json.dumps({'check': gate, 'predictions': actual_dev}))
++    conditions_path = a2_root / 'conditions.json'
++    conditions_path.write_text(json.dumps(conditions))
++    provenance = {
++        'lock': lock_ref, 'seed': 3, 'training_source': 'a' * 40,
++        'evaluation_source': 'b' * 40, 'inputs': {'SEG-05': entry},
++        'job_id': '123.server', 'hardware': 'MIG-2g',
++    }
++    provenance_path = a2_root / 'provenance.json'
++    provenance_path.write_text(json.dumps(provenance))
++    receipt_path = a2_root / 'a2-read.jsonl'
++    receipt_path.write_text(json.dumps({
++        'lock_sha256': lock_ref['sha256'], 'seed': 3, 'arm': 'SEG-05',
++        'pbs_job_id': '123.server', 'hardware': 'MIG-2g',
++        'time_utc': '2026-11-03T00:00:00+00:00',
++    }) + '\n')
++    artifacts = [{'role': path.name, 'path': str(path)} for path in
++                 (dev_path, conditions_path, provenance_path, receipt_path)]
++    actual_lock_sha = lock_ref['sha256']
++    eval_manifest = {
++        'status': 'complete', 'contract': analysis.CONTRACT, 'arm': 'A2', 'seed': 3,
++        'stage': 'a2_evaluation', 'spec_digest': 'c' * 64,
++        'metrics': {'lock.sha256': actual_lock_sha, 'source.commit': 'b' * 40,
++                    'conditions': len(analysis.CONDITIONS), 'a2_rows': 2000,
++                    'exec.pbs_job_id': '123.server', 'hardware': 'MIG-2g',
++                    'path.dev_gate': gate, 'off.identical_to_Base_seg': True},
++        'artifacts': artifacts, 'validator': {'passed': True},
++    }
++    manifest_path = a2_root / 'manifest.json'
++    manifest_path.write_text(json.dumps(eval_manifest))
++    lock = {'training_source': 'a' * 40, 'evaluation_source': 'b' * 40,
++            'runs': {'3': {'SEG-05': entry}}}
++    expected_ids = [(row['task'], row['id']) for row in a2_rows]
++
++    result = analysis._verify_eval(3, a2_root, lock, lock_path, actual_lock_sha, expected_ids)
++    assert result['path_gate']['passed'] is True
++    assert result['path_gate']['same_hardware'] is False
++    assert result['path_gate']['prediction_mismatches'] == 10
++
++    eval_manifest['spec_digest'] = ''
++    manifest_path.write_text(json.dumps(eval_manifest))
++    with pytest.raises(ValueError, match='spec digest'):
++        analysis._verify_eval(3, a2_root, lock, lock_path, actual_lock_sha, expected_ids)
+diff --git a/src/test_seg_a2_data.py b/src/test_seg_a2_data.py
+new file mode 100644
+index 0000000..ed919de
+--- /dev/null
++++ b/src/test_seg_a2_data.py
+@@ -0,0 +1,158 @@
++import builtins
++import hashlib
++import json
++from pathlib import Path
++
++import pytest
++
++import seg_a2_data as a2
++from rb_data import confirmation_manifest
++from v1_data import derive_seed
++
++
++def synthetic_splits(count=1100):
++    return {
++        'metadata': {'synthetic': True},
++        'splits': {
++            task: {
++                'train': [{'id': f'{task}-{i}', 'task': task, 'label': bool(i % 2),
++                           'text': f'synthetic {task} {i}'} for i in range(count)],
++                'dev': [],
++            }
++            for task in ('piqa', 'boolq')
++        },
++    }
++
++
++def write_json(path, value):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(value, sort_keys=True) + '\n')
++    return path
++
++
++def ref(path):
++    path = Path(path).resolve()
++    data = path.read_bytes()
++    return {'path': str(path), 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
++
++
++def make_lock(tmp_path, monkeypatch):
++    original = synthetic_splits()
++    manifest = confirmation_manifest(original)
++    split_path = write_json(tmp_path / 'rb-confirmation.json', manifest)
++    monkeypatch.setattr(a2, 'SPLIT_MANIFEST_SHA256', ref(split_path)['sha256'])
++    runs = {}
++    for seed in a2.SEEDS:
++        runs[str(seed)] = {}
++        for arm in a2.ARMS:
++            root = tmp_path / 'runs' / str(seed) / arm
++            manifest_path = write_json(root / 'manifest.json', {
++                'contract': a2.CONTRACT, 'status': 'complete', 'arm': arm,
++                'seed': seed, 'phase': 'SEG', 'stage': 'train',
++                'validator': {'passed': True},
++                'metrics': {'source.commit': 'b' * 40,
++                            'model_revision': a2.MODEL_REVISION,
++                            'tokenizer_revision': a2.MODEL_REVISION},
++            })
++            predictions_path = write_json(root / 'predictions.json', [])
++            config_path = write_json(root / 'adapter' / 'config.json', {'arm': arm})
++            adapter_path = root / 'adapter' / 'adapter.pt'
++            adapter_path.write_bytes(b'synthetic-checkpoint')
++            runs[str(seed)][arm] = {
++                'root': str(root.resolve()),
++                'manifest': ref(manifest_path),
++                'predictions': ref(predictions_path),
++                'checkpoint': {'config.json': ref(config_path), 'adapter.pt': ref(adapter_path)},
++            }
++    lock = {
++        'contract': a2.CONTRACT,
++        'evaluation_source': 'a' * 40,
++        'training_source': 'b' * 40,
++        'model_revision': a2.MODEL_REVISION,
++        'tokenizer_revision': a2.MODEL_REVISION,
++        'split_manifest': ref(split_path),
++        'ids_sha256': manifest['ids_sha256'],
++        'runs': runs,
++        'evaluation': a2.EVALUATION,
++        'bootstrap': a2.BOOTSTRAP,
++        'derangement': {
++            'seed': derive_seed(a2.BASE_SEED, a2.STUDY, 'A2', 'iv_swap'),
++            'method': 'within_task_fixed_derangement',
++        },
++        'preopening_checks': {'passed': True, 'checks': ['synthetic-fixture']},
++    }
++    lock_path = write_json(tmp_path / 'a2-lock.json', lock)
++    monkeypatch.setenv('SR_CODE_COMMIT', 'a' * 40)
++    return original, manifest, lock, lock_path
++
++
++def test_load_a2_selects_manifest_order_and_excludes_other_train_rows():
++    original = synthetic_splits()
++    manifest = confirmation_manifest(original)
++    selected = a2.load_a2(original, manifest)
++    for task in ('piqa', 'boolq'):
++        train_ids = {row['id'] for row in selected['splits'][task]['train']}
++        a2_rows = selected['splits'][task]['a2']
++        a2_ids = [row['id'] for row in a2_rows]
++        assert a2_ids == manifest['ids'][task]
++        assert len(a2_ids) == 1000
++        assert not train_ids.intersection(a2_ids)
++        assert train_ids | set(a2_ids) == {row['id'] for row in original['splits'][task]['train']}
++
++
++def test_load_a2_rejects_altered_manifest_or_order():
++    original = synthetic_splits()
++    manifest = confirmation_manifest(original)
++    changed = json.loads(json.dumps(manifest))
++    changed['ids']['boolq'][0], changed['ids']['boolq'][1] = (
++        changed['ids']['boolq'][1], changed['ids']['boolq'][0])
++    with pytest.raises(ValueError, match='regenerated'):
++        a2.load_a2(original, changed)
++
++
++def test_verify_lock_authenticates_pin_and_artifact_files(tmp_path, monkeypatch):
++    _, _, _, lock_path = make_lock(tmp_path, monkeypatch)
++    digest = ref(lock_path)['sha256']
++    verified = a2.verify_lock(lock_path, digest)
++    assert verified['contract'] == a2.CONTRACT
++    adapter = Path(verified['runs']['3']['SEG-05']['checkpoint']['adapter.pt']['path'])
++    adapter.write_bytes(b'tampered')
++    with pytest.raises(ValueError, match='hash/size'):
++        a2.verify_lock(lock_path, digest)
++
++
++def test_verify_lock_rejects_changed_eval_settings_and_checkpoint_ref(tmp_path, monkeypatch):
++    _, _, lock, lock_path = make_lock(tmp_path, monkeypatch)
++    lock['evaluation']['max_length'] = 513
++    write_json(lock_path, lock)
++    with pytest.raises(ValueError, match='caller pin'):
++        a2.verify_lock(lock_path, '0' * 64)
++    lock['evaluation']['max_length'] = 512
++    lock['runs']['4']['SEG-06']['checkpoint']['adapter.pt']['sha256'] = '0' * 64
++    write_json(lock_path, lock)
++    with pytest.raises(ValueError, match='hash/size'):
++        a2.verify_lock(lock_path, ref(lock_path)['sha256'])
++
++
++def test_failed_lock_stops_before_importing_or_reading_source(tmp_path, monkeypatch):
++    _, _, _, lock_path = make_lock(tmp_path, monkeypatch)
++    real_import = builtins.__import__
++
++    def guarded_import(name, *args, **kwargs):
++        if name == 'v1_run':
++            raise AssertionError('source preparation imported before lock validation')
++        return real_import(name, *args, **kwargs)
++
++    monkeypatch.setattr(builtins, '__import__', guarded_import)
++    with pytest.raises(ValueError, match='caller pin'):
++        a2.read_a2(lock_path, '0' * 64, '/must/not/read', tmp_path / 'out',
++                   3, 'SEG-05', 'synthetic hardware', unseal=True)
++    assert not (tmp_path / 'out').exists()
++
++
++def test_read_a2_requires_explicit_unseal_before_any_lock_or_data_access(tmp_path):
++    with pytest.raises(ValueError, match='explicit unseal'):
++        a2.read_a2(tmp_path / 'missing-lock', '0' * 64, '/must/not/read',
++                   tmp_path / 'out', 3, 'SEG-05', 'synthetic hardware')
++    assert not (tmp_path / 'out').exists()
+diff --git a/src/test_seg_a2_eval.py b/src/test_seg_a2_eval.py
+new file mode 100644
+index 0000000..2008893
+--- /dev/null
++++ b/src/test_seg_a2_eval.py
+@@ -0,0 +1,33 @@
++"""A2 access cannot precede the locked dev gate; synthetic rows only."""
++from types import SimpleNamespace
++
++import pytest
++
++import seg_a2_eval as runner
++from test_seg_artifacts import predictions
++
++
++def test_same_slice_requires_row_identity_and_other_slice_class_limit():
++    expected = predictions()
++    actual = [dict(r) for r in expected]
++    assert runner.dev_gate(actual, expected, '2g', '2g')['passed']
++    actual[0]['scores'] = [s+1 for s in actual[0]['scores']]
++    assert not runner.dev_gate(actual, expected, '2g', '2g')['passed']
++    assert runner.dev_gate(actual, expected, '1g', '2g')['passed']
++    for i in range(10):
++        actual[i].update(prediction=1-expected[i]['prediction'], scores=list(reversed(expected[i]['scores'])))
++    assert runner.dev_gate(actual, expected, '1g', '2g')['passed']
++    actual[10].update(prediction=1-expected[10]['prediction'], scores=list(reversed(expected[10]['scores'])))
++    assert not runner.dev_gate(actual, expected, '1g', '2g')['passed']
++
++
++def test_failed_lock_or_missing_unseal_never_opens_a2(monkeypatch, tmp_path):
++    monkeypatch.setenv('SR_SPEC_DIGEST', 'synthetic')
++    monkeypatch.setattr(runner, 'read_a2', lambda *a, **k: pytest.fail('A2 opened'))
++    monkeypatch.setattr(runner, 'verify_lock', lambda *a: (_ for _ in ()).throw(ValueError('lock rejected')))
++    args = SimpleNamespace(output=tmp_path, unseal=False, lock=tmp_path/'lock', lock_sha256='0'*64, seed=3)
++    with pytest.raises(ValueError, match='unseal'):
++        runner.run(args)
++    args.unseal = True
++    with pytest.raises(ValueError, match='lock rejected'):
++        runner.run(args)
+diff --git a/src/test_seg_a2_predata.py b/src/test_seg_a2_predata.py
+new file mode 100644
+index 0000000..8a6f56e
+--- /dev/null
++++ b/src/test_seg_a2_predata.py
+@@ -0,0 +1,100 @@
++import sys
++from types import SimpleNamespace
++
++import pytest
++
++import seg_a2_predata as predata
++from rb_data import apply_confirmation, confirmation_manifest
++from v1_data import make_v1_splits
++
++
++def test_piqa_held_rows_skip_json_and_label_conversion():
++    rows = predata._piqa_records(
++        ['not-json-held', '{"goal":"allowed","sol1":"a","sol2":"b"}'],
++        ['not-an-int-held', '1'], {0})
++    assert rows == [
++        {'task': 'piqa', 'id': 0},
++        {'task': 'piqa', 'id': 1, 'goal': 'allowed', 'solutions': ['a', 'b'], 'label': 1},
++    ]
++
++
++def test_boolq_arrow_filters_before_python_row_conversion(monkeypatch):
++    class Column:
++        def __init__(self, values):
++            self.values = values
++
++        def to_pylist(self):
++            return self.values
++
++    class Table:
++        column_names = ['id', 'passage', 'question', 'answer']
++
++        def __init__(self, rows):
++            self.rows = rows
++            self.num_rows = len(rows)
++
++        def __getitem__(self, key):
++            return Column([row[key] for row in self.rows])
++
++        def filter(self, mask):
++            return Filtered([row for row, keep in zip(self.rows, mask) if keep])
++
++    class Filtered:
++        def __init__(self, rows):
++            self.rows = rows
++
++        def to_pylist(self):
++            assert [row['id'] for row in self.rows] == ['keep']
++            return self.rows
++
++    monkeypatch.setitem(sys.modules, 'pyarrow', SimpleNamespace(array=lambda values, type: values,
++                                                                 bool_=bool))
++    result = predata._boolq_records_parquet(Table([
++        {'id': 'sealed', 'passage': 'must not materialize', 'question': 'x', 'answer': 'poison'},
++        {'id': 'keep', 'passage': 'visible', 'question': 'ok', 'answer': True},
++    ]), {'sealed'})
++    assert result == [
++        {'task': 'boolq', 'id': 'sealed'},
++        {'task': 'boolq', 'id': 'keep', 'passage': 'visible', 'question': 'ok', 'label': True},
++    ]
++
++
++def test_placeholders_are_removed_from_training_before_audit(monkeypatch):
++    # Enough rows to produce a realistic D-0025 1,000-ID sample in each train split.
++    piqa = [{'task': 'piqa', 'id': i, 'goal': 'g', 'solutions': ['a', 'b'],
++             'label': i % 2} for i in range(4100)]
++    boolq = [{'task': 'boolq', 'id': f'b{i}', 'passage': 'p', 'question': 'q',
++              'label': bool(i % 2)} for i in range(4100)]
++    original = make_v1_splits(piqa, boolq)
++    manifest = confirmation_manifest(original)
++    held = {task: set(manifest['ids'][task]) for task in ('piqa', 'boolq')}
++    placeholder_splits = {'metadata': original['metadata'], 'splits': {}}
++    for task in ('piqa', 'boolq'):
++        placeholder_splits['splits'][task] = {}
++        for split, rows in original['splits'][task].items():
++            placeholder_splits['splits'][task][split] = [
++                ({'task': task, 'id': row['id']} if row['id'] in held[task] else row)
++                for row in rows
++            ]
++    filtered = apply_confirmation(placeholder_splits, manifest)
++
++    def audit(splits, tok):
++        for task in ('piqa', 'boolq'):
++            for row in splits['splits'][task]['train']:
++                assert 'label' in row
++                assert ('goal' in row and 'solutions' in row) if task == 'piqa' else (
++                    'passage' in row and 'question' in row)
++        return []
++
++    monkeypatch.setattr(predata, 'prepare_preopening', lambda data_dir, split_manifest: filtered)
++    monkeypatch.setattr('v1_data.audit_training_exclusions', audit)
++    splits, excluded = predata.load_data('unused', 'unused', object())
++    assert splits is filtered
++    assert excluded == []
++    for task in ('piqa', 'boolq'):
++        assert not held[task].intersection(row['id'] for row in splits['splits'][task]['train'])
++
++
++def test_invalid_allowed_piqa_row_still_fails():
++    with pytest.raises(ValueError, match='not valid JSON'):
++        predata._piqa_records(['not-json'], ['0'], set())
+diff --git a/src/test_seg_a2_rules.py b/src/test_seg_a2_rules.py
+new file mode 100644
+index 0000000..c3cc010
+--- /dev/null
++++ b/src/test_seg_a2_rules.py
+@@ -0,0 +1,182 @@
++"""Synthetic tests for the pure E-0030 A2 BoolQ rules."""
++import numpy as np
++import pytest
++
++import seg_a2_rules as rules
++
++
++def counts_for(gain=1, lora=0, swap=0, total=1000):
++    control = total * 3 // 5
++    keep = control + gain
++    return {
++        'SEG-04': (keep - lora, total),
++        'SEG-05': (keep, total),
++        'SEG-06': (control, total),
++        'SEG-07': (max(0, control - 10), total),
++        'SEG-05/iv_swap': (keep - swap, total),
++    }
++
++
++def passing_checks():
++    return {s: {
++        **{key: True for key in rules.IMPLEMENTATION_CHECKS},
++        'path_dev_same_hardware': True,
++        'path_dev_mismatch_count': 0,
++        'a2_iv_off_matches_base': True,
++    } for s in rules.SEEDS}
++
++
++def row_vectors(total=1000, gain_positions=(0,), lora_positions=(), swap_positions=()):
++    """Build valid paired rows where Keep beats each control at selected rows."""
++    values = {}
++    for seed in rules.SEEDS:
++        values[seed] = {}
++        for arm in rules.ARMS:
++            values[seed][arm] = np.zeros(total, dtype=np.int8)
++        values[seed]['SEG-05'][list(gain_positions)] = 1
++        values[seed]['SEG-04'][list(lora_positions)] = 1
++        values[seed]['SEG-06'][:] = 0
++        values[seed]['SEG-07'][:] = 0
++        values[seed]['SEG-05/iv_swap'] = np.zeros(total, dtype=np.int8)
++        values[seed]['SEG-05/iv_swap'][list(swap_positions)] = 1
++    return values
++
++
++def vectors_from_counts(seed_counts):
++    values = {}
++    for seed, seed_counts_for_seed in seed_counts.items():
++        values[seed] = {}
++        for label in rules.LABELS:
++            correct, total = seed_counts_for_seed[label]
++            values[seed][label] = np.array(
++                [1] * correct + [0] * (total - correct), dtype=np.int8)
++    return values
++
++
++def test_exact_point_quantities_and_fixed_sequence_secondary_gate(monkeypatch):
++    # Use the locked number of draws for a percentile-boundary assertion:
++    # with only 32 draws the 2.5% linearly interpolated quantile can be >0
++    # even when one draw has zero lora gain.
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 10_000)
++    counts = {s: counts_for(gain=100, lora=2, swap=3) for s in rules.SEEDS}
++    rows = vectors_from_counts(counts)
++    result = rules.analyze(counts, passing_checks(), (590, 1000), rows)
++    assert result['G']['numerator'] == 1 and result['G']['denominator'] == 10
++    assert result['L']['numerator'] == 1 and result['L']['denominator'] == 500
++    assert result['per_seed']['3']['swap']['numerator'] == 3
++    assert result['direction'] == 'supported'
++    assert result['rules']['6']['evaluated'] is True
++    assert result['ci95']['L'][0] == 0
++    assert result['secondary_confirmed'] is False  # Positive L alone is insufficient.
++
++
++def test_bootstrap_uses_shared_indices_and_recomputes_max_control_per_draw(monkeypatch):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 17)
++    n = 5
++    data = row_vectors(n, gain_positions=(0, 1), lora_positions=(2,), swap_positions=(3,))
++    # Distinct control profiles make the winning control vary across resamples.
++    for seed in rules.SEEDS:
++        data[seed]['SEG-06'] = np.array([1, 1, 0, 0, 0], dtype=np.int8)
++        data[seed]['SEG-07'] = np.array([0, 0, 1, 1, 1], dtype=np.int8)
++        data[seed]['SEG-05'] = np.array([1, 1, 1, 0, 0], dtype=np.int8)
++        data[seed]['SEG-04'] = np.array([0, 0, 0, 1, 1], dtype=np.int8)
++
++    # Independent locked-stream calculation; one draw matrix is shared by all
++    # seeds and arms and the max is applied after each resampled accuracy.
++    rng = np.random.default_rng(rules.BOOTSTRAP_SEED)
++    draw = rng.integers(0, n, size=(rules.BOOTSTRAP_REPEATS, n))
++    gs, ls = [], []
++    for indices in draw:
++        gain_count, lora_count = 0, 0
++        for seed in rules.SEEDS:
++            correct = {a: int(data[seed][a][indices].sum()) for a in rules.ARMS}
++            gain_count += correct['SEG-05'] - max(correct['SEG-06'], correct['SEG-07'])
++            lora_count += correct['SEG-05'] - correct['SEG-04']
++        gs.append(gain_count / (len(rules.SEEDS) * n))
++        ls.append(lora_count / (len(rules.SEEDS) * n))
++    got = rules._bootstrap(data, n)
++    assert got['G'] == [float(x) for x in np.quantile(gs, [.025, .975])]
++    assert got['L'] == [float(x) for x in np.quantile(ls, [.025, .975])]
++
++
++def test_zero_gain_bootstrap_stays_exactly_zero(monkeypatch):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 32)
++    n = 23
++    data = {s: {label: np.zeros(n, dtype=np.int8) for label in rules.LABELS}
++            for s in rules.SEEDS}
++    for seed in rules.SEEDS:
++        data[seed]['SEG-06'] = np.ones(n, dtype=np.int8)
++        data[seed]['SEG-07'] = np.ones(n, dtype=np.int8)
++        data[seed]['SEG-05'] = np.ones(n, dtype=np.int8)
++        data[seed]['SEG-04'] = np.ones(n, dtype=np.int8)
++    intervals = rules._bootstrap(data, n)
++    assert intervals['G'] == [0.0, 0.0]
++    assert intervals['L'] == [0.0, 0.0]
++
++
++def test_strict_interval_lower_boundary_is_not_supported(monkeypatch):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 10_000)
++    n = 100
++    # One positive row makes the exact mean positive; most paired draws omit it,
++    # so the lower linear quantile is exactly zero.
++    counts = {s: counts_for(gain=1, total=n) for s in rules.SEEDS}
++    rows = vectors_from_counts(counts)
++    result = rules.analyze(counts, passing_checks(), (0, n), rows)
++    assert result['G']['numerator'] > 0
++    assert result['ci95']['G'][0] == 0
++    assert result['direction'] == 'inconclusive'
++    assert result['rules']['5']['G_ci_lower_positive'] is False
++
++
++def test_fixed_sequence_skips_lora_confirmation_without_primary_support(monkeypatch):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 64)
++    counts = {s: counts_for(gain=0, lora=100, total=1000) for s in rules.SEEDS}
++    rows = vectors_from_counts(counts)
++    result = rules.analyze(counts, passing_checks(), (590, 1000), rows)
++    assert result['direction'] == 'challenged'
++    assert result['rules']['6']['evaluated'] is False
++    assert result['rules']['6']['reason'] == 'fixed_sequence_not_reached'
++
++
++@pytest.mark.parametrize('bad_check', [
++    'off_matches_base_dev', 'initial_matches_base_dev', 'no_channel_identity',
++    'reload_identical', 'initial_parameters_identical', 'train_ids_disjoint_a2',
++    'a2_ids_and_hashes_match', 'a2_iv_off_matches_base',
++])
++def test_failed_implementation_or_path_check_blocks_confirmation(monkeypatch, bad_check):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 16)
++    checks = passing_checks()
++    checks[4][bad_check] = False
++    result = rules.analyze(
++        {s: counts_for(gain=20) for s in rules.SEEDS}, checks, (590, 1000),
++        vectors_from_counts({s: counts_for(gain=20) for s in rules.SEEDS}),
++    )
++    assert result['direction'] == 'invalid_implementation'
++    assert result['eligible_edge'] is None
++    assert result['rules']['5']['outcome'] == 'not_evaluated'
++
++
++def test_path_gate_allows_at_most_ten_mismatches_only_on_different_hardware(monkeypatch):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 8)
++    checks = passing_checks()
++    checks[3]['path_dev_same_hardware'] = False
++    checks[3]['path_dev_mismatch_count'] = 10
++    counts = {s: counts_for(total=10) for s in rules.SEEDS}
++    rows = vectors_from_counts(counts)
++    result = rules.analyze(counts, checks, (6, 10), rows)
++    assert result['rules']['2']['passed'] is True
++    checks[3]['path_dev_mismatch_count'] = 11
++    result = rules.analyze(counts, checks, (6, 10), rows)
++    assert result['direction'] == 'invalid_implementation'
++
++
++def test_input_shape_and_invalid_boolean_checks_are_rejected(monkeypatch):
++    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 8)
++    counts = {s: counts_for(total=10) for s in rules.SEEDS}
++    rows = vectors_from_counts(counts)
++    with pytest.raises(ValueError, match='one-dimensional and match count totals'):
++        rules.analyze(counts, passing_checks(), (6, 10), row_vectors(9))
++    checks = passing_checks()
++    checks[3]['path_dev_same_hardware'] = 1
++    with pytest.raises(ValueError, match='must be boolean'):
++        rules.analyze(counts, checks, (6, 10), rows)
+diff --git a/src/test_seg_seeds.py b/src/test_seg_seeds.py
+index 8133501..2c317e5 100644
+--- a/src/test_seg_seeds.py
++++ b/src/test_seg_seeds.py
+@@ -101,20 +101,20 @@ def seeded(base, arm, seed):
+ 
+ def test_r128_initial_parameters_identical_within_seed_and_distinct_across_seeds(base):
+     digests = {}
+-    for seed in (0, 1, 2):
++    for seed in (0, 1, 2, 3, 4, 5):
+         for arm in ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07'):
+             with seeded(base, arm, seed) as model:
+                 digests[seed, arm] = parameter_digest(model)
+         assert digests[seed, 'SEG-05'] == digests[seed, 'SEG-06'] == digests[seed, 'SEG-07']
+         assert digests[seed, 'SEG-04'] != digests[seed, 'SEG-05']
+-    assert len({digests[s, 'SEG-05'] for s in (0, 1, 2)}) == 3
+-    assert len({digests[s, 'SEG-04'] for s in (0, 1, 2)}) == 3
++    assert len({digests[s, 'SEG-05'] for s in (0, 1, 2, 3, 4, 5)}) == 6
++    assert len({digests[s, 'SEG-04'] for s in (0, 1, 2, 3, 4, 5)}) == 6
+ 
+ 
+ IDS = ([[11, 29, 73, 181, 8]], [[71, 9, 18, 41]])
+ 
+ 
+-@pytest.mark.parametrize('seed', [1, 2], ids=['seed1', 'seed2'])
++@pytest.mark.parametrize('seed', [1, 2, 3, 4, 5], ids=['seed1', 'seed2', 'seed3', 'seed4', 'seed5'])
+ @pytest.mark.parametrize('arm', ['SEG-04', 'SEG-06', 'SEG-07'])
+ def test_no_channel_identity_at_new_seed(base, arm, seed):
+     a, b = (torch.tensor(x, device='cuda') for x in IDS)
+@@ -134,7 +134,7 @@ def test_no_channel_identity_at_new_seed(base, arm, seed):
+         assert not torch.equal(direct.logits, untouched)
+ 
+ 
+-@pytest.mark.parametrize('seed', [1, 2], ids=['seed1', 'seed2'])
++@pytest.mark.parametrize('seed', [1, 2, 3, 4, 5], ids=['seed1', 'seed2', 'seed3', 'seed4', 'seed5'])
+ def test_zero_initialized_keep_matches_base_at_new_seed(base, seed):
+     a, b = (torch.tensor(x, device='cuda') for x in IDS)
+     with torch.no_grad():
