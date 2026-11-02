@@ -27,34 +27,61 @@ def any_gain(deltas):
 def rule_outcomes(scores, implementation_passed=True):
     if not implementation_passed:
         raise ValueError('implementation checks failed; no scientific outcomes')
-    required = {*E0029_ARMS, 'Base', 'RB1-07', 'RB1-09', 'X-01'}
+    required = {*E0029_ARMS, 'Base', 'RB1-07', 'RB1-09'}
     if not required <= scores.keys():
         raise ValueError('required valid references are pending; withhold dependent comparisons')
-    up = {'T': scores['L-56']-scores['RB1-09'], 'N': scores['L-48']-scores['X-01']}
+    x_available = 'X-01' in scores
+    up = {'T': scores['L-56']-scores['RB1-09']}
     ig = {arm: scores[arm]-scores[ref] for arm, ref in
-          (('G-T', 'RB1-09'), ('G-QN', 'Q-N'), ('G-N', 'X-01'))}
-    pair = {'P-T': scores['P-T']-scores['RB1-09'], 'P-N': scores['P-N']-scores['X-01']}
+          (('G-T', 'RB1-09'), ('G-QN', 'Q-N'))}
+    pair = {'P-T': scores['P-T']-scores['RB1-09']}
+    if x_available:
+        up['N'] = scores['L-48']-scores['X-01']
+        ig['G-N'] = scores['G-N']-scores['X-01']
+        pair['P-N'] = scores['P-N']-scores['X-01']
     qk = scores['Q-N']-scores['RB1-09']
     lora = {arm: scores[arm]-scores['RB1-07'] for arm in SIDE_ARMS}
-    h23 = 'challenges' if any(d >= ONE_PP for d in up.values()) else 'supports'
-    h24, h25 = any_gain(ig.values()), any_gain(pair.values())
+    h23 = ('challenges' if any(d >= ONE_PP for d in up.values()) else 'supports') if x_available else 'pending_X01'
+    h24 = any_gain(ig.values()) if x_available else 'pending_X01'
+    h25 = any_gain(pair.values()) if x_available else 'pending_X01'
     h26 = 'supports' if qk >= ONE_PP else 'challenges' if qk <= 0 else 'inconclusive'
     return {
-        '1_implementation': {'passed': True, 'evidence_level': 'diagnostic'},
+        '1_implementation': {'passed': True, 'evidence_level': 'diagnostic',
+            'X01_reference_status': 'valid' if x_available else 'pending_X01'},
         '2_learnability': {arm: {'minus_Base': pp(scores[arm]-scores['Base']),
             'at_least_Base_plus_1pp': scores[arm]-scores['Base'] >= ONE_PP} for arm in E0029_ARMS},
         '3_H0023': {'outcome': h23, 'd_up': {tap: pp(d) for tap, d in up.items()},
+            'pending_comparisons': [] if x_available else ['L-48 - X-01'],
             'activate_H0027': h23 == 'challenges', 'L56_minus_RB107': pp(scores['L-56']-scores['RB1-07'])},
         '4_H0024': {'outcome': h24, 'd_IG': {arm: pp(d) for arm, d in ig.items()},
+            'pending_comparisons': [] if x_available else ['G-N - X-01'],
             'activate_H0028': h24 == 'supports'},
-        '5_H0025': {'outcome': h25, 'd_pair': {arm: pp(d) for arm, d in pair.items()}},
-        '6_H0026': {'outcome': h26, 'd_QK': pp(qk), 'd_V_descriptive': pp(scores['X-01']-scores['Q-N']),
+        '5_H0025': {'outcome': h25, 'd_pair': {arm: pp(d) for arm, d in pair.items()},
+            'pending_comparisons': [] if x_available else ['P-N - X-01']},
+        '6_H0026': {'outcome': h26, 'd_QK': pp(qk),
+            'd_V_descriptive': pp(scores['X-01']-scores['Q-N']) if x_available else None,
+            'd_V_status': 'available' if x_available else 'pending_X01',
             'GQN_minus_GT_descriptive': pp(scores['G-QN']-scores['G-T'])},
         '7_LoRA': {'differences': {arm: pp(d) for arm, d in lora.items()},
             'new_two_seed_replication': [arm for arm, d in lora.items() if d >= ONE_PP],
             'LoRA_GA_required_in_replication': [arm for arm, d in lora.items() if d >= ONE_PP and arm in IG_ARMS]},
         '8_evidence': {'scientific_rules_level': 'screening', 'implementation_level': 'diagnostic',
             'hypothesis_status_changes': False}}
+
+
+def bind_reference(arm, inventory, xcheck=None, diagnostic=None):
+    if arm == 'X-01' and (xcheck is None or
+            xcheck.get('sources', {}).get('X-01', {}).get('manifest') != inventory['manifest']):
+        raise ValueError('X-01 differs from the run that passed E-0028 rule1')
+    if diagnostic is not None and diagnostic.get('training_inputs') != inventory:
+        raise ValueError('reference diagnostics replayed a different checkpoint')
+
+
+def runtime_metrics(manifests):
+    return {arm: {key: value for key, value in manifests[arm]['metrics'].items()
+        if key.startswith(('train.', 'plan.', 'runtime.', 'params.', 'init.')) or
+        key in ('learning_rate', 'hardware', 'source.commit', 'environment.lock_sha256')}
+        for arm in E0029_ARMS}
 
 
 def validate_reads(value):
@@ -89,20 +116,24 @@ def analyze(spec):
     if (smoke.get('status') != 'complete' or smoke.get('validator', {}).get('passed') is not True or
             smoke.get('metrics', {}).get('source_commit') != source or smoke['metrics'].get('pytest_exit') != 0):
         raise ValueError('implementation tests do not cover the training source')
-    xcheck = read(spec['e0028_analysis'])
-    if xcheck.get('contract') != 'E-0028@1' or xcheck.get('rules', {}).get('1_implementation', {}).get('passed') is not True:
-        raise ValueError('X-01 is pending or fails E-0028 rule1')
+    xcheck = read(spec['e0028_analysis']) if spec.get('e0028_analysis') else None
+    if xcheck is not None and xcheck.get('contract') != 'E-0028@1':
+        raise ValueError('X-01 validation is not an E-0028 analysis')
+    x_available = xcheck is not None and xcheck.get('rules', {}).get('1_implementation', {}).get('passed') is True
+    reference_arms = ('RB1-07', 'RB1-09', 'X-01') if x_available else ('RB1-07', 'RB1-09')
     base = Path(spec['base_run'])
     if reference(base/'manifest.json')['sha256'] != ACCEPTED_BASE_MANIFEST_SHA256:
         raise ValueError('Base differs from locked E-0021 reference')
     rows = {'Base': validate_rows(read(base/'predictions.json'), 'Base')}
     manifests, sources, performance, curves, reads, checks, initial = {}, {}, {}, {}, {}, {}, {}
     performance['Base'] = check_metrics(rows['Base'], read(base/'manifest.json')['metrics'], 'Base')
-    for arm in ('RB1-07', 'RB1-09', 'X-01', *E0029_ARMS):
-        root = Path(spec['reference_runs'][arm] if arm in ('RB1-07', 'RB1-09', 'X-01') else spec['training_runs'][arm])
+    for arm in (*reference_arms, *E0029_ARMS):
+        root = Path(spec['reference_runs'][arm] if arm in reference_arms else spec['training_runs'][arm])
         expected = spec['x01_source_commit'] if arm == 'X-01' else source if arm in E0029_ARMS else None
         manifest, refs, _ = validate_formal_run(root, arm, expected)
         manifests[arm], sources[arm] = manifest, refs
+        if arm == 'X-01':
+            bind_reference(arm, refs, xcheck=xcheck)
         rows[arm] = validate_rows(read(root/'predictions.json'), arm, rows['Base'])
         performance[arm] = check_metrics(rows[arm], manifest['metrics'], arm)
         if arm not in E0029_ARMS:
@@ -150,18 +181,22 @@ def analyze(spec):
         sources[arm].update({name: reference(root/name) for name in ('initialization.json', 'ig-samples.json', 'initial-identity.json')})
     if len({manifests[arm]['metrics']['ig.sample_sha256'] for arm in E0029_ARMS}) != 1:
         raise ValueError('arms used different training-side initialization/diagnostic samples')
-    for arm in ('RB1-09', 'X-01'):
+    for arm in (('RB1-09', 'X-01') if x_available else ('RB1-09',)):
         diagnostic = read(spec['reference_diagnostics'][arm])
         if diagnostic['arm'] != arm or diagnostic['sample_sha256'] != manifests['Q-N']['metrics']['ig.sample_sha256']:
             raise ValueError('reference diagnostics use different examples')
+        bind_reference(arm, sources[arm], xcheck=xcheck, diagnostic=diagnostic)
         reads[arm] = {stage: validate_reads(diagnostic[stage]) for stage in ('step0', 'final')}
     scores = {arm: accuracy(value) for arm, value in rows.items()}
     rules = rule_outcomes(scores)
     rules['1_implementation'].update(initial_references=initial, initialization_checks=checks,
-        smoke=reference(spec['smoke_manifest']), X01_rule1=reference(spec['e0028_analysis']))
+        smoke=reference(spec['smoke_manifest']),
+        X01_rule1=reference(spec['e0028_analysis']) if xcheck is not None else None)
     arrays = {arm: {task: [int(row['gold'] == row['prediction']) for row in value if row['task'] == task]
                    for task in TASKS} for arm, value in rows.items()}
     result = {'contract': 'E-0029@1', 'rules': rules, 'performance': performance, 'curves': curves,
+        'comparison_status': 'complete' if x_available else 'pending_X01',
+        'runtime': runtime_metrics(manifests),
         'read_diagnostics': reads, 'sources': sources, 'LoRA_LR_lock': lock,
         'bootstrap': {'repeats': 10000, 'seed': 20261101, 'comparisons': paired_bootstrap(arrays),
             'scope': 'descriptive paired task-stratified resampling; excludes seed and selection uncertainty'},
@@ -181,7 +216,8 @@ if __name__ == '__main__':
     args.output.mkdir(parents=True, exist_ok=True)
     result = analyze(read(args.input))
     write_json(args.output/'analysis.json', result)
-    write_json(args.output/'manifest.json', {'status': 'complete', 'contract': 'E-0029@1',
+    write_json(args.output/'manifest.json', {'status': 'complete' if result['comparison_status'] == 'complete' else 'partial',
+        'contract': 'E-0029@1',
         'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': {'implementation_passed': True, 'rules': result['rules']},
         'artifacts': [{'path': str(args.output/'analysis.json'), 'role': 'analysis'}],
         'validator': {'name': 'e0029_locked_analysis', 'passed': True}})

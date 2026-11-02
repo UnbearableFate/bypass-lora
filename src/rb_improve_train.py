@@ -20,7 +20,7 @@ from rb_improve_read import diagnose
 from rb_tap_check import initial_state
 from rb_tap_identity import PINNED_PROFILE, reference_check
 from rb_train import E0029_ARMS, FAMILIES, IG_ARMS, PARAMETERS, UP_LORA_ARMS, load_data, make_model, train
-from v1_run import evaluate, preserved_evaluation_state
+from v1_run import EvaluationNonfinite, TrainingDiverged, evaluate, preserved_evaluation_state
 from v5_train import plan_metadata, write_json
 
 
@@ -237,9 +237,19 @@ def run(args):
                 if not metrics['reload.identical']:
                     raise ValueError('checkpoint reload differs')
         passed = True
+    except (TrainingDiverged, EvaluationNonfinite) as exc:
+        if args.stage != 'calibration':
+            raise
+        if isinstance(exc, TrainingDiverged):
+            metrics.update(exc.metrics)
+        metrics.update({'failed': True, 'failure_reason': str(exc), 'calibration.nll': None,
+            'failure_kind': 'training_nonfinite' if isinstance(exc, TrainingDiverged) else 'evaluation_nonfinite'})
+        # This is a completed E-0020 LR-candidate exclusion, not a successful
+        # training run. OOM and all untyped engineering failures still propagate.
+        passed = True
     finally:
         forward_accounting.close()
-        metrics['failed'] = not passed
+        metrics['failed'] = metrics.get('failed', False) or not passed
         metrics['runtime.total_forward_input_tokens'] = forward_accounting.tokens
         metrics['runtime.total_forward_calls'] = forward_accounting.calls
         metrics['elapsed_s'] = time.monotonic()-tick
