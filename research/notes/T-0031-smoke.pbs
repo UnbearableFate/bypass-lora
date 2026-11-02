@@ -1,0 +1,98 @@
+#!/bin/bash
+# E-0028 deterministic checks, three-arm timing, and one full calibration eval.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0031-smoke"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+"$PY" -m pytest -q -p no:cacheprovider src/test_rb_tap.py src/test_rb_eta_select.py \
+  src/test_rb_tap_analysis.py src/test_rb_tap_eval.py src/test_rb_train.py src/test_rb1_artifacts.py \
+  src/test_rb1_intervene.py src/test_rb_width.py src/test_rb1_analysis.py \
+  > "$OUT/pytest.txt" 2>&1
+"$PY" src/rb_tap_check.py --output "$OUT" > "$OUT/registration.log" 2>&1
+for arm in X-01 X-02 X-03 ETA-QK-1; do
+  "$PY" src/rb_train.py run --stage smoke --phase R1 --seed 0 --arm "$arm" --lr 0.001 \
+    --split-manifest "$SPLIT" --data-dir "$P/data/v1" --smoke-steps 80 --eval-limit 16 \
+    --output "$OUT/smoke-$arm" > "$OUT/smoke-$arm.log" 2>&1
+done
+"$PY" src/rb_tap_eval.py --training-run "$P/runs/ATT-0247-1" --calibration-only \
+  --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT/calibration-timing" \
+  > "$OUT/calibration-timing.log" 2>&1
+"$PY" - "$P" "$OUT" "$SPLIT" <<'PY'
+import gc,json,sys
+from pathlib import Path
+import torch
+from transformers import AutoTokenizer
+from calibrate import MODEL,REVISION
+from rb_train import load_data,make_model
+from rb_tap_eval import evaluate_legacy_source,predictions
+from v1_run import evaluate
+p,out,split=map(Path,sys.argv[1:]);legacy_out=out/'legacy-source-smoke';legacy_out.mkdir()
+tok=AutoTokenizer.from_pretrained(MODEL,revision=REVISION,local_files_only=True);tok.pad_token_id=tok.eos_token_id
+splits,_=load_data(p/'data/v1',split,tok)
+adapter=p/'runs/ATT-0247-1/adapter'
+model=make_model('RB1-09',checkpoint=adapter)
+_,current=evaluate(model,splits,tok,16,split_names=('dev',))
+del model;gc.collect();torch.cuda.empty_cache()
+legacy,refs=evaluate_legacy_source(adapter,p/'data/v1',split,legacy_out,limit=16)
+assert predictions(current)==predictions(legacy['predictions'])
+json.dump({'passed':True,'rows':32,'scope':'source compatibility smoke; quality discarded',
+ 'hardware':legacy['hardware'],'source_commit':legacy['source_commit'],'source_files':refs},
+ open(out/'legacy-source-smoke.json','w'),indent=2)
+PY
+"$PY" - "$OUT" <<'PY'
+import json,os,sys
+from pathlib import Path
+out=Path(sys.argv[1]);arms={}
+for arm in ('X-01','X-02','X-03','ETA-QK-1'):
+    value=json.loads((out/f'smoke-{arm}'/'manifest.json').read_text())
+    assert value['status']=='complete' and value['validator']['passed']
+    m=value['metrics']
+    arms[arm]={k:m.get(k) for k in ('train.steady_step_seconds','train.peak_cuda_bytes',
+       'train.seconds','init_eval.seconds','eval.seconds','calibration.seconds',
+       'params.stored','params.trainable','params.with_grad','init.parameters.sha256','hardware')}
+timing=json.loads((out/'calibration-timing'/'manifest.json').read_text())
+assert timing['status']=='complete' and timing['validator']['passed']
+assert not (out/'smoke-X-02'/'calibration-predictions.json').exists()
+assert not (out/'smoke-X-03'/'calibration-predictions.json').exists()
+registration=json.loads((out/'tap-registration.json').read_text());assert registration['passed']
+cal=timing['metrics']['calibration.seconds']
+dev=max(cal/2.048,max(m['init_eval.seconds']*1000/16 for m in arms.values()))
+train_est={arm:m['train.steady_step_seconds']*13115+7*dev+(cal if arm in ('X-01','ETA-QK-1') else 0)+20 for arm,m in arms.items()}
+initial=sum(train_est[a] for a in ('X-01','X-02','X-03'))+5*(train_est['X-01']+train_est['ETA-QK-1'])
+extensions=train_est['X-01']+train_est['ETA-QK-1']
+# MIG is billed at one quarter node. Include baseline, 8 intervention paths
+# plus swap donor forward, the smoke itself (estimated conservatively) and analysis.
+overhead=cal+2*dev+9*dev+678+900+120
+cost={'contract':'E-0028@1','cap_node_hours':5.5,'profile_cost_factor':.25,
+  'dev_seconds_estimate':dev,'full_calibration_seconds':cal,'per_training_seconds':train_est,
+  'initial_grid_node_hours':(initial+overhead)/14400,
+  'with_both_extensions_node_hours':(initial+extensions+overhead)/14400,
+  'same_allocation_reference_passes_reserved_per_training':1,
+  'prior_smoke_measured_seconds':678,'current_smoke_reserved_seconds':900,
+  'method':'measured80-step steady training; six standard dev passes plus one fallback Base pass; calibration only for PartB; baseline legacy fallback reserved; both smokes and analysis; MIG/4; worst-case two extensions'}
+json.dump(cost,open(out/'cost-estimate.json','w'),indent=2)
+json.dump({'status':'complete','contract':'E-0028@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+  'stage':'smoke','metrics':{'pytest_exit':0,'source_commit':os.environ['SR_CODE_COMMIT'],
+     'arms':arms,'full_calibration_seconds':timing['metrics']['calibration.seconds']},
+  'artifacts':[{'path':str(p),'role':p.name} for p in sorted(out.iterdir()) if p.is_file() and p.name!='manifest.json'],
+  'validator':{'name':'e0028_smoke','passed':True}},open(out/'manifest.json','w'),indent=2)
+PY

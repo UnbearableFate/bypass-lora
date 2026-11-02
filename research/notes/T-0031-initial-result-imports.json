@@ -1,0 +1,100 @@
+[
+  {
+    "result": "RES-0303",
+    "attempt": "ATT-0321-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0303 complete for ATT-0321-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0304",
+    "attempt": "ATT-0322-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0304 complete for ATT-0322-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0305",
+    "attempt": "ATT-0323-1",
+    "mismatches": [],
+    "verification_scope": "15 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0305 complete for ATT-0323-1 (checked: 15 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0306",
+    "attempt": "ATT-0324-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0306 complete for ATT-0324-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0307",
+    "attempt": "ATT-0325-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0307 complete for ATT-0325-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0308",
+    "attempt": "ATT-0326-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0308 complete for ATT-0326-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0309",
+    "attempt": "ATT-0327-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0309 complete for ATT-0327-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0310",
+    "attempt": "ATT-0329-1",
+    "mismatches": [],
+    "verification_scope": "17 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0310 complete for ATT-0329-1 (checked: 17 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0311",
+    "attempt": "ATT-0330-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0311 complete for ATT-0330-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0313",
+    "attempt": "ATT-0331-1",
+    "mismatches": [],
+    "verification_scope": "17 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0313 complete for ATT-0331-1 (checked: 17 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0314",
+    "attempt": "ATT-0332-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0314 complete for ATT-0332-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0315",
+    "attempt": "ATT-0333-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0315 complete for ATT-0333-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0316",
+    "attempt": "ATT-0334-1",
+    "mismatches": [],
+    "verification_scope": "16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0316 complete for ATT-0334-1 (checked: 16 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  },
+  {
+    "result": "RES-0317",
+    "attempt": "ATT-0335-1",
+    "mismatches": [],
+    "verification_scope": "6 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+    "summary": "RES-0317 complete for ATT-0335-1 (checked: 6 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+  }
+]

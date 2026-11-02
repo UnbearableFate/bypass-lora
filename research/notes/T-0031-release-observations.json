@@ -1,0 +1,128 @@
+[
+  {
+    "record_id": "D-0061:ATT-0321-1",
+    "attempt_id": "ATT-0321-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0322-1",
+    "attempt_id": "ATT-0322-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0323-1",
+    "attempt_id": "ATT-0323-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0324-1",
+    "attempt_id": "ATT-0324-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0325-1",
+    "attempt_id": "ATT-0325-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0326-1",
+    "attempt_id": "ATT-0326-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0327-1",
+    "attempt_id": "ATT-0327-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0329-1",
+    "attempt_id": "ATT-0329-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0330-1",
+    "attempt_id": "ATT-0330-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0331-1",
+    "attempt_id": "ATT-0331-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0332-1",
+    "attempt_id": "ATT-0332-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0333-1",
+    "attempt_id": "ATT-0333-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0334-1",
+    "attempt_id": "ATT-0334-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  },
+  {
+    "record_id": "D-0061:ATT-0335-1",
+    "attempt_id": "ATT-0335-1",
+    "source": "researcher-1-release",
+    "execution_state": "prepared",
+    "outcome": "unknown",
+    "source_ref": "D-0061",
+    "note": "Coordinator D-0061 authorizes exact0f22cd6 E-0028 release after passingRV-0088 and measured cost gate. Inherited stale paths are recorded; bypass_model is byte-identical to RV-0078/0079 version; sink diagnostic and its tests plus test_rb1_artifacts do not execute in E-0028. No tolerance or scientific-path change."
+  }
+]

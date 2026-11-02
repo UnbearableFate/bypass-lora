@@ -1,0 +1,882 @@
+[
+  {
+    "record_id": "miyabi-pbs:3775250.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:56:42+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775250.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775250.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775250/record.json"
+    },
+    "attempt_id": "ATT-0321-1",
+    "occurred_at": "2026-11-02T18:56:41+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775251.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:56:45+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775251.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775251.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775251/record.json"
+    },
+    "attempt_id": "ATT-0322-1",
+    "occurred_at": "2026-11-02T18:56:45+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775254.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:56:49+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775254.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775254.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775254/record.json"
+    },
+    "attempt_id": "ATT-0323-1",
+    "occurred_at": "2026-11-02T18:56:49+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775255.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:56:52+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775255.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775255.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775255/record.json"
+    },
+    "attempt_id": "ATT-0324-1",
+    "occurred_at": "2026-11-02T18:56:52+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775257.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:57:50+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775257.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775257.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775257/record.json"
+    },
+    "attempt_id": "ATT-0325-1",
+    "occurred_at": "2026-11-02T18:57:49+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775258.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:57:53+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775258.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775258.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775258/record.json"
+    },
+    "attempt_id": "ATT-0326-1",
+    "occurred_at": "2026-11-02T18:57:53+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775260.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:57:57+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775260.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775260.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775260/record.json"
+    },
+    "attempt_id": "ATT-0327-1",
+    "occurred_at": "2026-11-02T18:57:56+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775262.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:00+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775262.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775262.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775262/record.json"
+    },
+    "attempt_id": "ATT-0329-1",
+    "occurred_at": "2026-11-02T18:57:59+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775264.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:36+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775264.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775264.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775264/record.json"
+    },
+    "attempt_id": "ATT-0330-1",
+    "occurred_at": "2026-11-02T18:58:35+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775265.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:39+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775265.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775265.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775265/record.json"
+    },
+    "attempt_id": "ATT-0331-1",
+    "occurred_at": "2026-11-02T18:58:39+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775266.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:43+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775266.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775266.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775266/record.json"
+    },
+    "attempt_id": "ATT-0332-1",
+    "occurred_at": "2026-11-02T18:58:42+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775267.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:46+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775267.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775267.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775267/record.json"
+    },
+    "attempt_id": "ATT-0333-1",
+    "occurred_at": "2026-11-02T18:58:45+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775268.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:51+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3775268.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775268.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775268/record.json"
+    },
+    "attempt_id": "ATT-0334-1",
+    "occurred_at": "2026-11-02T18:58:51+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775269.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:54+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "submitted",
+    "source_ref": "qsub 3775269.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775269.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775269/record.json"
+    },
+    "attempt_id": "ATT-0335-1"
+  },
+  {
+    "record_id": "miyabi-pbs:3775269.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:58:54+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775269.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775269.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775269/record.json"
+    },
+    "attempt_id": "ATT-0335-1"
+  },
+  {
+    "record_id": "miyabi-pbs:3775250.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:59:35+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775250.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775250.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775250/record.json"
+    },
+    "attempt_id": "ATT-0321-1",
+    "occurred_at": "2026-11-02T18:59:15+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775251.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T18:59:35+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775251.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775251.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775251/record.json"
+    },
+    "attempt_id": "ATT-0322-1",
+    "occurred_at": "2026-11-02T18:59:16+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775254.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:01:27+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775254.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775254.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775254/record.json"
+    },
+    "attempt_id": "ATT-0323-1",
+    "occurred_at": "2026-11-02T19:01:02+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775269.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:11:30+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775269.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775269.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775269/record.json"
+    },
+    "attempt_id": "ATT-0335-1",
+    "occurred_at": "2026-11-02T19:07:25+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775269.opbs",
+      "quantity": 0.140278,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=00:08:25 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775255.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:16:32+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775255.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775255.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775255/record.json"
+    },
+    "attempt_id": "ATT-0324-1",
+    "occurred_at": "2026-11-02T19:13:59+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775257.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:16:32+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775257.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775257.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775257/record.json"
+    },
+    "attempt_id": "ATT-0325-1",
+    "occurred_at": "2026-11-02T19:15:47+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775258.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:20:59+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775258.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775258.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775258/record.json"
+    },
+    "attempt_id": "ATT-0326-1",
+    "occurred_at": "2026-11-02T19:17:33+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775260.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:31:20+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775260.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775260.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775260/record.json"
+    },
+    "attempt_id": "ATT-0327-1",
+    "occurred_at": "2026-11-02T19:26:40+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775262.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T19:31:53+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775262.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775262.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775262/record.json"
+    },
+    "attempt_id": "ATT-0329-1",
+    "occurred_at": "2026-11-02T19:31:26+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775254.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:01:42+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775254.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775254.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775254/record.json"
+    },
+    "attempt_id": "ATT-0323-1",
+    "occurred_at": "2026-11-02T20:01:02+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775254.opbs",
+      "quantity": 0.996389,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=00:59:47 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775264.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:06:43+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775264.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775264.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775264/record.json"
+    },
+    "attempt_id": "ATT-0330-1",
+    "occurred_at": "2026-11-02T20:02:31+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775265.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:06:43+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775265.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775265.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775265/record.json"
+    },
+    "attempt_id": "ATT-0331-1",
+    "occurred_at": "2026-11-02T20:03:53+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775251.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:06:44+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775251.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775251.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775251/record.json"
+    },
+    "attempt_id": "ATT-0322-1",
+    "occurred_at": "2026-11-02T20:02:35+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775251.opbs",
+      "quantity": 1.053889,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:03:14 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775266.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:16:46+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775266.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775266.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775266/record.json"
+    },
+    "attempt_id": "ATT-0332-1",
+    "occurred_at": "2026-11-02T20:13:17+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775250.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:16:47+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775250.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775250.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775250/record.json"
+    },
+    "attempt_id": "ATT-0321-1",
+    "occurred_at": "2026-11-02T20:12:10+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775250.opbs",
+      "quantity": 1.213889,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:12:50 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775267.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:26:49+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775267.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775267.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775267/record.json"
+    },
+    "attempt_id": "ATT-0333-1",
+    "occurred_at": "2026-11-02T20:23:09+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775268.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:26:49+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3775268.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775268.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775268/record.json"
+    },
+    "attempt_id": "ATT-0334-1",
+    "occurred_at": "2026-11-02T20:26:06+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3775255.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:26:50+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775255.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775255.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775255/record.json"
+    },
+    "attempt_id": "ATT-0324-1",
+    "occurred_at": "2026-11-02T20:22:13+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775255.opbs",
+      "quantity": 1.136111,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:08:10 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775257.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:26:50+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775257.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775257.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775257/record.json"
+    },
+    "attempt_id": "ATT-0325-1",
+    "occurred_at": "2026-11-02T20:24:37+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775257.opbs",
+      "quantity": 1.145833,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:08:45 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775258.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:31:52+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775258.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775258.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775258/record.json"
+    },
+    "attempt_id": "ATT-0326-1",
+    "occurred_at": "2026-11-02T20:30:04+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775258.opbs",
+      "quantity": 1.207222,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:12:26 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775260.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:36:54+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775260.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775260.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775260/record.json"
+    },
+    "attempt_id": "ATT-0327-1",
+    "occurred_at": "2026-11-02T20:35:58+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775260.opbs",
+      "quantity": 1.153611,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:09:13 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775262.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T20:46:56+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775262.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775262.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775262/record.json"
+    },
+    "attempt_id": "ATT-0329-1",
+    "occurred_at": "2026-11-02T20:42:42+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775262.opbs",
+      "quantity": 1.186389,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:11:11 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775264.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T21:11:59+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775264.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775264.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775264/record.json"
+    },
+    "attempt_id": "ATT-0330-1",
+    "occurred_at": "2026-11-02T21:11:24+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775264.opbs",
+      "quantity": 1.146667,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:08:48 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775265.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T21:17:00+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775265.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775265.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775265/record.json"
+    },
+    "attempt_id": "ATT-0331-1",
+    "occurred_at": "2026-11-02T21:15:40+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775265.opbs",
+      "quantity": 1.195,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:11:42 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775266.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T21:27:02+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775266.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775266.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775266/record.json"
+    },
+    "attempt_id": "ATT-0332-1",
+    "occurred_at": "2026-11-02T21:24:45+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775266.opbs",
+      "quantity": 1.189722,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:11:23 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775268.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T21:34:12+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775268.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775268.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775268/record.json"
+    },
+    "attempt_id": "ATT-0334-1",
+    "occurred_at": "2026-11-02T21:32:32+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775268.opbs",
+      "quantity": 1.106111,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:06:22 x nvnodes-mig=1"
+    }
+  },
+  {
+    "record_id": "miyabi-pbs:3775267.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-02T21:37:03+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3775267.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3775267.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3775267/record.json"
+    },
+    "attempt_id": "ATT-0333-1",
+    "occurred_at": "2026-11-02T21:36:11+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3775267.opbs",
+      "quantity": 1.215833,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=01:12:57 x nvnodes-mig=1"
+    }
+  }
+]

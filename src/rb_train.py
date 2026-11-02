@@ -30,13 +30,22 @@ LAYERS=(6,13,20,27)
 # same-four-layer all-7 LoRA whose implementation count is nearest to W-02.
 WIDTH_ARMS=('W-01','W-02','W-03')
 WIDTH_RANK=128
+TAP_ARMS=('X-01','X-02','X-03')
+ETA_GRID=(.0625,.125,.25,.5,1.,2.)
+ETA_EXTENSIONS=(.03125,4.)
+ETA_ARMS={f'ETA-{tap}-{eta:g}':(tap,eta) for tap in ('QK','X')
+          for eta in (*ETA_GRID,*ETA_EXTENSIONS) if eta!=.25}
+E0028_ARMS=(*TAP_ARMS,*ETA_ARMS)
 LORA_RANKS={'RB1-07':7,'W-03':31}
 PARAMETERS={**{f'RB1-{i:02}':663552 for i in range(1,7)},
             'RB1-07':630784,'RB1-08':1318912,'RB1-09':925696,
             'W-01':2752512,'W-02':2752512,'W-03':2793472}
+PARAMETERS.update({'X-01':794624,'X-02':794624,'X-03':925696,
+                   **{arm:794624 if tap=='X' else 925696 for arm,(tap,eta) in ETA_ARMS.items()}})
 FAMILIES={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T',
           'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C',
           'W-01':'RBc-T','W-02':'RBc-R','W-03':'RBc-L'}
+FAMILIES.update({arm:'RBc-C' for arm in E0028_ARMS})
 REPRESENTATIVES={'RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-L':'RB1-07','RBc-C':'RB1-08'}
 GRIDS={'RBc-T':(1e-4,3e-4,1e-3),'RBc-L':(1e-4,3e-4,1e-3),
        'RBc-R':(3e-4,1e-3,3e-3),'RBc-C':(3e-4,1e-3,3e-3)}
@@ -45,6 +54,8 @@ EXTENSIONS={'RBc-T':(3e-5,3e-3),'RBc-L':(3e-5,3e-3),
 
 
 def contract(arm,stage):
+    if arm in E0028_ARMS:
+        return 'E-0028@1'
     if arm in WIDTH_ARMS:
         return 'E-0026@1'
     return 'E-0019@1' if stage=='smoke' else 'E-0020@1' if stage=='calibration' else 'E-0021@1'
@@ -53,11 +64,13 @@ def contract(arm,stage):
 def adapter_config(arm,impl='prefix'):
     if arm not in PARAMETERS or arm in LORA_RANKS:
         raise ValueError('not an RB side-branch arm')
-    return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm in ('RB1-01','W-01') else 'memory',
-        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' else 'F_out',
+    tap,eta=ETA_ARMS.get(arm,('X' if arm in ('X-01','X-02') else 'QK',.25))
+    return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm in ('RB1-01','W-01','X-02','X-03') else 'memory',
+        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' or arm in E0028_ARMS else 'F_out',
+        tap='direct_hidden' if tap=='X' else 'qknorm_pre_rope',
         rank=WIDTH_RANK if arm in WIDTH_ARMS else 32,
         steps=2 if arm=='RB1-03' else 4 if arm in ('RB1-04','RB1-05','RB1-06') else 1,
-        fixed_query=arm=='RB1-05',eta=.0625 if arm=='RB1-06' else .25,impl=impl)
+        fixed_query=arm=='RB1-05',eta=.0625 if arm=='RB1-06' else eta,impl=impl)
 
 
 def make_model(arm,phase='R1',seed=0,checkpoint=None,impl='prefix'):
@@ -215,6 +228,8 @@ def run(args):
             raise ValueError('RBc uses seed0 only')
         if args.stage=='train' and (args.phase!='R1' or args.three_epochs):
             raise ValueError('RB1 formal budget is2M/3epochs;RB5 needs its own later release/contract')
+        if args.arm in E0028_ARMS and (args.seed!=0 or args.phase!='R1' or args.lr!=1e-3):
+            raise ValueError('E-0028 fixes R1 seed0 and LR1e-3')
         if args.stage=='calibration' and args.arm not in REPRESENTATIVES.values():
             raise ValueError('calibration requires family representative')
         if args.stage!='smoke' and (args.eval_limit is not None or args.smoke_steps is not None):
@@ -251,15 +266,32 @@ def run(args):
         metrics['hardware']=torch.cuda.get_device_name()
         metrics['params.stored']=sum(p.numel() for p in model.adapter_parameters())
         metrics['params.trainable']=sum(p.numel() for p in model.parameters() if p.requires_grad)
+        if args.arm in E0028_ARMS:
+            from rb_tap_check import initial_state, step0_diagnostics
+            metrics['exec.pbs_job_id']=os.environ.get('PBS_JOBID','unknown')
+            metrics['init.parameters.sha256']=initial_state(model)[0]
+            with preserved_evaluation_state(model):
+                write_json(out/'step0-rms.json',step0_diagnostics(model,batches[0][0],tok))
         def monitor(step,current):
             values,preds=evaluate(current,splits,tok,args.eval_limit,split_names=('dev',))
             write_json(out/f'dev-step-{step}.json',{'step':step,'metrics':values,'predictions':preds})
-        if args.arm in WIDTH_ARMS:
+        if args.arm in (*WIDTH_ARMS,*E0028_ARMS):
             # E-0026 rule 1(b): the zero-exit initialization is scored before any update.
             tick=time.monotonic()
             with preserved_evaluation_state(model):
                 monitor(0,model)
             metrics['init_eval.seconds']=time.monotonic()-tick
+            if args.arm in E0028_ARMS:
+                from rb_tap_identity import PINNED_PROFILE
+                if metrics['hardware']!=PINNED_PROFILE:
+                    from rb1_intervene import original_backbone
+                    tick=time.monotonic()
+                    with preserved_evaluation_state(model),original_backbone(model) as backbone:
+                        values,base_rows=evaluate(backbone,splits,tok,args.eval_limit,split_names=('dev',))
+                    metrics['same_allocation_base.seconds']=time.monotonic()-tick
+                    write_json(out/'dev-base-same-allocation.json',{'hardware':metrics['hardware'],
+                        'job_id':metrics['exec.pbs_job_id'],'source_commit':os.environ['SR_CODE_COMMIT'],
+                        'metrics':values,'predictions':base_rows})
         metrics.update(train(model,batches,tok,args.lr,out,monitor if args.stage!='calibration' else None))
         assert metrics['params.with_grad']==PARAMETERS[args.arm]
         if args.stage!='calibration':
@@ -288,15 +320,27 @@ def run(args):
             write_json(out/'checkpoint.json',{name:{'path':str(out/'adapter'/name),
                 'sha256':file_sha256(out/'adapter'/name),'bytes':(out/'adapter'/name).stat().st_size}
                 for name in ('config.json','adapter.pt')})
+            if args.arm=='X-01' or args.arm in ETA_ARMS:
+                tick=time.monotonic()
+                values,calibration=evaluate(model,splits,tok,args.eval_limit,split_names=('calibration',))
+                metrics.update(values)
+                metrics['calibration.seconds']=time.monotonic()-tick
+                write_json(out/'calibration-predictions.json',calibration)
         passed=True
     except (TrainingDiverged,EvaluationNonfinite) as exc:
         if isinstance(exc,TrainingDiverged):
             metrics.update(exc.metrics)
         metrics.update(failed=True,failure_reason=str(exc))
-        if args.stage!='calibration':
+        if isinstance(exc,TrainingDiverged) and args.arm in ETA_ARMS:
+            # Rule 5 excludes a genuinely non-finite TRAINING candidate. Other
+            # engineering/evaluation failures remain failed jobs and must retry.
+            metrics['failure_kind']='training_nonfinite'
+            passed=True
+        elif args.stage!='calibration':
             raise
-        metrics['calibration.nll']=None
-        passed=True
+        else:
+            metrics['calibration.nll']=None
+            passed=True
     finally:
         metrics['elapsed_s']=time.monotonic()-start
         write_json(out/'manifest.json',{'status':'complete' if passed else 'partial',

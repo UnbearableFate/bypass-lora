@@ -1,0 +1,600 @@
+{
+  "task": "T-0031",
+  "experiment": "E-0028@1",
+  "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "passing_review": "RV-0088",
+  "inherited_coverage_release": "D-0061",
+  "attempts": [
+    {
+      "arm": "X-01",
+      "eta": 0.25,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "run": "RUN-0321",
+      "attempt": "ATT-0321-1",
+      "spec_digest": "blake2b:50435cdf6fbfd704de4d8fb5b79cb36914af1195af3e5aba6d537b9662f7c2bf",
+      "code_review": {
+        "changed": {
+          "src/bypass_model.py": [
+            "RV-0002",
+            "RV-0009",
+            "RV-0060",
+            "RV-0064"
+          ],
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        },
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "source": "commit 0f22cd60f456",
+        "status": "stale"
+      }
+    },
+    {
+      "arm": "X-02",
+      "eta": 0.25,
+      "expected_seconds": 4323,
+      "walltime": "01:50:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-X-02.json",
+      "run": "RUN-0322",
+      "attempt": "ATT-0322-1",
+      "spec_digest": "blake2b:f6cefb2721790d9694370508a1f1628a26d60454e531742c5ae97b89b3417715",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "X-03",
+      "eta": 0.25,
+      "expected_seconds": 4321,
+      "walltime": "01:50:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-X-03.json",
+      "run": "RUN-0323",
+      "attempt": "ATT-0323-1",
+      "spec_digest": "blake2b:d642c77938a16a2c42124466fe2450c7914163e1f74ae4ba5a191de10cf33aaf",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-X-0.0625",
+      "eta": 0.0625,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-0.0625.json",
+      "run": "RUN-0324",
+      "attempt": "ATT-0324-1",
+      "spec_digest": "blake2b:202e1c262e7f1a6e130517a919f16ee7f332947f451f6ed0497e9e23b80f2e31",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-X-0.125",
+      "eta": 0.125,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-0.125.json",
+      "run": "RUN-0325",
+      "attempt": "ATT-0325-1",
+      "spec_digest": "blake2b:c07cebd6b5ea9e28268c62913ea359d458a70855dffadc91cd5057c1ef2cca05",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-X-0.5",
+      "eta": 0.5,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-0.5.json",
+      "run": "RUN-0326",
+      "attempt": "ATT-0326-1",
+      "spec_digest": "blake2b:bab6bac1e1e0d58732622ce0edb2bb83535456a9c62e7fb528ab340cd30fc2b8",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-X-1",
+      "eta": 1,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-1.json",
+      "run": "RUN-0327",
+      "attempt": "ATT-0327-1",
+      "spec_digest": "blake2b:dd5b653b11961817641d74cbe1cfa8bf64e7afff4917a2052f69e95f7f5b81a1",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-X-2",
+      "eta": 2,
+      "expected_seconds": 4821,
+      "walltime": "02:05:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-X-2.json",
+      "run": "RUN-0329",
+      "attempt": "ATT-0329-1",
+      "spec_digest": "blake2b:150c8106b4906466d799338c672260b2efd34f858469f9de711f88f78132f8f3",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-QK-0.0625",
+      "eta": 0.0625,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-0.0625.json",
+      "run": "RUN-0330",
+      "attempt": "ATT-0330-1",
+      "spec_digest": "blake2b:4faf62da4129602863bd73e813cc8f496f97bcbb276049029ba2fac6b2a4fe6f",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-QK-0.125",
+      "eta": 0.125,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-0.125.json",
+      "run": "RUN-0331",
+      "attempt": "ATT-0331-1",
+      "spec_digest": "blake2b:5179715e137c963468fa450e7f03eb89137a7f9c45e29b0b7dd57353dec84c84",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-QK-0.5",
+      "eta": 0.5,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-0.5.json",
+      "run": "RUN-0332",
+      "attempt": "ATT-0332-1",
+      "spec_digest": "blake2b:90cd28512b2aa4b7f89ebf1e5fb79674f9ff1be37296a7f23cf8ff30ee0b5557",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-QK-1",
+      "eta": 1,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-1.json",
+      "run": "RUN-0333",
+      "attempt": "ATT-0333-1",
+      "spec_digest": "blake2b:4d9232a30e502c75c26fde2dd43236d767fe81c7a85efa1fa3e06484a71b7542",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "ETA-QK-2",
+      "eta": 2,
+      "expected_seconds": 4754,
+      "walltime": "02:00:00",
+      "mode": "train",
+      "queue": "short-mig",
+      "spec_path": "research/notes/T-0031-spec-ETA-QK-2.json",
+      "run": "RUN-0334",
+      "attempt": "ATT-0334-1",
+      "spec_digest": "blake2b:3d1f4012153a24de4d20f6a66aa632c27594b1b053a8cfbdcb517b8881db9693",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    },
+    {
+      "arm": "RB1-09",
+      "job_mode": "baseline",
+      "queue": "debug-mig",
+      "expected_seconds": 800,
+      "walltime": "00:20:00",
+      "mode": "baseline",
+      "spec_path": "research/notes/T-0031-spec-RB1-09.json",
+      "run": "RUN-0335",
+      "attempt": "ATT-0335-1",
+      "spec_digest": "blake2b:55428469cd56d0670a3064ccab0c749bfa584c65772d0f3ae518e7eefc68f52d",
+      "code_review": {
+        "status": "stale",
+        "source": "commit 0f22cd60f456",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0077 issues",
+          "RV-0078 pass",
+          "RV-0079 pass",
+          "RV-0081 issues",
+          "RV-0082 pass",
+          "RV-0088 pass"
+        ],
+        "changed": {
+          "src/rb_sink_read.py": [
+            "RV-0077"
+          ],
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ],
+          "src/test_rb_sink_read.py": [
+            "RV-0077"
+          ]
+        }
+      }
+    }
+  ]
+}

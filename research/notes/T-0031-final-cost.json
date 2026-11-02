@@ -1,0 +1,45 @@
+{
+  "task": "T-0031",
+  "contract": "E-0028@1",
+  "job_count": 21,
+  "all_ended": true,
+  "all_scheduler_success": true,
+  "measured_mig_instance_hours": 16.101389,
+  "conversion": "node-hours = native measured MIG instance-hours * 0.25",
+  "measured_node_hours": 4.02534725,
+  "cap_node_hours": 5.5,
+  "within_cap": true,
+  "includes": "Both smokes, deterministic cost audit, 13 trainings, baseline evaluation, eta-plan, eta-lock, X-01 interventions and final locked analysis; no endpoint trainings were triggered.",
+  "analysis_native_usage": {
+    "accounting_ref": "miyabi-pbs:3777371.opbs",
+    "quantity": 0.005,
+    "unit": "mig_instance_hours",
+    "resource_type": "gpu_mig_instance",
+    "hardware": "GH200 MIG 2g.24gb",
+    "basis": "measured",
+    "source_ref": "resources_used.walltime=00:00:18 x nvnodes-mig=1"
+  },
+  "pre_analysis_cost_source": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0345-1/analysis.json measured_cost (20 jobs)",
+  "final_analysis_usage_source": "research/notes/T-0031-analysis-terminal-observations.json",
+  "native_ledger_summary": {
+    "schema_version": 1,
+    "ok": true,
+    "project": "/work/xg24i002/x10041/bypass-lora",
+    "count": 21,
+    "summary": {
+      "by_state": {
+        "ended": 21
+      },
+      "by_outcome": {
+        "success": 21
+      },
+      "requested": {
+        "mig_instance_hours": 27.966667
+      },
+      "used": {
+        "mig_instance_hours": 16.101389
+      }
+    }
+  },
+  "rounding_note": "Native quantities have six-decimal instance-hour rounding; total reported with that same basis, not requested walltime."
+}

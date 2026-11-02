@@ -1,0 +1,18 @@
+{
+  "manifests": [
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0324-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0325-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0326-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0327-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0329-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0330-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0331-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0332-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0333-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0334-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0335-1/manifest.json"
+  ],
+  "training_source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "registration": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0315-1/tap-registration.json"
+}

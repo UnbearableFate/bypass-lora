@@ -1,0 +1,53 @@
+{
+  "contract": "E-0028@1",
+  "training_source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "eta_lock": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0343-1/eta-lock.json",
+  "eta_lock_sha256": "e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60",
+  "calibration_manifests": [
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0324-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0325-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0326-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0327-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0329-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0330-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0331-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0332-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0333-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0334-1/manifest.json",
+    "/work/xg24i002/x10041/bypass-lora/runs/ATT-0335-1/manifest.json"
+  ],
+  "training_runs": {
+    "X-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1",
+    "X-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0322-1",
+    "X-03": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0323-1",
+    "ETA-X-0.0625": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0324-1",
+    "ETA-X-0.125": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0325-1",
+    "ETA-X-0.5": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0326-1",
+    "ETA-X-1": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0327-1",
+    "ETA-X-2": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0329-1",
+    "ETA-QK-0.0625": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0330-1",
+    "ETA-QK-0.125": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0331-1",
+    "ETA-QK-0.5": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0332-1",
+    "ETA-QK-1": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0333-1",
+    "ETA-QK-2": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0334-1"
+  },
+  "baseline_eval": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0335-1",
+  "base_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1",
+  "reference_runs": {
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1"
+  },
+  "registration": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0315-1/tap-registration.json",
+  "smoke_manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0315-1/manifest.json",
+  "intervention_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0344-1",
+  "observations": [
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-smoke-observations.json",
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-smoke-v2-observations.json",
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-cost-audit-observations.json",
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-formal-terminal-observations.json",
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-eta-plan-observations.json",
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-lock-intervention-observations.json",
+    "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0031-intervention-terminal-observations.json"
+  ]
+}

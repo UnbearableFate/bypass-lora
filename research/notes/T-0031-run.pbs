@@ -1,0 +1,81 @@
+#!/bin/bash
+# E-0028 reviewed entrypoints; one registered attempt per invocation.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${TAP_JOB:?registered operation required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+LOCK="$SRC/research/artifacts/T-0024/lr-lock.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0031-${TAP_JOB}"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+cd "$SRC"
+case "$TAP_JOB" in
+  train)
+    : "${TAP_ARM:?registered arm required}"
+    "$PY" - "$LOCK" "$SPLIT" "$TAP_ARM" "$OUT" <<'PY'
+import json,os,sys
+from pathlib import Path
+from rb1_artifacts import verify_lr_lock,reference
+from rb_eta_select import SPLIT_SHA256
+from rb_train import E0028_ARMS
+lock_path,split_path,arm,out=sys.argv[1:]
+lock=verify_lr_lock(lock_path)
+assert arm in E0028_ARMS and lock['locked_lrs']['RBc-C']==.001
+assert reference(split_path)['sha256']==lock['split_manifest_sha256']==SPLIT_SHA256
+Path(out,'release-preflight.json').write_text(json.dumps({'passed':True,'contract':'E-0028@1',
+ 'arm':arm,'lr':.001,'source_commit':os.environ['SR_CODE_COMMIT'],
+ 'lr_lock':reference(lock_path),'split_manifest':reference(split_path)},indent=2)+'\n')
+PY
+    exec "$PY" src/rb_train.py run --stage train --phase R1 --seed 0 --arm "$TAP_ARM" --lr .001 \
+      --lr-lock "$LOCK" --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT"
+    ;;
+  baseline)
+    exec "$PY" src/rb_tap_eval.py --training-run "$P/runs/ATT-0247-1" --split-manifest "$SPLIT" \
+      --data-dir "$P/data/v1" --output "$OUT"
+    ;;
+  intervention)
+    : "${TAP_TRAIN_RUN:?X-01 formal run required}"
+    : "${TAP_TRAIN_SOURCE:?reviewed training source required}"
+    exec "$PY" src/rb1_intervene.py --arm X-01 --training-run "$TAP_TRAIN_RUN" \
+      --training-source "$TAP_TRAIN_SOURCE" --data-dir "$P/data/v1" --output "$OUT"
+    ;;
+  eta-plan|eta-lock)
+    : "${TAP_SELECTION_INPUT:?calibration input list required}"
+    exec "$PY" - "$TAP_SELECTION_INPUT" "$OUT" "$TAP_JOB" <<'PY'
+import json,os,sys
+from pathlib import Path
+from rb_eta_select import ref,selection
+source,out,mode=sys.argv[1:];out=Path(out)
+spec=json.loads(Path(source).read_text());final=mode=='eta-lock'
+result=selection(spec['manifests'],spec['training_source_commit'],spec['registration'],final=final)
+path=out/('eta-lock.json' if final else 'eta-plan.json')
+with path.open('x') as handle:
+    json.dump(result,handle,indent=2,allow_nan=False);handle.write('\n')
+json.dump({'status':'complete','contract':'E-0028@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+ 'stage':mode,'metrics':{'choices':result['choices'],'selection_file_sha256':ref(path)['sha256']},
+ 'artifacts':[{'path':str(path),'role':path.name},{'path':str(Path(source).resolve()),'role':'selection_input'}],
+ 'validator':{'name':'e0028_calibration_only_selection','passed':True}},open(out/'manifest.json','w'),indent=2)
+PY
+    ;;
+  analysis)
+    : "${TAP_ANALYSIS_INPUT:?locked analysis input required}"
+    exec "$PY" src/rb_tap_analysis.py --input "$TAP_ANALYSIS_INPUT" --output "$OUT"
+    ;;
+  *) exit 2 ;;
+esac

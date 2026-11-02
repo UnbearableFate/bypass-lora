@@ -1,0 +1,43 @@
+{
+  "task": "T-0031",
+  "contract": "E-0028@1",
+  "run": "RUN-0345",
+  "attempt": "ATT-0345-1",
+  "result": "RES-0321",
+  "job_id": "3777371.opbs",
+  "state": "ended",
+  "scheduler_outcome": "success",
+  "application_validator": {
+    "name": "e0028_locked_analysis",
+    "passed": true
+  },
+  "implementation_passed": true,
+  "source_commit": "0f22cd60f45674ec20b800fdd455f80c2b6d46dd",
+  "compute_host": "mg1099",
+  "analysis_input": "research/notes/T-0031-analysis-input.json",
+  "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0345-1/manifest.json",
+  "analysis": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0345-1/analysis.json",
+  "native_observations": "research/notes/T-0031-analysis-terminal-observations.json",
+  "usage": {
+    "accounting_ref": "miyabi-pbs:3777371.opbs",
+    "quantity": 0.005,
+    "unit": "mig_instance_hours",
+    "basis": "measured",
+    "walltime": "00:00:18"
+  },
+  "eta_lock_sha256": "e6c1399c683b50cabb05c727e37df84be165109a2ae4dd1ba5bcf93d3349fe60",
+  "review_coverage": [
+    "RV-0076",
+    "RV-0077",
+    "RV-0078",
+    "RV-0079",
+    "RV-0080",
+    "RV-0081",
+    "RV-0082",
+    "RV-0088"
+  ],
+  "coverage_decision": "D-0061",
+  "reference_decision": "D-0060",
+  "remaining_execution": [],
+  "handoff": "Coordinator conclusion review and acceptance; no researcher hypothesis-status or route decision."
+}
