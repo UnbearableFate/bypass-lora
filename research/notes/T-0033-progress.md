@@ -505,3 +505,38 @@ be submitted if the intent is to catch its reproducibility failure before
 any A2 read; simultaneous seed 4/5 jobs would not ensure that. One successful
 1g seed still does not pre-prove the other seed. The later consumed/invalid
 rule stays active. No A2 submission before the coordinator's actual decision.
+
+D-0073 has now been read in full and confirms the unchanged cfd2e9b0 lock.
+It explicitly supersedes D-0072's first-attempt/five-miss operational rules,
+without changing the science or source. Runbook now reflects its every-attempt
+profile restriction, twenty-miss reporting point, budget gate and ordering.
+
+Registered RUN-0397 / ATT-0397-1, arm A2 exactly, seed 4, source 4e6e8df and
+all required reviews covered. Spec digest:
+`blake2b:fb2a1939822a78157e9013ed95034ff4596d2b3e8228111bdc6cc95175eb31ae`.
+Submitted only this seed as PBS `3781926.opbs`, short-mig/select=1/group
+xg24i002, 80-minute walltime from 3,064 expected seconds. Immutable script
+sets SEG_REQUIRE_TRAINING_PROFILE=1 and SEG_CONFIRMATION_DECISION=D-0073.
+The pre-submission gate passed: measured ended cost 4.232986 + three 80-minute
+uncompleted-seed requests + three-minute analysis request = 5.245486 node-hour.
+Gate artifact: central T-0033/a2-budget-ATT-0397-1.json.
+
+One authorized job_wait (45 seconds) returned queued, no outcome or usage;
+do not label it running or claim a profile/dev gate pass. End/early-failure
+notification `N-20261103-071757-fb32` is sealed for this exact attempt, and
+notifyd was restarted successfully on miyabi-g2. Coordinator owns the listener.
+Outputs will be central research/artifacts/ATT-0397-1. Central
+T-0033/a2-execution-state.json preserves source/decision/lock, logical run,
+each attempt, measured cost and consecutive miss counts. Seeds 3 and 5
+remain held/unregistered; seed 4's consecutive misses are still zero.
+
+On wake, inspect the actual application outcome and in-job hardware before
+importing. A profile miss must be partial/unopened, have no dev/A2/receipt,
+and be counted/imported with measured usage; then register another attempt
+of RUN-0397 with the exact saved RunSpec, unchanged source/lock/checkpoints/
+rules/decision, recomputing the D-0073 budget first. Stop/report at twenty
+consecutive misses or an earlier budget failure. For a running/queued
+attempt, do not submit another of the same seed. On same-profile dev failure
+or A2 encoding failure, follow the D-0072 stop/receipt audit rules. Only when
+seed 4 is COMPLETE, dev rows exact and receipt/provenance valid, tell
+coordinator and submit seeds 5 (1g) and 3 (2g), without awaiting a reply.
