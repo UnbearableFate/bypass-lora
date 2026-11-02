@@ -58,12 +58,13 @@ def esc(s):
             .replace('"', "&quot;"))
 
 
-LEDE = ("29 个假说、29 个实验分属 7 条研究线。得到支持的只有 3 个（两项实现检查与 M 线的单独编码写入）；"
-        "在已完成的普通设置比较中，侧支组的宏平均都低于参数相近的 LoRA。")
-CAPTION = ("受挑战的 10 个假说有 7 个在 M 线与 RB 线；未检验的 9 个有 6 个在 RB1-09 改进线，"
-           "这条线的 E-0028、E-0029 都已结束，H-0023 至 H-0026 等结论审核后再改状态。")
+LEDE = ("29 个假说、29 个实验分属 7 条研究线。得到支持的有 4 个：两项实现检查、M 线的单独编码写入，"
+        "以及 RB1-09 改进线的一项筛选（同一 up 接口下，只看当前 token 的 LoRA 没有比历史混合侧支高 1 pp 以上）。"
+        "在已完成的普通设置比较中，侧支组的宏平均都低于参数相近、改全部七个模块的 LoRA。")
+CAPTION = ("受挑战的 12 个假说有 7 个在 M 线与 RB 线，3 个在 RB1-09 改进线；未检验的 5 个里，"
+           "H-0027、H-0028 是 RB1-09 改进线上没有启用的候选，H-0029 是下一步的 A2 确认。")
 assert len(hs) == 29 and len(es) == 29
-assert cnt == {"supported": 3, "challenged": 10, "inconclusive": 7, "untested": 9}, cnt
+assert cnt == {"supported": 4, "challenged": 12, "inconclusive": 8, "untested": 5}, cnt
 
 gloss_html = "\n".join(
     f"<dt>{esc(t)}</dt><dd>{esc(d)}</dd>" for t, d in GLOSSARY)
