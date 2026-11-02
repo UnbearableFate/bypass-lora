@@ -1,0 +1,82 @@
+#!/bin/bash
+# Bounded deterministic E-0028 smoke/reference and revised cost audit, in PBS.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+/usr/bin/python3 - "$P" "$SRC" "$OUT" <<'PY'
+import hashlib,json,os,sys
+from pathlib import Path
+p,source,out=map(Path,sys.argv[1:])
+def read(path):return json.loads(Path(path).read_text())
+def ref(path):
+    path=Path(path).resolve();data=path.read_bytes()
+    return {'path':str(path),'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)}
+first=p/'runs/ATT-0314-1';second=p/'runs/ATT-0315-1'
+v1,v2=(read(root/'manifest.json') for root in (first,second))
+assert all(v['status']=='complete' and v['validator']['passed'] and v['metrics']['pytest_exit']==0 for v in (v1,v2))
+assert v2['metrics']['source_commit']=='0f22cd60f45674ec20b800fdd455f80c2b6d46dd'
+assert read(second/'tap-registration.json')['passed']
+assert read(second/'legacy-source-smoke.json')['passed']
+assert {a['hardware'] for a in v1['metrics']['arms'].values()}=={'NVIDIA GH200 120GB MIG 2g.24gb'}
+assert {a['hardware'] for a in v2['metrics']['arms'].values()}=={'NVIDIA GH200 120GB MIG 1g.24gb'}
+keys=lambda rows:[(r['task'],r['id'],r['gold'],r['prediction']) for r in rows]
+references={}
+for arm in ('X-01','X-02','X-03','ETA-QK-1'):
+    root=second/f'smoke-{arm}'
+    initial,base=read(root/'dev-step-0.json'),read(root/'dev-base-same-allocation.json')
+    assert keys(initial['predictions'])==keys(base['predictions'])
+    assert base['job_id']=='3774971.opbs' and base['source_commit']==v2['metrics']['source_commit']
+    references[arm]={'passed':True,'rows':len(base['predictions']),'initial':ref(root/'dev-step-0.json'),
+                     'Base_same_allocation':ref(root/'dev-base-same-allocation.json')}
+assert not (second/'smoke-X-02/calibration-predictions.json').exists()
+assert not (second/'smoke-X-03/calibration-predictions.json').exists()
+usage={}
+for name in ('T-0031-smoke-observations.json','T-0031-smoke-v2-observations.json'):
+    for observation in read(source/'research/notes'/name):
+        if 'usage' in observation:
+            u=observation['usage'];assert observation['execution_state']=='ended' and u['unit']=='mig_instance_hours' and u['basis']=='measured'
+            usage[u['accounting_ref']]=u
+assert len(usage)==2
+smoke_node_h=sum(u['quantity']*.25 for u in usage.values())
+def estimate(manifest,label):
+    m=manifest['metrics'];cal=m['full_calibration_seconds']
+    dev=max(cal/2.048,max(a['init_eval.seconds']*1000/16 for a in m['arms'].values()))
+    seconds={arm:a['train.steady_step_seconds']*13115+7*dev+(cal if arm in ('X-01','ETA-QK-1') else 0)+20
+             for arm,a in m['arms'].items()}
+    grid=sum(seconds[a] for a in ('X-01','X-02','X-03'))+5*(seconds['X-01']+seconds['ETA-QK-1'])
+    # Baseline: calibration+new dev+legacy dev. Interventions: eight paths plus
+    # a same-checkpoint donor forward. Both completed smokes use measured usage.
+    overhead=cal+2*dev+9*dev+120
+    initial=(grid+overhead)/14400+smoke_node_h
+    worst=initial+(seconds['X-01']+seconds['ETA-QK-1'])/14400
+    return {'timing_source':label,'dev_seconds':dev,'calibration_seconds':cal,
+            'per_training_seconds':seconds,'initial_grid_node_hours':initial,
+            'both_extensions_node_hours':worst,'cap_node_hours':5.5,'within_cap':worst<=5.5}
+comparable=estimate(v1,'ATT-0314-1; observed2g.24gb; operator unchanged; D0060 extra passes separately reserved')
+cross_profile=estimate(v2,'ATT-0315-1; observed1g.24gb; descriptive cross-profile timing')
+assert comparable['within_cap']
+value={'contract':'E-0028@1','scientific_source_commit':v2['metrics']['source_commit'],
+       'planning':comparable,'cross_profile_timing_descriptive':cross_profile,
+       'measured_smoke_node_hours_native':smoke_node_h,'native_usage':usage,
+       'D0060_reference_checks':references,'selection':'use comparable2g timing; no assumption that1g is slower',
+       'reserves':{'fallback_Base_dev_passes_per_training':1,'possible_endpoint_trainings':2,
+                   'baseline_legacy_dev_passes':1,'other_check_and_analysis_seconds':120},
+       'sources':{'first_smoke':ref(first/'manifest.json'),'second_smoke':ref(second/'manifest.json'),
+                  'legacy_source_smoke':ref(second/'legacy-source-smoke.json')},
+       'usage_scope':'both measured completed smokes plus projected remaining work; audit itself covered by120s reserve'}
+with (out/'cost.json').open('w') as handle:json.dump(value,handle,indent=2,allow_nan=False)
+with (out/'manifest.json').open('w') as handle:
+    json.dump({'status':'complete','contract':'E-0028@1','spec_digest':os.environ['SR_SPEC_DIGEST'],
+       'metrics':{'budget_gate_passed':True,'initial_grid_node_hours':comparable['initial_grid_node_hours'],
+                  'worst_case_node_hours':comparable['both_extensions_node_hours'],'cross_profile_reference_checks_passed':True},
+       'artifacts':[{'path':str(out/'cost.json'),'role':'cost_and_reference_audit'}],
+       'validator':{'name':'e0028_smoke_cost_audit','passed':True}},handle,indent=2)
+PY
