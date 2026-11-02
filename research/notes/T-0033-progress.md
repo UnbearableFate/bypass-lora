@@ -371,3 +371,21 @@ remain frozen. Resume on its answer or a formal-training notification. A
 remaining medium finding after this second review needs the coordinator's
 disposition. No lock or A2 evaluation before passing analysis review and valid
 completion of all twelve trained checkpoints.
+
+RV-0100 has now passed with zero findings at 4e6e8df. The final fixed sources
+are training `f7419525d12ff511845a11fae7ae0fae5100e8f7` and evaluation/analysis
+`4e6e8dfad40feb35fab60eecf7cf2df428083b1d`. Exact evaluation-source checks are
+ATT-0392-1 / RES-0354 (434 passed); the seed-plan/cost smoke is ATT-0375-1 /
+RES-0349. Existing review references RV-0081/82/88/92/94/95 must also be passed
+on registrations to include the inherited versions verified in MSG-0964.
+
+Prepared only the lock INPUT, not the lock itself:
+`research/artifacts/T-0033/preopening-input.json` (central project), copied
+to `research/notes/T-0033-preopening-input.json` for the continuation. It pins
+the completed diagnostic/smoke metadata and all twelve expected final run
+roots, without claiming their adapters/results are complete. Do not execute
+lock creation until all twelve formal outputs have been checked. Then run
+stage=lock at 4e6e8df against this input, inspect the generated lock and rule-1
+checks, and run three stage=dev-replay jobs (seeds 3/4/5) using the generated
+lock path/SHA without unseal. Report that unchanged lock and replay results
+to the coordinator for its confirming decision. A2 is still sealed.
