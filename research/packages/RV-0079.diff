@@ -1,0 +1,422 @@
+diff --git a/research/notes/T-0028-checks.pbs b/research/notes/T-0028-checks.pbs
+new file mode 100644
+index 0000000..b31aa10
+--- /dev/null
++++ b/research/notes/T-0028-checks.pbs
+@@ -0,0 +1,26 @@
++#!/bin/bash
++set -euo pipefail
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_CODE_COMMIT:?registered source required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++SEG_PROJECT=/work/xg24i002/x10041/bypass-lora
++SEG_SOURCE="$SEG_PROJECT/snapshots/$SR_CODE_COMMIT"
++SEG_OUT="$SEG_PROJECT/runs/$SR_ATTEMPT_ID"
++SEG_PY="$SEG_PROJECT/envs/3c916b51337d-cuda/bin/python"
++mkdir -p "$SEG_OUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$SEG_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
++  > "$SEG_OUT/allocation.json"
++/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$SEG_OUT/allocation.json"
++# Deterministic regression, no comparative throughput measurement: metadata only.
++nvidia-smi -L > "$SEG_OUT/nvidia-smi.txt" 2>&1 || true
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$SEG_SOURCE/src"
++export TMPDIR="/local/${PBS_JOBID}/seg-checks"
++mkdir -p "$TMPDIR"
++cd "$SEG_SOURCE"
++exec "$SEG_PY" src/seg_check.py --output "$SEG_OUT"
+diff --git a/research/notes/T-0028-review-fixes.md b/research/notes/T-0028-review-fixes.md
+new file mode 100644
+index 0000000..a808c1a
+--- /dev/null
++++ b/research/notes/T-0028-review-fixes.md
+@@ -0,0 +1,43 @@
++# RV-0078 low findings: scoped fixes before formal training
++
++RV-0078 passed with three low findings and no medium/high findings. All three
++are addressed before any formal SEG run or SEG dev quality inspection.
++
++1. Preserve `pending_r128` while the primary task awaits its conditional
++   width comparison, even if the secondary supports at r32. Secondary results
++   remain visible; the replication flag waits until the primary is decided.
++   After the width comparison, D-0044(c) is explicitly labelled
++   `descriptive_inconclusive_D0044c`. Exact numeric gates are unchanged.
++2. Remove `select` from the analysis API, CLI and launcher. Analyze the complete
++   r32 grid after its interventions, which can return `pending_r128`; analyze
++   the expanded grid only after a valid release. Missing interventions remain
++   an explicit incomplete-input error, without a false implementation report.
++3. Require deterministic-check `source_commit` and intervention
++   `evaluation_source` to equal the immutable formal training source. A fresh
++   deterministic regression at that same commit supplies the check receipt.
++   Require an explicit complete terminal task-attempt list and measured usage
++   for every listed attempt; infer mandatory Base/train/intervention/check
++   attempt IDs from their roots and always require ATT-0271-1 smoke usage.
++   The list includes failed attempts and any additional regression/reviewer
++   attempts. The report states cost coverage, total, 3-node-hour cap and whether
++   it is within cap. The analysis job's own usage is explicitly pending until
++   terminal import and is added in delivery.
++
++Targeted regressions include the pending-primary/secondary-success boundary,
++D-0044(c), mismatched check/intervention source pins, missing usage for Base,
++training, intervention, smoke, deterministic checks and failed attempts,
++deduplication and reporting of budget excess. The full deterministic protocol
++suite is replayed at the exact planned training source, without dev scoring.
++
++No model, core state operator, tokenization, optimizer, training, candidate
++scoring, checkpoint, donor-generation or bootstrap numeric path changed.
++ATT-0271-1's seven-arm cost measurements remain applicable. The unchanged
++default-path regression at that smoke is not repeated: this regression instead
++replays all SEG identities/gradients and the unchanged core tests. Hardware
++profiles are metadata only, with no slice gate or slice-related analysis.
++
++PBS regression result and measured usage are pending. After it passes, request
++the one focused `--recheck-of RV-0078`. All scoped files then remain frozen
++until the answer. Full projected cost before this short regression is
++2.538108543 node-hours including the optional r128 branch and review reserve;
++its measured usage is charged once after termination.
+diff --git a/research/notes/T-0028-run.pbs b/research/notes/T-0028-run.pbs
+index afa270f..86b84b9 100644
+--- a/research/notes/T-0028-run.pbs
++++ b/research/notes/T-0028-run.pbs
+@@ -43,7 +43,7 @@ case "$SEG_STAGE" in
+   analysis)
+     : "${SEG_ANALYSIS_INPUT:?locked analysis input required}"
+     exec "$SEG_PY" src/seg_analysis.py --input "$SEG_ANALYSIS_INPUT" \
+-      --stage "${SEG_ANALYSIS_PHASE:-final}" --output "$SEG_OUT"
++      --output "$SEG_OUT"
+     ;;
+   *)
+     printf 'Unknown registered SEG_STAGE: %s\n' "$SEG_STAGE" >&2
+diff --git a/src/seg_analysis.py b/src/seg_analysis.py
+index edf4701..ede2e35 100644
+--- a/src/seg_analysis.py
++++ b/src/seg_analysis.py
+@@ -2,6 +2,7 @@
+ import argparse
+ import os
+ from pathlib import Path
++import re
+ import time
+ 
+ from rb1_analysis import measured_cost
+@@ -26,10 +27,42 @@ def summary(rows):
+             'macro_nll': sum(t['nll'] for t in tasks.values())/2}
+ 
+ 
+-def analyze(inputs, stage='final'):
++def complete_cost(inputs, roots, interventions, check_manifest):
++    """Require all declared terminal task costs, including failed attempts.
++
++    The controller writes accounted_attempts from the task's execution record
++    before each analysis. Independent roots ensure that omitting a mandatory
++    arm, check or smoke from that list cannot hide its usage. The current
++    analysis has no terminal usage yet; delivery appends it after it ends.
++    """
++    declared = inputs.get('accounted_attempts')
++    if (not isinstance(declared, list) or not declared or len(set(declared)) != len(declared) or
++        any(not isinstance(a, str) or re.fullmatch(r'ATT-\d+-\d+', a) is None for a in declared)):
++        raise ValueError('analysis needs the explicit terminal task accounting list')
++    inferred = {Path(p).resolve().name for p in (*roots.values(), *interventions.values())}
++    inferred.add(Path(check_manifest).resolve().parent.name)
++    inferred.add('ATT-0271-1')
++    if any(re.fullmatch(r'ATT-\d+-\d+', a) is None for a in inferred):
++        raise ValueError('all segmented run/check paths must name their registered attempt')
++    if not inferred <= set(declared):
++        raise ValueError('task accounting list omits a required arm/check/smoke attempt')
++    cost = measured_cost(inputs['observations'])
++    measured = {r['attempt'] for r in cost['rows']}
++    if measured != set(declared):
++        raise ValueError('measured cost coverage differs from the complete task accounting list')
++    cost.update({'required_attempts': sorted(declared), 'terminal_coverage_complete': True,
++                 'cap_node_h': 3., 'within_cap': cost['node_h'] <= 3.,
++                 'current_analysis_usage': 'pending; add terminal measured usage in delivery',
++                 'conversion': 'node_h = measured MIG instance hours * 0.25; all declared terminal task attempts included'})
++    return cost
++
++
++def analyze(inputs):
+     source = inputs['training_source']
+     if len(source) != 40 or any(c not in '0123456789abcdef' for c in source):
+         raise ValueError('analysis needs the reviewed immutable training-source pin')
++    if inputs.get('evaluation_source') != source:
++        raise ValueError('intervention evaluation source must equal the reviewed training source')
+     roots = inputs['runs']
+     required = {f'SEG-{i:02}' for i in range(5)}
+     if set(roots) not in (required, required | {'SEG-05', 'SEG-06', 'SEG-07'}):
+@@ -58,16 +91,15 @@ def analyze(inputs, stage='final'):
+     checked = read(checks['manifest_ref']['path'])
+     if checked.get('status') != 'complete' or checked.get('validator', {}).get('passed') is not True:
+         raise ValueError('deterministic check run failed')
++    if checked.get('source_commit') != source:
++        raise ValueError('deterministic-check source differs from the reviewed training source')
+     no_channel = checked['metrics'].get('no_channel_identity') is True
+     initial = all(m['metrics'].get('initial.identical_to_Base_seg') is True for a, m in manifests.items() if a in KEEP)
+     reload_ok = all(m['metrics'].get('reload.identical') is True for a, m in manifests.items() if a != 'SEG-00')
+     off_ok, provenance = True, {}
+     for arm in (a for a in roots if a in KEEP):
+         if arm not in inputs.get('interventions', {}):
+-            if stage == 'final':
+-                raise ValueError('segmented intervention grid missing')
+-            off_ok = False
+-            continue
++            raise ValueError('segmented intervention grid missing')
+         root = Path(inputs['interventions'][arm])
+         manifest = read(root/'manifest.json'); m = manifest['metrics']; prov = read(root/'provenance.json')
+         if (manifest.get('status') != 'complete' or manifest.get('contract') != 'E-0025@1' or
+@@ -100,17 +132,18 @@ def analyze(inputs, stage='final'):
+     rule_checks = {'no_channel_identity': no_channel, 'initial_matches_base': initial,
+                    'reload_identical': reload_ok, 'off_matches_base': off_ok}
+     counts = {a: counts_from_rows(p) for a, p in predictions.items()}
+-    rules = apply_rules(counts, rule_checks, require_interventions=stage == 'final')
++    rules = apply_rules(counts, rule_checks)
++    cost = complete_cost(inputs, roots, inputs['interventions'], checks['manifest_ref']['path'])
+     binary = {a: {t: [int(r['gold'] == r['prediction']) for r in p if r['task'] == t]
+                   for t in ('piqa', 'boolq')} for a, p in predictions.items()}
+-    return {**rules, 'contract': 'E-0025@1', 'clarification': 'D-0044', 'stage': stage,
++    return {**rules, 'contract': 'E-0025@1', 'clarification': 'D-0044', 'stage': 'final',
+         'summary': {a: summary(p) for a, p in predictions.items()}, 'counts': counts,
+         'bootstrap': {'repeats': 10000, 'seed': 20261101, 'pairs': paired_bootstrap(binary),
+                       'max_control_gain': gain_intervals(binary)},
+         'training': {a: m['metrics'] for a, m in manifests.items()}, 'artifact_refs': refs,
+         'intervention_refs': provenance, 'deterministic_checks': checks,
+         'full_context_references_descriptive_only': reference_predictions,
+-        'cost': measured_cost(inputs.get('observations', [])),
++        'cost': cost,
+         'limitations': ['Single trained seed, dev screening; bootstrap conditions on these trained models.',
+             'Thresholds are exact point-estimate gates, not interval guarantees.',
+             'Intervals are descriptive; not simultaneous; exclude seed and task/width selection uncertainty.',
+@@ -135,12 +168,11 @@ def markdown(report):
+ def main():
+     p = argparse.ArgumentParser(description=__doc__)
+     p.add_argument('--input', type=Path, required=True)
+-    p.add_argument('--stage', choices=('select', 'final'), default='final')
+     p.add_argument('--output', type=Path, required=True)
+     args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
+     passed, start = False, time.monotonic()
+     try:
+-        report = analyze(read(args.input), args.stage)
++        report = analyze(read(args.input))
+         write_json(out/'analysis.json', report)
+         (out/'analysis.md').write_text(markdown(report))
+         passed = True
+diff --git a/src/seg_check.py b/src/seg_check.py
+new file mode 100644
+index 0000000..4f1c410
+--- /dev/null
++++ b/src/seg_check.py
+@@ -0,0 +1,50 @@
++"""Post-review PBS regressions: protocol identities and synthetic analysis only.
++
++No training run or SEG dev quality is read. The unchanged training/scoring
++runtime already has ATT-0271-1's seven-arm cost smoke. Re-run the deterministic
++protocol at this exact source so later rule-1(c) provenance has the formal pin.
++"""
++import argparse
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++from v5_train import write_json
++
++FILES = ['src/test_seg_rules.py', 'src/test_seg_data.py', 'src/test_seg_model.py',
++         'src/test_seg_artifacts.py', 'src/test_seg_analysis.py', 'src/test_core.py', 'src/test_rb_core.py']
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    metrics, passed, tick = {}, False, time.monotonic()
++    try:
++        with (out/'checks.log').open('w') as log:
++            result = subprocess.run([sys.executable, '-m', 'pytest', *FILES, '-q', '-p', 'no:cacheprovider',
++                '-o', 'junit_family=legacy', '--junitxml='+str(out/'checks.xml')], stdout=log, stderr=subprocess.STDOUT)
++        cases = list(ET.parse(out/'checks.xml').getroot().iter('testcase'))
++        metrics.update({'checks.cases': len(cases),
++            'checks.failed': sum(c.find('failure') is not None or c.find('error') is not None for c in cases),
++            'checks.skipped': sum(c.find('skipped') is not None for c in cases),
++            'no_channel_identity': True, 'differentiable_state_carry': True,
++            'synthetic_reducer_boundaries': True, 'formal_SEG_results_read': False,
++            'confirmation_evaluated': False})
++        passed = result.returncode == 0 and bool(cases) and metrics['checks.failed'] == metrics['checks.skipped'] == 0
++        if not passed:
++            raise RuntimeError('segmented PBS regression failed; inspect checks.log/checks.xml')
++    finally:
++        metrics['elapsed_s'] = time.monotonic()-tick
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0025@1',
++            'source_commit': os.environ['SR_CODE_COMMIT'], 'spec_digest': os.environ['SR_SPEC_DIGEST'],
++            'stage': 'deterministic_regression', 'metrics': metrics,
++            'artifacts': [{'path': str(p), 'role': p.name} for p in (out/'checks.log', out/'checks.xml') if p.exists()],
++            'validator': {'name': 'segmented_post_review_checks', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_rules.py b/src/seg_rules.py
+index 156e392..01bd47b 100644
+--- a/src/seg_rules.py
++++ b/src/seg_rules.py
+@@ -57,7 +57,7 @@ def analyze(counts, checks, *, require_interventions=True):
+                 elif gain32 < PP and gain128 < PP:
+                     outcome = 'challenges'
+                 else:
+-                    outcome = 'descriptive'
++                    outcome = 'descriptive_inconclusive_D0044c'
+         per_task[task] = {'informative': informative[task], 'gain32': number(gain32),
+             'swap_drop32': None if swap32 is None else number(swap32),
+             'gain128': None if gain128 is None else number(gain128),
+@@ -78,7 +78,8 @@ def analyze(counts, checks, *, require_interventions=True):
+     direction = 'descriptive' if primary is None else per_task[primary]['outcome']
+     if primary and release and not r128:
+         direction = 'pending_r128'
+-    secondary_only = secondary is not None and per_task[secondary]['outcome'] == 'supports' and direction != 'supports'
++    secondary_only = (secondary is not None and per_task[secondary]['outcome'] == 'supports' and
++                      direction not in ('supports', 'pending_r128'))
+     if secondary_only:
+         direction = 'inconclusive_secondary_only'
+     if not implementation_ok:
+diff --git a/src/test_seg_analysis.py b/src/test_seg_analysis.py
+index 40bd93b..323aec2 100644
+--- a/src/test_seg_analysis.py
++++ b/src/test_seg_analysis.py
+@@ -13,30 +13,38 @@ from test_seg_artifacts import formal, predictions, write, SOURCE
+ def grid(tmp_path, monkeypatch):
+     roots, manifests, refs = {}, {}, {}
+     for i in range(5):
+-        arm = f'SEG-{i:02}'; root = tmp_path/arm
++        arm = f'SEG-{i:02}'; root = tmp_path/f'ATT-{600+i:04}-1'
+         formal(root, arm, monkeypatch)
+         manifests[arm], refs[arm], _ = validate(root, arm, SOURCE)
+         roots[arm] = str(root)
+-    check = tmp_path/'checks.json'
+-    write(check, {'status': 'complete', 'metrics': {'no_channel_identity': True}, 'validator': {'passed': True}})
++    check = tmp_path/'ATT-0606-1'/'manifest.json'
++    write(check, {'status': 'complete', 'source_commit': SOURCE,
++                  'metrics': {'no_channel_identity': True}, 'validator': {'passed': True}})
+     import rb1_artifacts
+     monkeypatch.setattr(rb1_artifacts, 'validate_formal_run', lambda *args: ({'metrics': {}}, {}, None))
+     monkeypatch.setattr(analysis, 'validate', lambda root, arm, source: (manifests[arm], refs[arm], None))
+     full = tmp_path/'RB1-07'; write(full/'predictions.json', predictions(700))
+-    iv = tmp_path/'iv'
++    iv = tmp_path/'ATT-0605-1'
+     rows = predictions()
+     mapping = donor_indices(rows, 'R1')
+     donors = [{'task': r['task'], 'recipient': r['id'], 'donor': rows[mapping[i]]['id']} for i, r in enumerate(rows)]
+     conditions = {kind: {'predictions': rows, 'audit': {'donors': donors if kind == 'iv_swap' else []}}
+                   for kind in ('Base_seg', 'normal', 'iv_off', 'iv_swap', 'iv_reset')}
+     write(iv/'conditions.json', conditions)
+-    write(iv/'provenance.json', {'training': refs['SEG-02'], 'checkpoint_files': analysis.read(tmp_path/'SEG-02'/'checkpoint.json'),
++    write(iv/'provenance.json', {'training': refs['SEG-02'], 'checkpoint_files': analysis.read(__import__('pathlib').Path(roots['SEG-02'])/'checkpoint.json'),
+                                 'training_source': SOURCE, 'evaluation_source': SOURCE})
+     write(iv/'manifest.json', {'status': 'complete', 'contract': 'E-0025@1', 'stage': 'intervention', 'arm': 'SEG-02',
+                               'metrics': {'off.identical_to_Base_seg': True}, 'validator': {'passed': True}})
++    attempts = [f'ATT-{600+i:04}-1' for i in range(8)]+['ATT-0271-1']
++    observations = tmp_path/'terminal-costs.json'
++    write(observations, [{'attempt_id': attempt, 'execution_state': 'ended',
++        'outcome': 'failed' if attempt == 'ATT-0607-1' else 'success',
++        'usage': {'accounting_ref': 'synthetic-pbs:'+attempt, 'basis': 'measured',
++                  'unit': 'mig_instance_hours', 'quantity': .01,
++                  'source_ref': 'synthetic terminal scheduler fixture'}} for attempt in attempts])
+     return {'runs': roots, 'training_source': SOURCE, 'evaluation_source': SOURCE,
+         'full_context_lora_run': str(full), 'deterministic_checks': {'manifest_ref': reference(check)},
+-        'interventions': {'SEG-02': str(iv)}, 'observations': []}
++        'interventions': {'SEG-02': str(iv)}, 'observations': [str(observations)], 'accounted_attempts': attempts}
+ 
+ 
+ def test_full_synthetic_analysis_runs_locked_bootstrap_and_rules(grid):
+@@ -44,6 +52,10 @@ def test_full_synthetic_analysis_runs_locked_bootstrap_and_rules(grid):
+     assert report['bootstrap']['repeats'] == 10000 and report['bootstrap']['seed'] == 20261101
+     assert report['rules']['1']['passed'] is True and report['primary'] == 'piqa'
+     assert report['direction'] == 'challenges'
++    assert report['cost']['terminal_coverage_complete']
++    assert report['cost']['node_h'] == pytest.approx(9*.01*.25)
++    assert report['cost']['within_cap'] and report['cost']['cap_node_h'] == 3
++    assert 'ATT-0607-1' in report['cost']['required_attempts']  # failed jobs cost too
+     assert 'Single-seed dev screening' in analysis.markdown(report)
+ 
+ 
+@@ -64,3 +76,44 @@ def test_analysis_rejects_incomplete_grid_and_wrong_donor_checkpoint_identity(gr
+             p['iv_off']['predictions'][0]['scores'] = [-2., -1.]
+         write(__import__('pathlib').Path(root)/'conditions.json', p)
+     with pytest.raises(ValueError): analysis.analyze(grid)
++
++
++@pytest.mark.parametrize('wrong', ['check_source', 'evaluation_source', 'intervention_source'])
++def test_analysis_rejects_unpinned_nontraining_sources(grid, wrong):
++    from pathlib import Path
++    if wrong == 'check_source':
++        path = Path(grid['deterministic_checks']['manifest_ref']['path'])
++        check = analysis.read(path); check['source_commit'] = 'c'*40; write(path, check)
++        grid['deterministic_checks']['manifest_ref'] = reference(path)
++    elif wrong == 'evaluation_source':
++        grid['evaluation_source'] = 'c'*40
++    else:
++        path = Path(grid['interventions']['SEG-02'])/'provenance.json'
++        prov = analysis.read(path); prov['evaluation_source'] = 'c'*40; write(path, prov)
++    with pytest.raises(ValueError, match='source|provenance'): analysis.analyze(grid)
++
++
++@pytest.mark.parametrize('missing', ['base', 'training', 'intervention', 'check', 'smoke', 'failed'])
++def test_analysis_rejects_missing_terminal_attempt_usage(grid, missing):
++    from pathlib import Path
++    target = {'base': 'ATT-0600-1', 'training': 'ATT-0602-1', 'intervention': 'ATT-0605-1',
++              'check': 'ATT-0606-1', 'smoke': 'ATT-0271-1', 'failed': 'ATT-0607-1'}[missing]
++    path = Path(grid['observations'][0])
++    write(path, [r for r in analysis.read(path) if r['attempt_id'] != target])
++    with pytest.raises(ValueError, match='cost coverage'): analysis.analyze(grid)
++
++
++def test_declared_accounting_cannot_omit_required_arm_or_smoke(grid):
++    grid['accounted_attempts'].remove('ATT-0271-1')
++    with pytest.raises(ValueError, match='omits a required'): analysis.analyze(grid)
++
++
++def test_cost_deduplicates_exports_and_reports_a_cap_excess(grid):
++    from pathlib import Path
++    path = Path(grid['observations'][0]); rows = analysis.read(path)
++    rows[-1]['usage']['quantity'] = 13.
++    write(path, rows)
++    cost = analysis.complete_cost(dict(grid, observations=grid['observations']*2), grid['runs'],
++        grid['interventions'], grid['deterministic_checks']['manifest_ref']['path'])
++    assert len(cost['rows']) == len(grid['accounted_attempts'])
++    assert cost['within_cap'] is False and cost['node_h'] > 3
+diff --git a/src/test_seg_rules.py b/src/test_seg_rules.py
+index d116669..fb4fd3f 100644
+--- a/src/test_seg_rules.py
++++ b/src/test_seg_rules.py
+@@ -40,8 +40,10 @@ def add128(counts, gain, drop):
+ 
+ 
+ @pytest.mark.parametrize('g32,g128,drop,outcome', [
+-    (9, 9, 0, 'challenges'), (10, 9, 0, 'descriptive'), (20, 0, 0, 'descriptive'),
+-    (9, 10, 0, 'descriptive'), (29, 30, 15, 'supports'), (9, 30, 14, 'descriptive')])
++    (9, 9, 0, 'challenges'), (10, 9, 0, 'descriptive_inconclusive_D0044c'),
++    (20, 0, 0, 'descriptive_inconclusive_D0044c'),
++    (9, 10, 0, 'descriptive_inconclusive_D0044c'), (29, 30, 15, 'supports'),
++    (9, 30, 14, 'descriptive_inconclusive_D0044c')])
+ def test_D0044_both_ranks_below_one_and_r128_support(g32, g128, drop, outcome):
+     report = analyze(add128(grid(g32, 0), g128, drop), CHECKS)
+     assert report['direction'] == outcome
+@@ -70,6 +72,14 @@ def test_secondary_only_cannot_create_primary_edge_or_release():
+     assert report['rules']['8']['two_new_seed_replications_needed']
+ 
+ 
++def test_pending_primary_r128_is_preserved_when_secondary_supports():
++    report = analyze(grid(10, 0, second_gain=30), CHECKS)
++    assert report['direction'] == 'pending_r128' and report['release_r128'] is True
++    assert report['rules']['8']['task_result']['outcome'] == 'supports'
++    assert report['rules']['8']['secondary_only'] is False
++    assert report['rules']['8']['two_new_seed_replications_needed'] is False
++
++
+ def test_unlearned_controls_are_diagnostic_and_failed_implementation_blocks_release():
+     counts = grid(30, 15, controls=500, lo=500)
+     r = analyze(counts, CHECKS)

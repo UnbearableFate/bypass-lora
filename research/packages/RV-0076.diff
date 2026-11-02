@@ -1,0 +1,649 @@
+diff --git a/research/notes/T-0027-sink.pbs b/research/notes/T-0027-sink.pbs
+new file mode 100644
+index 0000000..3d52482
+--- /dev/null
++++ b/research/notes/T-0027-sink.pbs
+@@ -0,0 +1,53 @@
++#!/bin/bash
++# E-0024: all four RB1 arms x {normal, iv_strict, iv_window8}, then the summary.
++set -euo pipefail
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_CODE_COMMIT:?registered source required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++P=/work/xg24i002/x10041/bypass-lora
++SRC="$P/snapshots/$SR_CODE_COMMIT"
++OUT="$P/runs/$SR_ATTEMPT_ID"
++PY="$P/envs/3c916b51337d-cuda/bin/python"
++mkdir -p "$OUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
++/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$SRC/src"
++export TMPDIR="/local/${PBS_JOBID}/t0027"
++mkdir -p "$TMPDIR"
++# D-0018/D-0019: the MIG profile is metadata for frozen evaluation.
++nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
++cd "$SRC"
++start=$(date +%s)
++status=failed
++finish() {
++  "$PY" - "$OUT" "$status" "$start" <<'PYEOF'
++import json, os, sys, time
++out, status, start = sys.argv[1], sys.argv[2], int(sys.argv[3])
++arms = ('RB1-02', 'RB1-03', 'RB1-08', 'RB1-09')
++artifacts = [{'path': f'{out}/{a}/sink.json', 'role': f'sink:{a}'} for a in arms
++             if os.path.exists(f'{out}/{a}/sink.json')]
++if os.path.exists(f'{out}/summary.json'):
++    artifacts.append({'path': f'{out}/summary.json', 'role': 'summary'})
++json.dump({'status': 'complete' if status == 'complete' else 'partial', 'contract': 'E-0024@1',
++           'spec_digest': os.environ['SR_SPEC_DIGEST'], 'phase': 'R1', 'seed': 0, 'stage': 'diagnostic',
++           'metrics': {'elapsed_s': time.time()-start, 'arms_complete': len(artifacts) - (status == 'complete')},
++           'artifacts': artifacts,
++           'validator': {'name': 'rb_sink_read', 'passed': status == 'complete'}},
++          open(f'{out}/manifest.json', 'w'), indent=1)
++PYEOF
++}
++trap finish EXIT
++declare -A TRAIN=([RB1-02]=ATT-0240-1 [RB1-03]=ATT-0241-1 [RB1-08]=ATT-0246-1 [RB1-09]=ATT-0247-1)
++declare -A REF=([RB1-02]=ATT-0262-1 [RB1-03]=ATT-0263-1 [RB1-08]=ATT-0264-1 [RB1-09]=ATT-0265-1)
++for arm in RB1-02 RB1-03 RB1-08 RB1-09; do
++  "$PY" src/rb_sink_read.py arm --arm "$arm" --training-run "$P/runs/${TRAIN[$arm]}" \
++    --reference "$P/runs/${REF[$arm]}" --data-dir "$P/data/v1" --output "$OUT/$arm" --batch-size 8
++done
++"$PY" src/rb_sink_read.py summarize --inputs "$OUT"/RB1-0{2,3,8,9}/sink.json --output "$OUT/summary.json"
++status=complete
+diff --git a/src/rb_history.py b/src/rb_history.py
+index a070292..d882d22 100644
+--- a/src/rb_history.py
++++ b/src/rb_history.py
+@@ -116,7 +116,15 @@ def run_history(q, k, v, reader, valid, config, options):
+                 metrics = prefix_read_metrics(query, keys, valid,
+                     kind='iv_strict' if kind is None and config.mode == 'strict' else kind,
+                     donor=options.get('donor'), window=options.get('window'))
+-                read_metrics.append({'step': step, **metrics})
++                # The same normalized KernelMatrix read (times read gain, before
++                # Ro) that the reader computes from these intervened states.
++                rank = query.shape[-1]
++                observed = MemoryState(matrices.reshape(-1, rank, rank), masses.reshape(-1, rank),
++                                       counts.reshape(-1), 'kernel_matrix', rank)
++                read = (observed.read(query.reshape(-1, rank), reader.eps_read, reader.temperature())
++                        * reader.read_gain).reshape(query.shape)
++                read = torch.where(valid[..., None], read, torch.zeros_like(read))
++                read_metrics.append({'step': step, **metrics, 'read_vector': read.detach()})
+ 
+     outputs, weights = read_kernel_prefix(q, reader, matrices, masses, counts, valid,
+         steps=config.steps, update=config.update, readout=config.readout,
+diff --git a/src/rb_read_diagnostics.py b/src/rb_read_diagnostics.py
+index 0b2b32e..8dc5e4c 100644
+--- a/src/rb_read_diagnostics.py
++++ b/src/rb_read_diagnostics.py
+@@ -7,6 +7,9 @@ computing entropy and effective item count. Empty reads have all-zero metrics.
+ import torch
+ 
+ 
++# Per-position vectors carried in read records; ReadSummary never averages them.
++VECTOR_FIELDS = ('read_vector',)
++
+ @torch.no_grad()
+ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=None,
+                         chunk_size=64):
+@@ -36,7 +39,8 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
+         history, history_valid = keys, valid
+     positions = torch.arange(history.shape[1], device=query.device)
+     pieces = {name: [] for name in ('current_weight', 'n_eff', 'entropy',
+-                                   'relative_n_eff', 'readable_positions')}
++                                   'relative_n_eff', 'readable_positions',
++                                   'share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')}
+     for start in range(0, length, chunk_size):
+         end = min(length, start+chunk_size)
+         current = torch.arange(start, end, device=query.device)
+@@ -55,11 +59,13 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
+             scores = torch.cat((scores, own[..., None]), -1)
+             readable = eligible.sum(-1) + valid[:, start:end].long()
+             own_score = own
++            slots = torch.cat((eligible, valid[:, start:end, None]), -1)
+         else:
+             own_score = (query[:, start:end]*keys[:, start:end]).sum(-1)
+             own_score = torch.where(valid[:, start:end] & (kind != 'iv_strict'), own_score,
+                                     torch.zeros_like(own_score))
+             readable = eligible.sum(-1)
++            slots = eligible
+         total = scores.sum(-1)
+         probability = scores / total[..., None].clamp_min(1e-30)
+         active = valid[:, start:end] & (readable > 0)
+@@ -68,7 +74,14 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
+         values = {'current_weight': own_score/total.clamp_min(1e-30),
+                   'n_eff': neff, 'entropy': entropy,
+                   'relative_n_eff': neff/readable.clamp_min(1),
+-                  'readable_positions': readable.float()}
++                  'readable_positions': readable.float(),
++                  # History index 0 is the sequence's first token (the donor's
++                  # first token under iv_swap). Uniform shares use the same slots.
++                  'share0': probability[..., 0],
++                  'share0_2': probability[..., :3].sum(-1),
++                  'argmax0': (probability.argmax(-1) == 0).float(),
++                  'uniform0': slots[..., 0].float()/readable.clamp_min(1),
++                  'uniform0_2': slots[..., :3].sum(-1).float()/readable.clamp_min(1)}
+         for name, value in values.items():
+             pieces[name].append(torch.where(active, value, torch.zeros_like(value)))
+     return {name: torch.cat(value, 1) for name, value in pieces.items()}
+@@ -97,7 +110,7 @@ class ReadSummary:
+                     total['count'] += count
+                     total['empty_reads'] += int((mask & (record['readable_positions'] == 0)).sum())
+                     for name, value in record.items():
+-                        if name != 'step':
++                        if name not in ('step', *VECTOR_FIELDS):
+                             total['sums'][name] = total['sums'].get(name, 0.) + float(value[mask].double().sum())
+ 
+     def finish(self):
+diff --git a/src/rb_sink_read.py b/src/rb_sink_read.py
+new file mode 100644
+index 0000000..e85d910
+--- /dev/null
++++ b/src/rb_sink_read.py
+@@ -0,0 +1,307 @@
++"""E-0024: position-0 read share and cross-episode constant-read index on RB1.
++
++No training. Each RB1 arm's final checkpoint (the one E-0021 intervened on,
++matched by manifest and checkpoint-inventory SHA256) reads the dev gold
++candidate under normal, iv_strict and iv_window8. The forward, intervention and
++read-distribution code are the reviewed rb_history/rb_read_diagnostics paths;
++only gold candidates are run, right-padded in length-sorted batches, and every
++row's gold NLL and the read summaries are compared with the E-0021 run.
++"""
++import argparse
++import json
++import os
++from pathlib import Path
++import random
++import time
++
++import torch
++import torch.nn.functional as F
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION
++from rb_read_diagnostics import ReadSummary
++from rb_train import make_model
++from v1_data import derive_seed, encode_candidates
++from v1_run import batch_tensors, prepare
++from v5_train import file_sha256, write_json
++
++
++ARMS = ('RB1-02', 'RB1-03', 'RB1-08', 'RB1-09')
++RESIDUAL = ('RB1-02', 'RB1-03')
++CONDITIONS = ('normal', 'iv_strict', 'iv_window8')
++TASKS = ('piqa', 'boolq')
++SHARES = ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')
++SAMPLE = 200
++
++
++def gold_index(row):
++    return int(row['label']) if row['task'] == 'piqa' else (0 if row['label'] else 1)
++
++
++def sample_indices(count, task):
++    rng = random.Random(derive_seed(20261101, 'residual_la_v21', 'E-0024', 'constant_read', task))
++    return sorted(rng.sample(range(count), min(SAMPLE, count)))
++
++
++def mean_pairwise_cosine(vectors):
++    """Mean cosine over unordered distinct pairs; zero vectors are rejected."""
++    x = torch.as_tensor(vectors).double()
++    if x.ndim != 2 or x.shape[0] < 2:
++        raise ValueError('pairwise cosine needs at least two vectors')
++    norms = x.norm(dim=1)
++    if not bool((norms > 0).all()):
++        raise ValueError('pairwise cosine is undefined for a zero vector')
++    unit = x/norms[:, None]
++    n = x.shape[0]
++    gram = unit @ unit.T
++    return float((gram.sum() - gram.diagonal().sum())/(n*(n-1)))
++
++
++def answer_mask(labels, attention_mask):
++    """Positions predicting gold answer tokens (as in ReadSummary)."""
++    answer = torch.zeros_like(attention_mask, dtype=torch.bool)
++    answer[:, :-1] = labels[:, 1:] != -100
++    return answer & attention_mask.bool()
++
++
++class Accumulator:
++    """Question-level shares, constant-read vectors and implementation checks."""
++
++    def __init__(self, sampled):
++        self.sampled = sampled
++        self.rows = {}
++        self.vectors = {}
++        self.window_violation = 0.
++        self.window_short_positions = 0
++
++    def add(self, task, row_indices, diagnostics, attention_mask, labels, kind):
++        answer = answer_mask(labels, attention_mask)
++        counts = answer.sum(1)
++        if not bool((counts > 0).all()):
++            raise ValueError('gold candidate without answer positions')
++        first = answer.long().argmax(1)
++        late = answer & (torch.arange(answer.shape[1], device=answer.device)[None] >= 8)
++        chosen = [b for b, index in enumerate(row_indices) if index in self.sampled[task]]
++        for layer, diagnostic in diagnostics.items():
++            values = diagnostic['history']['values']
++            for record in diagnostic['read_metrics']:
++                key = (task, layer, record['step'])
++                rows = self.rows.setdefault(key, {name: [] for name in SHARES})
++                for name in SHARES:
++                    means = (record[name].double()*answer).sum(1)/counts
++                    rows[name].extend(means.tolist())
++                if kind == 'iv_window8':
++                    self.window_short_positions += int((answer & ~late).sum())
++                    if bool(late.any()):
++                        self.window_violation = max(self.window_violation,
++                                                    float(record['share0'][late].abs().max()))
++                store = self.vectors.setdefault(key, {'ids': [], 'read': [], 'value': [],
++                                                      'first_position': []})
++                for b in chosen:
++                    p = int(first[b])
++                    store['ids'].append(row_indices[b])
++                    store['first_position'].append(p)
++                    store['read'].append(record['read_vector'][b, p].double().cpu())
++                    store['value'].append(values[b, p].double().cpu())
++
++    def finish(self):
++        result = []
++        for (task, layer, step), rows in sorted(self.rows.items()):
++            item = {'task': task, 'layer': layer, 'step': step, 'questions': len(rows['share0']),
++                    'question_means': {name: sum(v)/len(v) for name, v in rows.items()}}
++            store = self.vectors[(task, layer, step)]
++            if sorted(store['ids']) != self.sampled[task]:
++                raise ValueError('constant-read sample incomplete')
++            item['constant_read'] = {
++                'questions': len(store['ids']),
++                'C_read': mean_pairwise_cosine(torch.stack(store['read'])),
++                'C_current_value': mean_pairwise_cosine(torch.stack(store['value'])),
++                'first_position_mean': sum(store['first_position'])/len(store['first_position'])}
++            result.append(item)
++        return result
++
++
++@torch.no_grad()
++def run_condition(model, rows_by_task, encoded_by_task, kind, sampled, batch_size, pad_id):
++    summary, accumulator = ReadSummary(), Accumulator(sampled)
++    nll = {}
++    options = None if kind == 'normal' else {'kind': kind}
++    for task in TASKS:
++        encoded = encoded_by_task[task]
++        order = sorted(range(len(encoded)), key=lambda i: (len(encoded[i]['input_ids']), i))
++        for start in range(0, len(order), batch_size):
++            indices = order[start:start+batch_size]
++            batch = batch_tensors([encoded[i] for i in indices], pad_id)
++            output = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'],
++                           use_cache=False, intervention=options, trace_reads=True, capture_history=True)
++            labels = batch['labels']
++            shifted = labels[:, 1:]
++            for b, index in enumerate(indices):
++                valid = shifted[b] != -100
++                loss = F.cross_entropy(output.logits[b, :-1][valid].float(), shifted[b][valid], reduction='sum')
++                if not torch.isfinite(loss):
++                    raise ValueError(f'{task}/{rows_by_task[task][index]["id"]}: nonfinite gold NLL')
++                nll[(task, rows_by_task[task][index]['id'])] = float(loss)
++            summary.add(task, output.diagnostics, batch['attention_mask'], labels)
++            accumulator.add(task, indices, output.diagnostics, batch['attention_mask'], labels, kind)
++            del output
++    return summary.finish(), accumulator, nll
++
++
++def compare_reference(reference, condition, summaries, nll):
++    """Differences from the batch-one E-0021 run of the same checkpoint."""
++    predictions = {(row['task'], row['id']): row['gold_nll_sum'] for row in reference['predictions']}
++    if set(predictions) != set(nll):
++        raise ValueError(f'{condition}: dev rows differ from E-0021')
++    nll_diff = [abs(nll[key]-predictions[key]) for key in nll]
++    old = {(r['task'], r['layer'], r['step'], r['scope']): r for r in reference['read_diagnostics']}
++    new = {(r['task'], r['layer'], r['step'], r['scope']): r for r in summaries}
++    if set(old) != set(new):
++        raise ValueError(f'{condition}: read-summary keys differ from E-0021')
++    relative, absolute = {}, {}
++    for key, value in old.items():
++        if value['count'] != new[key]['count'] or value['empty_reads'] != new[key]['empty_reads']:
++            raise ValueError(f'{condition}: read-summary counts differ from E-0021 at {key}')
++        for name, before in value['nonempty_means'].items():
++            after = new[key]['nonempty_means'][name]
++            gap = abs(after-before)
++            absolute[name] = max(absolute.get(name, 0.), gap)
++            relative[name] = max(relative.get(name, 0.), gap/max(abs(before), 1e-12))
++    return {'gold_nll_max_abs_diff': max(nll_diff), 'gold_nll_mean_abs_diff': sum(nll_diff)/len(nll_diff),
++            'read_summary_max_abs_diff': absolute, 'read_summary_max_rel_diff': relative}
++
++
++def run(args):
++    from rb1_artifacts import validate_formal_run
++    out = args.output.resolve()
++    out.mkdir(parents=True, exist_ok=True)
++    reference_dir = args.reference.resolve()
++    reference_provenance = json.loads((reference_dir/'provenance.json').read_text())
++    manifest_sha = file_sha256(Path(args.training_run)/'manifest.json')
++    inventory_sha = file_sha256(Path(args.training_run)/'checkpoint.json')
++    if (manifest_sha != reference_provenance['training_manifest']['sha256'] or
++            inventory_sha != reference_provenance['checkpoint_inventory']['sha256']):
++        raise ValueError(f'{args.arm}: checkpoint is not the one E-0021 intervened on')
++    _, inventory, adapter = validate_formal_run(args.training_run, args.arm)
++    reference = json.loads((reference_dir/'conditions.json').read_text())
++    tokenizer = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tokenizer.pad_token_id = tokenizer.eos_token_id
++    splits = prepare(args.data_dir)
++    rows_by_task = {task: splits['splits'][task]['dev'] for task in TASKS}
++    encoded_by_task = {task: [encode_candidates(tokenizer, row)[gold_index(row)] for row in rows]
++                       for task, rows in rows_by_task.items()}
++    first_tokens = {}
++    for task, encoded in encoded_by_task.items():
++        ids = sorted({e['input_ids'][0] for e in encoded})
++        first_tokens[task] = {'ids': ids, 'identical': len(ids) == 1,
++                              'decoded': [tokenizer.decode([i]) for i in ids[:10]]}
++    sampled = {task: sample_indices(len(rows), task) for task, rows in rows_by_task.items()}
++    model = make_model(args.arm, phase='R1', seed=0, checkpoint=adapter).eval()
++    result = {'arm': args.arm, 'position0_token': first_tokens,
++              'sample': {task: {'seed_label': ['E-0024', 'constant_read', task], 'size': len(v)}
++                         for task, v in sampled.items()},
++              'conditions': {}}
++    for condition in CONDITIONS:
++        tick = time.monotonic()
++        summaries, accumulator, nll = run_condition(model, rows_by_task, encoded_by_task, condition,
++                                                    sampled, args.batch_size, tokenizer.pad_token_id)
++        result['conditions'][condition] = {
++            'answer_question_level': accumulator.finish(),
++            'read_summary': summaries,
++            'window8_share0_max_late': accumulator.window_violation if condition == 'iv_window8' else None,
++            'window8_answer_positions_before_8': accumulator.window_short_positions if condition == 'iv_window8' else None,
++            'reference_check': compare_reference(reference[condition], condition, summaries, nll),
++            'elapsed_s': time.monotonic()-tick}
++        write_json(out/'sink.json', result)
++    result['provenance'] = {
++        'formal_run': inventory, 'reference_run': str(reference_dir),
++        'training_manifest_sha256': manifest_sha, 'checkpoint_inventory_sha256': inventory_sha,
++        'source_commit': os.environ['SR_CODE_COMMIT'], 'model_revision': REVISION,
++        'environment_lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
++        'batch_size': args.batch_size, 'hardware': torch.cuda.get_device_name()}
++    write_json(out/'sink.json', result)
++    return result
++
++
++def concentrated_layers(reference_normal):
++    """DOC-0263 concentration: nonempty answer-position n_eff < 2 under normal."""
++    return sorted((r['task'], r['layer'], r['step']) for r in reference_normal['read_diagnostics']
++                  if r['scope'] == 'answer_prediction' and r['nonempty_means']['n_eff'] < 2)
++
++
++def interpret(arms):
++    """Preregistered E-0024 reading for the residual group (normal condition)."""
++    cells = []
++    for arm in RESIDUAL:
++        normal = {(r['task'], r['layer'], r['step']): r
++                  for r in arms[arm]['conditions']['normal']['answer_question_level']}
++        for key in arms[arm]['concentrated']:
++            row = normal[key]
++            cells.append({'arm': arm, 'task': key[0], 'layer': key[1], 'step': key[2],
++                          'share0': row['question_means']['share0'],
++                          'C_read': row['constant_read']['C_read']})
++    if not cells:
++        return {'cells': cells, 'reading': 'no concentrated residual layers'}
++    if all(c['share0'] > .5 and c['C_read'] > .9 for c in cells):
++        reading = 'sink'
++    elif all(c['share0'] < .2 for c in cells):
++        reading = 'content'
++    else:
++        reading = 'mixed'
++    return {'cells': cells, 'reading': reading}
++
++
++def consistency(arms):
++    checks = {}
++    for arm, value in arms.items():
++        normal = {(r['task'], r['layer'], r['step']): r['question_means']['share0']
++                  for r in value['conditions']['normal']['answer_question_level']}
++        strict = {(r['task'], r['layer'], r['step']): r['question_means']['share0']
++                  for r in value['conditions']['iv_strict']['answer_question_level']}
++        gap = max(abs(normal[k]-strict[k]) for k in normal)
++        window = value['conditions']['iv_window8']
++        checks[arm] = {'strict_minus_normal_share0_max_abs': gap, 'strict_ok': gap < .01,
++                       'window8_share0_max_late': window['window8_share0_max_late'],
++                       'window8_answer_positions_before_8': window['window8_answer_positions_before_8'],
++                       'window8_ok': window['window8_share0_max_late'] == 0}
++    return checks
++
++
++def summarize(args):
++    arms = {}
++    for path in args.inputs:
++        value = json.loads(Path(path).read_text())
++        reference = json.loads((Path(value['provenance']['reference_run'])/'conditions.json').read_text())
++        value['concentrated'] = concentrated_layers(reference['normal'])
++        arms[value['arm']] = value
++    if set(arms) != set(ARMS):
++        raise ValueError('summary needs exactly the four E-0024 arms')
++    report = {'contract': 'E-0024@1', 'arms': {arm: {'concentrated': v['concentrated'],
++              'position0_token': v['position0_token'], 'conditions': {
++                  c: {k: v['conditions'][c][k] for k in ('answer_question_level', 'reference_check',
++                      'window8_share0_max_late', 'window8_answer_positions_before_8', 'elapsed_s')}
++                  for c in CONDITIONS}} for arm, v in arms.items()},
++              'consistency': consistency(arms), 'interpretation': interpret(arms)}
++    write_json(args.output, report)
++    return report
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    sub = parser.add_subparsers(dest='command', required=True)
++    one = sub.add_parser('arm')
++    one.add_argument('--arm', choices=ARMS, required=True)
++    one.add_argument('--training-run', type=Path, required=True)
++    one.add_argument('--reference', type=Path, required=True, help='E-0021 intervention run of this arm')
++    one.add_argument('--data-dir', required=True)
++    one.add_argument('--output', type=Path, required=True)
++    one.add_argument('--batch-size', type=int, default=8)
++    both = sub.add_parser('summarize')
++    both.add_argument('--inputs', nargs='+', required=True)
++    both.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    run(args) if args.command == 'arm' else summarize(args)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/test_rb_read_diagnostics.py b/src/test_rb_read_diagnostics.py
+index f079bc0..6d9ab3b 100644
+--- a/src/test_rb_read_diagnostics.py
++++ b/src/test_rb_read_diagnostics.py
+@@ -58,6 +58,15 @@ def test_read_statistics_equal_independent_explicit_distribution(kind):
+             torch.testing.assert_close(got['n_eff'][b, t], neff)
+             torch.testing.assert_close(got['relative_n_eff'][b, t], neff/len(selected))
+             torch.testing.assert_close(got['entropy'][b, t], -(prob*prob.log()).sum())
++            # Position-0 shares index the history's first token (the donor's under swap).
++            first = [j for j, i in enumerate(indices) if i < 3]
++            share0 = prob[indices.index(0)] if 0 in indices else torch.tensor(0.)
++            torch.testing.assert_close(got['share0'][b, t], share0)
++            torch.testing.assert_close(got['share0_2'][b, t], prob[first].sum())
++            argmax0 = 0 in indices and int(prob.argmax()) == indices.index(0)
++            assert got['argmax0'][b, t] == float(argmax0)
++            torch.testing.assert_close(got['uniform0'][b, t], torch.tensor((0 in indices)/len(selected)))
++            torch.testing.assert_close(got['uniform0_2'][b, t], torch.tensor(len(first)/len(selected)))
+ 
+ 
+ def test_observer_sees_native_first_and_last_queries_without_changing_outputs_or_gradients():
+@@ -149,3 +158,68 @@ def test_default_prefix_outputs_and_training_gradients_bitwise_match_reviewed_pr
+     ga = torch.autograd.grad(current.outputs.square().sum(), (*inputs, *current_reader.parameters()))
+     gb = torch.autograd.grad(previous.outputs.square().sum(), (*legacy_inputs, *old_reader.parameters()))
+     assert all(torch.equal(a, b) for a, b in zip(ga, gb))
++
++
++def test_sink_shares_on_a_constructed_first_token_sink():
++    query = torch.ones(1, 6, 2)
++    keys = torch.tensor([[[9., 9.], [1., 0.], [1., 0.], [0., 1.], [0., 1.], [0., 1.]]])
++    valid = torch.ones(1, 6, dtype=torch.bool)
++    got = prefix_read_metrics(query, keys, valid)
++    # At t=5 the scores are 18,1,1,1,1,1 over six positions.
++    torch.testing.assert_close(got['share0'][0, 5], torch.tensor(18/23))
++    torch.testing.assert_close(got['share0_2'][0, 5], torch.tensor(20/23))
++    assert got['argmax0'][0].tolist() == [1.]*6
++    torch.testing.assert_close(got['uniform0'][0], 1/torch.arange(1., 7.))
++    window = prefix_read_metrics(query, keys, valid, kind='iv_window1')
++    assert window['share0'][0, 1:].abs().max() == 0 and window['argmax0'][0, 1:].sum() == 0
++
++
++@pytest.mark.parametrize('kind', [None, 'iv_strict', 'iv_window8', 'iv_permute'])
++def test_read_vector_is_the_actual_normalized_read_before_the_exit(kind):
++    torch.manual_seed(5)
++    q, k, v = [torch.randn(2, 12, 4) for _ in range(3)]
++    reader = LatentReader(4)
++    with torch.no_grad():
++        reader.Rq.copy_(torch.randn(4, 4))
++        reader.Ro.copy_(torch.randn(4, 4))
++    valid = torch.arange(12)[None] < torch.tensor([[12], [9]])
++    cfg = AdapterConfig(branch='memory', rank=4, steps=1, impl='prefix')
++    options = {'trace_reads': True}
++    if kind:
++        options['kind'] = kind
++    if kind == 'iv_permute':
++        options.update(phase='R1', example_ids=['a', 'b'])
++        valid = torch.ones(2, 12, dtype=torch.bool)
++    with torch.no_grad():
++        result = run_history(q, k, v, reader, valid, cfg, options)
++        plain = run_history(q, k, v, reader, valid, cfg, {key: value for key, value in options.items()
++                                                          if key != 'trace_reads'})
++    assert torch.equal(result.outputs, plain.outputs)
++    read = result.diagnostics['read_metrics'][0]['read_vector']
++    # S1 increment readout: z - z0 = eta * read @ Ro.
++    torch.testing.assert_close(result.outputs, reader.eta*(read @ reader.Ro), rtol=1e-5, atol=1e-6)
++    assert not read[~valid].any()
++    if kind in (None, 'iv_strict', 'iv_window8'):
++        # Independent slot form: kernel-weighted mean of the eligible raw values.
++        from bypass_core import elu_plus_one, rmsnorm_no_affine
++        query = elu_plus_one(rmsnorm_no_affine(q, reader.eps_norm) @ reader.Rq)
++        key = elu_plus_one(rmsnorm_no_affine(k, reader.eps_norm))*valid[..., None]
++        for b in range(2):
++            for t in range(int(valid[b].sum())):
++                lo = t-7 if kind == 'iv_window8' else 0
++                hi = t if kind == 'iv_strict' else t+1
++                n = torch.arange(max(lo, 0), hi)
++                if not n.numel():
++                    continue
++                score = key[b, n] @ query[b, t]
++                expected = (score[:, None]*v[b, n]).sum(0)/(score.sum()+reader.eps_read)
++                torch.testing.assert_close(read[b, t], expected, rtol=1e-4, atol=1e-5)
++
++
++def test_read_summary_never_averages_read_vectors():
++    valid = torch.ones(1, 2, dtype=torch.bool)
++    record = {'step': 1, 'n_eff': torch.tensor([[1., 2.]]), 'readable_positions': torch.tensor([[1., 2.]]),
++              'read_vector': torch.ones(1, 2, 4)}
++    summary = ReadSummary()
++    summary.add('piqa', {6: {'read_metrics': [record]}}, valid, torch.full((1, 2), -100))
++    assert all('read_vector' not in row['means'] for row in summary.finish())
+diff --git a/src/test_rb_sink_read.py b/src/test_rb_sink_read.py
+new file mode 100644
+index 0000000..ad7e651
+--- /dev/null
++++ b/src/test_rb_sink_read.py
+@@ -0,0 +1,98 @@
++"""E-0024 aggregation: question-level shares, first-position vectors, cosine and rules."""
++import pytest
++import torch
++
++from rb_sink_read import Accumulator, interpret, mean_pairwise_cosine
++
++
++def test_mean_pairwise_cosine_on_constructed_vectors():
++    assert mean_pairwise_cosine(torch.ones(5, 3)) == pytest.approx(1)
++    assert mean_pairwise_cosine(torch.eye(3)) == pytest.approx(0)
++    assert mean_pairwise_cosine(torch.tensor([[1., 0.], [-2., 0.]])) == pytest.approx(-1)
++    # Pairs (a,b)=1, (a,c)=0, (b,c)=0: the diagonal is excluded from the mean.
++    assert mean_pairwise_cosine(torch.tensor([[1., 0.], [3., 0.], [0., 2.]])) == pytest.approx(1/3)
++    with pytest.raises(ValueError):
++        mean_pairwise_cosine(torch.tensor([[1., 0.], [0., 0.]]))
++
++
++def test_question_means_differ_from_position_weighted_and_first_position_is_sampled():
++    # Row 0 answers at positions 1-3 (share0 1,1,1); row 1 answers at position 2 only (share0 0).
++    labels = torch.tensor([[-100, -100, 5, 6, 7], [-100, -100, -100, 8, -100]])
++    mask = torch.ones(2, 5, dtype=torch.long)
++    share = torch.tensor([[0., 1., 1., 1., 0.], [0., 0., 0., 0., 0.]])
++    read = torch.arange(40.).reshape(2, 5, 4)
++    values = -read
++    record = {'step': 1, 'read_vector': read, **{name: share for name in
++              ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')}}
++    acc = Accumulator({'piqa': [11]})
++    acc.add('piqa', [10, 11], {6: {'history': {'values': values}, 'read_metrics': [record]}},
++            mask, labels, 'iv_window8')
++    assert acc.rows[('piqa', 6, 1)]['share0'] == [1., 0.]   # question mean 0.5, position-weighted 0.75
++    store = acc.vectors[('piqa', 6, 1)]
++    assert store['ids'] == [11] and store['first_position'] == [2]
++    assert torch.equal(store['read'][0], read[1, 2].double())
++    assert torch.equal(store['value'][0], values[1, 2].double())
++    # Every answer position is below 8, so none can violate the window rule.
++    assert acc.window_short_positions == 4 and acc.window_violation == 0
++
++
++def _arm(cells):
++    return {'concentrated': [key for key, _, _ in cells],
++            'conditions': {'normal': {'answer_question_level': [
++                {'task': key[0], 'layer': key[1], 'step': key[2], 'question_means': {'share0': s},
++                 'constant_read': {'C_read': c}} for key, s, c in cells]}}}
++
++
++@pytest.mark.parametrize('values,reading', [
++    ([(.51, .91), (.9, .99)], 'sink'),
++    ([(.51, .91), (.9, .9)], 'mixed'),       # C must exceed 0.9
++    ([(.19, .99), (.0, .1)], 'content'),
++    ([(.19, .99), (.2, .1)], 'mixed'),       # share0 must be below 0.2
++])
++def test_preregistered_reading_thresholds(values, reading):
++    arms = {'RB1-02': _arm([(('piqa', 27, 1), *values[0])]),
++            'RB1-03': _arm([(('boolq', 27, 1), *values[1])])}
++    assert interpret(arms)['reading'] == reading
++
++
++@pytest.fixture(scope='module')
++def rbbase():
++    from calibrate import load_base
++    return load_base()
++
++
++@pytest.mark.parametrize('arm', ['RB1-03', 'RB1-09'])
++@pytest.mark.parametrize('kind', ['normal', 'iv_strict', 'iv_window8'])
++def test_batched_gold_forwards_match_batch_one_e0021_path(rbbase, arm, kind):
++    """Right-padded batches reproduce the reviewed batch-one reads and gold NLL."""
++    from transformers import AutoTokenizer
++    from calibrate import MODEL, REVISION
++    from rb1_intervene import evaluate_history
++    from rb_sink_read import compare_reference, gold_index, run_condition
++    from rb_train import adapter_config
++    from test_model import nonzero_exits
++    from test_rb_model import attached
++    from v1_data import encode_candidates
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tok.pad_token_id = tok.eos_token_id
++    rows = {'piqa': [{'task': 'piqa', 'id': i, 'goal': 'Move the object ' + 'very '*(3*i) + 'carefully.',
++                      'solutions': ['Lift it ' + 'slowly '*i + 'up.', 'Drop the table.'], 'label': i % 2}
++                     for i in range(5)],
++            'boolq': [{'task': 'boolq', 'id': i, 'passage': 'A red object is on the table. '*(1+2*i),
++                       'question': 'Is there an object on the table?', 'label': i % 2 == 0} for i in range(5)]}
++    splits = {'splits': {task: {'dev': value} for task, value in rows.items()}}
++    encoded = {task: [encode_candidates(tok, row)[gold_index(row)] for row in value]
++               for task, value in rows.items()}
++    with attached(rbbase, adapter_config(arm)) as model, torch.no_grad():
++        model.eval()
++        nonzero_exits(model)
++        _, predictions, reads = evaluate_history(model, splits, tok, None if kind == 'normal' else kind)
++        summaries, acc, nll = run_condition(model, rows, encoded, kind, {'piqa': [0, 3], 'boolq': [1, 4]},
++                                            batch_size=4, pad_id=tok.pad_token_id)
++    check = compare_reference({'predictions': predictions, 'read_diagnostics': reads}, kind, summaries, nll)
++    assert check['gold_nll_max_abs_diff'] < 5e-2
++    assert max(check['read_summary_max_rel_diff'].values()) < 1e-2
++    assert {(r['task'], r['step']) for r in acc.finish()} == {
++        (t, s) for t in ('piqa', 'boolq') for s in ((1, 2) if arm == 'RB1-03' else (1,))}
++    if kind == 'iv_window8':
++        assert acc.window_violation == 0

@@ -1,0 +1,467 @@
+diff --git a/research/notes/T-0027-sink.pbs b/research/notes/T-0027-sink.pbs
+index 3d52482..7e943e6 100644
+--- a/research/notes/T-0027-sink.pbs
++++ b/research/notes/T-0027-sink.pbs
+@@ -24,30 +24,15 @@ mkdir -p "$TMPDIR"
+ nvidia-smi -L > "$OUT/nvidia-smi.txt" 2>&1 || true
+ cd "$SRC"
+ start=$(date +%s)
+-status=failed
+-finish() {
+-  "$PY" - "$OUT" "$status" "$start" <<'PYEOF'
+-import json, os, sys, time
+-out, status, start = sys.argv[1], sys.argv[2], int(sys.argv[3])
+-arms = ('RB1-02', 'RB1-03', 'RB1-08', 'RB1-09')
+-artifacts = [{'path': f'{out}/{a}/sink.json', 'role': f'sink:{a}'} for a in arms
+-             if os.path.exists(f'{out}/{a}/sink.json')]
+-if os.path.exists(f'{out}/summary.json'):
+-    artifacts.append({'path': f'{out}/summary.json', 'role': 'summary'})
+-json.dump({'status': 'complete' if status == 'complete' else 'partial', 'contract': 'E-0024@1',
+-           'spec_digest': os.environ['SR_SPEC_DIGEST'], 'phase': 'R1', 'seed': 0, 'stage': 'diagnostic',
+-           'metrics': {'elapsed_s': time.time()-start, 'arms_complete': len(artifacts) - (status == 'complete')},
+-           'artifacts': artifacts,
+-           'validator': {'name': 'rb_sink_read', 'passed': status == 'complete'}},
+-          open(f'{out}/manifest.json', 'w'), indent=1)
+-PYEOF
+-}
+-trap finish EXIT
++# The manifest is derived from the files: success only with all four arms and a
++# summary whose implementation checks passed (rb_sink_read.write_manifest).
++trap '"$PY" src/rb_sink_read.py manifest --output "$OUT" --elapsed-s $(( $(date +%s) - start ))' EXIT
+ declare -A TRAIN=([RB1-02]=ATT-0240-1 [RB1-03]=ATT-0241-1 [RB1-08]=ATT-0246-1 [RB1-09]=ATT-0247-1)
+ declare -A REF=([RB1-02]=ATT-0262-1 [RB1-03]=ATT-0263-1 [RB1-08]=ATT-0264-1 [RB1-09]=ATT-0265-1)
+-for arm in RB1-02 RB1-03 RB1-08 RB1-09; do
++# RB1-02's E-0021 reference ran on a 1g slice; it goes last so a cross-profile
++# reference mismatch cannot block the other arms.
++for arm in RB1-03 RB1-08 RB1-09 RB1-02; do
+   "$PY" src/rb_sink_read.py arm --arm "$arm" --training-run "$P/runs/${TRAIN[$arm]}" \
+-    --reference "$P/runs/${REF[$arm]}" --data-dir "$P/data/v1" --output "$OUT/$arm" --batch-size 8
++    --reference "$P/runs/${REF[$arm]}" --data-dir "$P/data/v1" --output "$OUT/$arm"
+ done
+ "$PY" src/rb_sink_read.py summarize --inputs "$OUT"/RB1-0{2,3,8,9}/sink.json --output "$OUT/summary.json"
+-status=complete
+diff --git a/src/rb_read_diagnostics.py b/src/rb_read_diagnostics.py
+index 8dc5e4c..6ba3c9b 100644
+--- a/src/rb_read_diagnostics.py
++++ b/src/rb_read_diagnostics.py
+@@ -38,6 +38,7 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
+     else:
+         history, history_valid = keys, valid
+     positions = torch.arange(history.shape[1], device=query.device)
++    first, first3 = min(1, history.shape[1]), min(3, history.shape[1])
+     pieces = {name: [] for name in ('current_weight', 'n_eff', 'entropy',
+                                    'relative_n_eff', 'readable_positions',
+                                    'share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')}
+@@ -77,11 +78,13 @@ def prefix_read_metrics(query, keys, valid, *, kind=None, donor=None, window=Non
+                   'readable_positions': readable.float(),
+                   # History index 0 is the sequence's first token (the donor's
+                   # first token under iv_swap). Uniform shares use the same slots.
+-                  'share0': probability[..., 0],
+-                  'share0_2': probability[..., :3].sum(-1),
+-                  'argmax0': (probability.argmax(-1) == 0).float(),
+-                  'uniform0': slots[..., 0].float()/readable.clamp_min(1),
+-                  'uniform0_2': slots[..., :3].sum(-1).float()/readable.clamp_min(1)}
++                  # Only history slots count: the recipient current slot appended
++                  # under iv_swap never enters these shares, even for a short donor.
++                  'share0': probability[..., :first].sum(-1),
++                  'share0_2': probability[..., :first3].sum(-1),
++                  'argmax0': ((probability.argmax(-1) == 0) & slots[..., :first].any(-1)).float(),
++                  'uniform0': slots[..., :first].sum(-1).float()/readable.clamp_min(1),
++                  'uniform0_2': slots[..., :first3].sum(-1).float()/readable.clamp_min(1)}
+         for name, value in values.items():
+             pieces[name].append(torch.where(active, value, torch.zeros_like(value)))
+     return {name: torch.cat(value, 1) for name, value in pieces.items()}
+diff --git a/src/rb_sink_batchcheck.py b/src/rb_sink_batchcheck.py
+new file mode 100644
+index 0000000..410089d
+--- /dev/null
++++ b/src/rb_sink_batchcheck.py
+@@ -0,0 +1,106 @@
++"""T-0027 engineering check: where batched gold-NLL differences come from.
++
++On the first rows of each dev task, compare batch-one gold NLL and answer-position
++n_eff with (a) the same row right-padded alone, (b) the same row repeated with no
++padding, and (c) length-sorted right-padded batches. Base and one trained RB1
++checkpoint. No result here enters E-0024; it decides how E-0024 is run.
++"""
++import argparse
++import json
++from pathlib import Path
++
++import torch
++import torch.nn.functional as F
++from transformers import AutoTokenizer
++
++from calibrate import MODEL, REVISION
++from rb1_intervene import original_backbone
++from rb_sink_read import TASKS, answer_mask, gold_index
++from rb_train import make_model
++from v1_data import encode_candidates
++from v1_run import batch_tensors, prepare
++
++
++def forward(model, encoded, pad_id, traced, extra_pad=0):
++    batch = batch_tensors(encoded, pad_id)
++    if extra_pad:
++        width = batch['input_ids'].shape[1] + extra_pad
++        for key, fill in (('input_ids', pad_id), ('labels', -100), ('attention_mask', 0)):
++            batch[key] = F.pad(batch[key], (0, extra_pad), value=fill)
++        assert batch['input_ids'].shape[1] == width
++    kwargs = {'trace_reads': True} if traced else {}
++    output = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], use_cache=False, **kwargs)
++    shifted = batch['labels'][:, 1:]
++    nll = [float(F.cross_entropy(output.logits[b, :-1][shifted[b] != -100].float(),
++                                 shifted[b][shifted[b] != -100], reduction='sum'))
++           for b in range(len(encoded))]
++    neff = None
++    if traced:
++        answer = answer_mask(batch['labels'], batch['attention_mask'])
++        neff = {layer: [float(d['read_metrics'][0]['n_eff'][b][answer[b]].double().mean())
++                        for b in range(len(encoded))] for layer, d in output.diagnostics.items()}
++    return nll, neff
++
++
++def gaps(reference, other):
++    diff = [abs(a-b) for a, b in zip(reference, other)]
++    return {'max': max(diff), 'mean': sum(diff)/len(diff)}
++
++
++@torch.no_grad()
++def compare(model, encoded, pad_id, traced, batch_size):
++    single = [forward(model, [e], pad_id, traced) for e in encoded]
++    padded = [forward(model, [e], pad_id, traced, extra_pad=17) for e in encoded]
++    repeated = [forward(model, [e]*4, pad_id, traced) for e in encoded]
++    order = sorted(range(len(encoded)), key=lambda i: len(encoded[i]['input_ids']))
++    batched_nll, batched_neff = [None]*len(encoded), {}
++    for start in range(0, len(order), batch_size):
++        idx = order[start:start+batch_size]
++        nll, neff = forward(model, [encoded[i] for i in idx], pad_id, traced)
++        for j, i in enumerate(idx):
++            batched_nll[i] = nll[j]
++            for layer, values in (neff or {}).items():
++                batched_neff.setdefault(layer, [None]*len(encoded))[i] = values[j]
++    base_nll = [s[0][0] for s in single]
++    result = {'nll': {'pad_only': gaps(base_nll, [p[0][0] for p in padded]),
++                      'repeat_no_pad': gaps(base_nll, [r[0][0] for r in repeated]),
++                      'repeat_copies_agree': max(max(r[0])-min(r[0]) for r in repeated),
++                      'sorted_batches': gaps(base_nll, batched_nll)}}
++    if traced:
++        result['n_eff'] = {}
++        for layer in single[0][1]:
++            ref = [s[1][layer][0] for s in single]
++            result['n_eff'][layer] = {
++                'pad_only': gaps(ref, [p[1][layer][0] for p in padded]),
++                'repeat_no_pad': gaps(ref, [r[1][layer][0] for r in repeated]),
++                'sorted_batches': gaps(ref, batched_neff[layer])}
++    return result
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--training-run', type=Path, required=True)
++    parser.add_argument('--arm', default='RB1-02')
++    parser.add_argument('--data-dir', required=True)
++    parser.add_argument('--rows', type=int, default=48)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    from rb1_artifacts import validate_formal_run
++    _, _, adapter = validate_formal_run(args.training_run, args.arm)
++    tok = AutoTokenizer.from_pretrained(MODEL, revision=REVISION, local_files_only=True)
++    tok.pad_token_id = tok.eos_token_id
++    splits = prepare(args.data_dir)
++    model = make_model(args.arm, phase='R1', seed=0, checkpoint=adapter).eval()
++    report = {'arm': args.arm, 'rows_per_task': args.rows, 'hardware': torch.cuda.get_device_name()}
++    for task in TASKS:
++        rows = splits['splits'][task]['dev'][:args.rows]
++        encoded = [encode_candidates(tok, row)[gold_index(row)] for row in rows]
++        with original_backbone(model) as base:
++            report[f'{task}.Base'] = compare(base, encoded, tok.pad_token_id, False, 8)
++        report[f'{task}.{args.arm}'] = compare(model, encoded, tok.pad_token_id, True, 8)
++        args.output.parent.mkdir(parents=True, exist_ok=True)
++        args.output.write_text(json.dumps(report, indent=1))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/rb_sink_read.py b/src/rb_sink_read.py
+index e85d910..1497eb9 100644
+--- a/src/rb_sink_read.py
++++ b/src/rb_sink_read.py
+@@ -3,12 +3,15 @@
+ No training. Each RB1 arm's final checkpoint (the one E-0021 intervened on,
+ matched by manifest and checkpoint-inventory SHA256) reads the dev gold
+ candidate under normal, iv_strict and iv_window8. The forward, intervention and
+-read-distribution code are the reviewed rb_history/rb_read_diagnostics paths;
+-only gold candidates are run, right-padded in length-sorted batches, and every
+-row's gold NLL and the read summaries are compared with the E-0021 run.
++read-distribution code are the reviewed rb_history/rb_read_diagnostics paths.
++Only gold candidates are run, one row per forward exactly as E-0021 encoded
++them: right-padded batches change BF16 results even for the plain Base model
++(ATT-0270-1). Every row's gold NLL and the read summaries must match the E-0021
++run of the same checkpoint within the gates below, or the arm fails.
+ """
+ import argparse
+ import json
++import math
+ import os
+ from pathlib import Path
+ import random
+@@ -32,6 +35,10 @@ CONDITIONS = ('normal', 'iv_strict', 'iv_window8')
+ TASKS = ('piqa', 'boolq')
+ SHARES = ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2')
+ SAMPLE = 200
++# Acceptance gates against the batch-one E-0021 run of the same checkpoint.
++# Batch-one forwards repeat E-0021's computation, so only float noise is allowed.
++NLL_TOLERANCE = 1e-4
++READ_TOLERANCE = 1e-6
+ 
+ 
+ def gold_index(row):
+@@ -148,8 +155,9 @@ def run_condition(model, rows_by_task, encoded_by_task, kind, sampled, batch_siz
+     return summary.finish(), accumulator, nll
+ 
+ 
+-def compare_reference(reference, condition, summaries, nll):
+-    """Differences from the batch-one E-0021 run of the same checkpoint."""
++def compare_reference(reference, condition, summaries, nll, nll_tolerance=NLL_TOLERANCE,
++                      read_tolerance=READ_TOLERANCE):
++    """Differences from the batch-one E-0021 run of the same checkpoint, with acceptance gates."""
+     predictions = {(row['task'], row['id']): row['gold_nll_sum'] for row in reference['predictions']}
+     if set(predictions) != set(nll):
+         raise ValueError(f'{condition}: dev rows differ from E-0021')
+@@ -167,8 +175,13 @@ def compare_reference(reference, condition, summaries, nll):
+             gap = abs(after-before)
+             absolute[name] = max(absolute.get(name, 0.), gap)
+             relative[name] = max(relative.get(name, 0.), gap/max(abs(before), 1e-12))
++    gaps = [*nll_diff, *relative.values()]
++    passed = (all(math.isfinite(x) for x in gaps) and max(nll_diff) <= nll_tolerance and
++              max(relative.values()) <= read_tolerance)
+     return {'gold_nll_max_abs_diff': max(nll_diff), 'gold_nll_mean_abs_diff': sum(nll_diff)/len(nll_diff),
+-            'read_summary_max_abs_diff': absolute, 'read_summary_max_rel_diff': relative}
++            'read_summary_max_abs_diff': absolute, 'read_summary_max_rel_diff': relative,
++            'tolerances': {'gold_nll_abs': nll_tolerance, 'read_summary_rel': read_tolerance},
++            'passed': passed}
+ 
+ 
+ def run(args):
+@@ -204,7 +217,7 @@ def run(args):
+     for condition in CONDITIONS:
+         tick = time.monotonic()
+         summaries, accumulator, nll = run_condition(model, rows_by_task, encoded_by_task, condition,
+-                                                    sampled, args.batch_size, tokenizer.pad_token_id)
++                                                    sampled, 1, tokenizer.pad_token_id)
+         result['conditions'][condition] = {
+             'answer_question_level': accumulator.finish(),
+             'read_summary': summaries,
+@@ -213,12 +226,15 @@ def run(args):
+             'reference_check': compare_reference(reference[condition], condition, summaries, nll),
+             'elapsed_s': time.monotonic()-tick}
+         write_json(out/'sink.json', result)
++        if not result['conditions'][condition]['reference_check']['passed']:
++            raise ValueError(f'{args.arm}/{condition}: differs from the E-0021 reference beyond tolerance')
+     result['provenance'] = {
+         'formal_run': inventory, 'reference_run': str(reference_dir),
+         'training_manifest_sha256': manifest_sha, 'checkpoint_inventory_sha256': inventory_sha,
+         'source_commit': os.environ['SR_CODE_COMMIT'], 'model_revision': REVISION,
+         'environment_lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
+-        'batch_size': args.batch_size, 'hardware': torch.cuda.get_device_name()}
++        'batch_size': 1, 'reference_hardware': reference_provenance.get('hardware'),
++        'hardware': torch.cuda.get_device_name()}
+     write_json(out/'sink.json', result)
+     return result
+ 
+@@ -274,18 +290,54 @@ def summarize(args):
+         reference = json.loads((Path(value['provenance']['reference_run'])/'conditions.json').read_text())
+         value['concentrated'] = concentrated_layers(reference['normal'])
+         arms[value['arm']] = value
++    report = build_report(arms)
++    write_json(args.output, report)
++    if not report['checks_passed']:
++        raise SystemExit('E-0024 implementation checks failed; no interpretation recorded')
++    return report
++
++
++def build_report(arms):
+     if set(arms) != set(ARMS):
+         raise ValueError('summary needs exactly the four E-0024 arms')
++    checks = consistency(arms)
++    references = {arm: {c: v['conditions'][c]['reference_check']['passed'] for c in CONDITIONS}
++                  for arm, v in arms.items()}
++    passed = (all(c['strict_ok'] and c['window8_ok'] for c in checks.values()) and
++              all(all(v.values()) for v in references.values()))
+     report = {'contract': 'E-0024@1', 'arms': {arm: {'concentrated': v['concentrated'],
+               'position0_token': v['position0_token'], 'conditions': {
+                   c: {k: v['conditions'][c][k] for k in ('answer_question_level', 'reference_check',
+                       'window8_share0_max_late', 'window8_answer_positions_before_8', 'elapsed_s')}
+                   for c in CONDITIONS}} for arm, v in arms.items()},
+-              'consistency': consistency(arms), 'interpretation': interpret(arms)}
+-    write_json(args.output, report)
++              'consistency': checks, 'reference_checks_passed': references, 'checks_passed': passed,
++              # E-0024: a failed implementation check is investigated before any reading.
++              'interpretation': interpret(arms) if passed else
++                  {'reading': 'implementation_check_failed', 'cells': []}}
+     return report
+ 
+ 
++def write_manifest(args):
++    """Attempt manifest; success needs every arm and a summary whose checks passed."""
++    out = args.output
++    artifacts = [{'path': str(out/arm/'sink.json'), 'role': f'sink:{arm}'} for arm in ARMS
++                 if (out/arm/'sink.json').is_file()]
++    summary = json.loads((out/'summary.json').read_text()) if (out/'summary.json').is_file() else None
++    if summary is not None:
++        artifacts.append({'path': str(out/'summary.json'), 'role': 'summary'})
++    passed = (len(artifacts) == len(ARMS)+1 and summary['checks_passed'] is True and
++              summary['interpretation']['reading'] != 'implementation_check_failed')
++    manifest = {'status': 'complete' if passed else 'partial', 'contract': 'E-0024@1',
++                'spec_digest': os.environ['SR_SPEC_DIGEST'], 'phase': 'R1', 'seed': 0,
++                'stage': 'diagnostic', 'artifacts': artifacts,
++                'metrics': {'elapsed_s': args.elapsed_s,
++                            'arms_written': sum(a['role'].startswith('sink:') for a in artifacts),
++                            'reading': summary['interpretation']['reading'] if summary else None},
++                'validator': {'name': 'rb_sink_read', 'passed': passed}}
++    write_json(out/'manifest.json', manifest)
++    return manifest
++
++
+ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+     sub = parser.add_subparsers(dest='command', required=True)
+@@ -295,12 +347,14 @@ def main():
+     one.add_argument('--reference', type=Path, required=True, help='E-0021 intervention run of this arm')
+     one.add_argument('--data-dir', required=True)
+     one.add_argument('--output', type=Path, required=True)
+-    one.add_argument('--batch-size', type=int, default=8)
+     both = sub.add_parser('summarize')
+     both.add_argument('--inputs', nargs='+', required=True)
+     both.add_argument('--output', type=Path, required=True)
++    final = sub.add_parser('manifest')
++    final.add_argument('--output', type=Path, required=True, help='attempt directory')
++    final.add_argument('--elapsed-s', type=float, required=True)
+     args = parser.parse_args()
+-    run(args) if args.command == 'arm' else summarize(args)
++    {'arm': run, 'summarize': summarize, 'manifest': write_manifest}[args.command](args)
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/src/test_rb_read_diagnostics.py b/src/test_rb_read_diagnostics.py
+index 6d9ab3b..22e56fa 100644
+--- a/src/test_rb_read_diagnostics.py
++++ b/src/test_rb_read_diagnostics.py
+@@ -223,3 +223,20 @@ def test_read_summary_never_averages_read_vectors():
+     summary = ReadSummary()
+     summary.add('piqa', {6: {'read_metrics': [record]}}, valid, torch.full((1, 2), -100))
+     assert all('read_vector' not in row['means'] for row in summary.finish())
++
++
++def test_swap_first_three_shares_exclude_recipient_current_for_a_short_donor():
++    query = torch.ones(1, 5, 2)
++    keys = torch.ones(1, 5, 2)
++    valid = torch.ones(1, 5, dtype=torch.bool)
++    short = {'keys': torch.ones(1, 2, 2), 'valid': torch.ones(1, 2, dtype=torch.bool)}
++    padded = {'keys': torch.cat((torch.ones(1, 2, 2), torch.zeros(1, 3, 2)), 1),
++              'valid': torch.tensor([[True, True, False, False, False]])}
++    a = prefix_read_metrics(query, keys, valid, kind='iv_swap', donor=short)
++    b = prefix_read_metrics(query, keys, valid, kind='iv_swap', donor=padded)
++    # t >= 2: two donor slots plus the recipient current slot, equal scores.
++    for name in ('share0', 'share0_2', 'argmax0', 'uniform0', 'uniform0_2'):
++        torch.testing.assert_close(a[name][0, 2:], b[name][0, 2:])
++    torch.testing.assert_close(a['share0_2'][0, 2:], torch.full((3,), 2/3))
++    torch.testing.assert_close(a['uniform0_2'][0, 2:], torch.full((3,), 2/3))
++    torch.testing.assert_close(a['share0'][0, 2:], torch.full((3,), 1/3))
+diff --git a/src/test_rb_sink_read.py b/src/test_rb_sink_read.py
+index ad7e651..8310913 100644
+--- a/src/test_rb_sink_read.py
++++ b/src/test_rb_sink_read.py
+@@ -55,6 +55,67 @@ def test_preregistered_reading_thresholds(values, reading):
+     assert interpret(arms)['reading'] == reading
+ 
+ 
++def _reference(nll, n_eff):
++    return ({'predictions': [{'task': 'piqa', 'id': 1, 'gold_nll_sum': 2.0}],
++             'read_diagnostics': [{'task': 'piqa', 'layer': 6, 'step': 1, 'scope': 'answer_prediction',
++                                   'count': 3, 'empty_reads': 0, 'nonempty_means': {'n_eff': 1.5}}]},
++            [{'task': 'piqa', 'layer': 6, 'step': 1, 'scope': 'answer_prediction', 'count': 3,
++              'empty_reads': 0, 'nonempty_means': {'n_eff': n_eff}}],
++            {('piqa', 1): nll})
++
++
++@pytest.mark.parametrize('nll,n_eff,passed', [
++    (2.0, 1.5, True), (2.0+5e-5, 1.5, True), (2.001, 1.5, False),
++    (2.0, 1.5*(1+1e-5), False), (float('nan'), 1.5, False), (2.0, float('inf'), False)])
++def test_reference_gate_rejects_excess_or_nonfinite_differences(nll, n_eff, passed):
++    from rb_sink_read import compare_reference
++    reference, summaries, values = _reference(nll, n_eff)
++    assert compare_reference(reference, 'normal', summaries, values)['passed'] is passed
++
++
++def _report_arms(strict_gap=0., late=0., reference_ok=True):
++    arms = {}
++    for arm in ('RB1-02', 'RB1-03', 'RB1-08', 'RB1-09'):
++        cell = lambda share: [{'task': 'piqa', 'layer': 27, 'step': 1,
++                               'question_means': {'share0': share}, 'constant_read': {'C_read': .95}}]
++        conditions = {c: {'answer_question_level': cell(.6 + (strict_gap if c == 'iv_strict' else 0)),
++                          'reference_check': {'passed': reference_ok}, 'elapsed_s': 1.,
++                          'window8_share0_max_late': late if c == 'iv_window8' else None,
++                          'window8_answer_positions_before_8': 0 if c == 'iv_window8' else None}
++                      for c in ('normal', 'iv_strict', 'iv_window8')}
++        arms[arm] = {'arm': arm, 'concentrated': [('piqa', 27, 1)], 'position0_token': {},
++                     'conditions': conditions}
++    return arms
++
++
++@pytest.mark.parametrize('kwargs,reading', [
++    ({}, 'sink'), ({'strict_gap': .02}, 'implementation_check_failed'),
++    ({'late': 1e-3}, 'implementation_check_failed'), ({'reference_ok': False}, 'implementation_check_failed')])
++def test_failed_consistency_or_reference_checks_suppress_the_reading(kwargs, reading):
++    from rb_sink_read import build_report
++    report = build_report(_report_arms(**kwargs))
++    assert report['interpretation']['reading'] == reading
++    assert report['checks_passed'] is (reading == 'sink')
++
++
++@pytest.mark.parametrize('arms,checks,expected', [(4, True, True), (3, True, False), (4, False, False)])
++def test_manifest_passes_only_with_all_arms_and_passing_summary(tmp_path, monkeypatch, arms, checks, expected):
++    import json
++    from argparse import Namespace
++    from rb_sink_read import ARMS, write_manifest
++    monkeypatch.setenv('SR_SPEC_DIGEST', 'blake2b:test')
++    for arm in ARMS[:arms]:
++        (tmp_path/arm).mkdir()
++        (tmp_path/arm/'sink.json').write_text('{}')
++    reading = 'sink' if checks else 'implementation_check_failed'
++    (tmp_path/'summary.json').write_text(json.dumps({'checks_passed': checks,
++                                                     'interpretation': {'reading': reading}}))
++    manifest = write_manifest(Namespace(output=tmp_path, elapsed_s=1.))
++    assert manifest['validator']['passed'] is expected
++    assert manifest['status'] == ('complete' if expected else 'partial')
++    assert json.loads((tmp_path/'manifest.json').read_text()) == manifest
++
++
+ @pytest.fixture(scope='module')
+ def rbbase():
+     from calibrate import load_base
+@@ -63,8 +124,8 @@ def rbbase():
+ 
+ @pytest.mark.parametrize('arm', ['RB1-03', 'RB1-09'])
+ @pytest.mark.parametrize('kind', ['normal', 'iv_strict', 'iv_window8'])
+-def test_batched_gold_forwards_match_batch_one_e0021_path(rbbase, arm, kind):
+-    """Right-padded batches reproduce the reviewed batch-one reads and gold NLL."""
++def test_gold_only_forwards_match_the_e0021_path(rbbase, arm, kind):
++    """Batch-one gold forwards pass the production gate against the reviewed path."""
+     from transformers import AutoTokenizer
+     from calibrate import MODEL, REVISION
+     from rb1_intervene import evaluate_history
+@@ -88,10 +149,9 @@ def test_batched_gold_forwards_match_batch_one_e0021_path(rbbase, arm, kind):
+         nonzero_exits(model)
+         _, predictions, reads = evaluate_history(model, splits, tok, None if kind == 'normal' else kind)
+         summaries, acc, nll = run_condition(model, rows, encoded, kind, {'piqa': [0, 3], 'boolq': [1, 4]},
+-                                            batch_size=4, pad_id=tok.pad_token_id)
++                                            batch_size=1, pad_id=tok.pad_token_id)
+     check = compare_reference({'predictions': predictions, 'read_diagnostics': reads}, kind, summaries, nll)
+-    assert check['gold_nll_max_abs_diff'] < 5e-2
+-    assert max(check['read_summary_max_rel_diff'].values()) < 1e-2
++    assert check['passed'], check
+     assert {(r['task'], r['step']) for r in acc.finish()} == {
+         (t, s) for t in ('piqa', 'boolq') for s in ((1, 2) if arm == 'RB1-03' else (1,))}
+     if kind == 'iv_window8':
