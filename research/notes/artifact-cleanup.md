@@ -196,3 +196,13 @@ PBS 作业 3774200（debug-mig，脚本 `/work/xg24i002/x10041/bypass-lora-maint
 - 审阅：计划没有 warning。仍开着的 E-0029 code_from E-0028，它的契约、源码快照 f46a13d 与任务笔记都没有引用 E-0026 的 attempt 或 checkpoint；`src/test_seg_seeds.py` 里出现的 ATT-0300-1 只是 tmp_path 下的合成 fixture 名。被结果引用的候选只有 3 个 steps.jsonl（RES-0270 至 RES-0272），摘要已在 manifest 与 metrics 里。D-0056 的重开条件要求新的训练，没有点名这些 checkpoint；H-0029 候选的 A2 确认也按新 seed 重新训练。因此按原计划执行，没有删减条目。
 - 执行：再做一次 `rl export`（records-apply/，data_version 4549），PBS 作业 3777667（debug-mig）按 confirm.txt 的 plan.json sha256（8266c755...）执行 apply，exit=0，删除 17 项 0.176 GB；deletions.jsonl 有 apply-start、逐项 deleted 与 apply-end。之后 `rl doctor` 检查了 347 个封存对象，只报此前已知的两个未登记对象。
 - 待办：E-0028 的 checkpoint 等 E-0029 关闭后，再按 H-0021、H-0022 的范围出计划，因为 E-0029 code_from E-0028，且它的 X-01 比较绑定 E-0028 的参考 checkpoint。
+
+## 11. 执行记录（2026-11-03 凌晨）：H-0021 至 H-0026
+
+触发：T-0031（E-0028）与 T-0032（E-0029）都已 accepted，H-0021、H-0022 已暂停（D-0066、D-0067），H-0023 至 H-0026 也已暂停（D-0068 至 D-0071）。第 10 节的待办（E-0029 关闭后再清 E-0028）随之完成。计划目录 `/work/xg24i002/x10041/bypass-lora-maintenance/artifact-cleanup/20261103-e0028-e0029`，工具仍取自快照 c5b961b。
+
+- 计划：`rl export`（data_version 4810）后，PBS 作业 3779649（debug-mig，10 秒）按两个范围出计划，gate 都是 closed，没有 hold，也没有 warning。
+  - H-0021、H-0022（E-0028，21 个 attempt）：候选 37 项 0.106 GB（checkpoint 21 个 0.072 GB，steps.jsonl 13 个 0.029 GB，快照 3 个 0.004 GB），保留 407 项 0.057 GB。
+  - H-0023 至 H-0026（E-0029，36 个 attempt）：候选 55 项 0.247 GB（checkpoint 41 个 0.138 GB，steps.jsonl 8 个 0.018 GB，源码快照 6 个 0.091 GB），保留 649 项 0.036 GB。
+- 审阅：被结果引用的候选只有 steps.jsonl（RES-0303 至 RES-0316、RES-0337 至 RES-0344），摘要已在 manifest 与 metrics 里，与第 10 节的处理一致。manifest、metrics、predictions 与两份锁定分析都保留。D-0066 至 D-0071 的重开条件都要求新的封存契约与新的训练，没有点名这些 checkpoint；H-0029 的 A2 确认用新 seed 重新训练，也不用它们。因此按原计划执行，没有删减条目。
+- 执行：再做一次 `rl export`（records-apply/，data_version 4811），PBS 作业 3779701（debug-mig，11 秒）按 confirm.txt 的两个 plan.json sha256（406084c3...、a9ce9bfe...）执行 apply，都 exit=0，共删除 92 项 0.353 GB；两份 deletions.jsonl 都有 apply-start、逐项 deleted 与 apply-end。之后 `rl doctor` 检查了 357 个封存对象，只报此前已知的两个未登记对象。
