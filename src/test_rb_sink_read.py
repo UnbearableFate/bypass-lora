@@ -152,6 +152,9 @@ def test_gold_only_forwards_match_the_e0021_path(rbbase, arm, kind):
                                             batch_size=1, pad_id=tok.pad_token_id)
     check = compare_reference({'predictions': predictions, 'read_diagnostics': reads}, kind, summaries, nll)
     assert check['passed'], check
+    # Batch-one gold forwards repeat the reference computation exactly.
+    assert check['gold_nll_max_abs_diff'] == 0, check
+    assert max(check['read_summary_max_rel_diff'].values()) == 0, check
     assert {(r['task'], r['step']) for r in acc.finish()} == {
         (t, s) for t in ('piqa', 'boolq') for s in ((1, 2) if arm == 'RB1-03' else (1,))}
     if kind == 'iv_window8':

@@ -145,7 +145,10 @@ def run_condition(model, rows_by_task, encoded_by_task, kind, sampled, batch_siz
             shifted = labels[:, 1:]
             for b, index in enumerate(indices):
                 valid = shifted[b] != -100
-                loss = F.cross_entropy(output.logits[b, :-1][valid].float(), shifted[b][valid], reduction='sum')
+                # Same op sequence as v1_run.token_losses + evaluate (per-token FP32
+                # losses, then .sum()), so batch-one sums are bitwise comparable.
+                loss = F.cross_entropy(output.logits[b, :-1][valid].float(), shifted[b][valid],
+                                       reduction='none').sum()
                 if not torch.isfinite(loss):
                     raise ValueError(f'{task}/{rows_by_task[task][index]["id"]}: nonfinite gold NLL')
                 nll[(task, rows_by_task[task][index]['id'])] = float(loss)
