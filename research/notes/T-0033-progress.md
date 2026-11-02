@@ -602,3 +602,55 @@ When all three seeds have valid complete outputs, run the frozen analysis at
 4e6e8df under this lock with every executed task attempt and measured cost,
 including all diagnostics, replays, lock and any misses/failures. No source,
 checkpoint, comparison or rule changes after the first A2 read.
+
+MSG-0997: first seed 5/3 attempts both missed their required profiles.
+Independent metadata checks confirm ATT-0398-1 (seed 5, job 3782396) got 2g
+instead of trained 1g; ATT-0399-1 (seed 3, job 3782400) got 1g instead of
+trained 2g. Both are partial, retry_profile_miss, opened=false, with no dev
+gate/file, conditions, encoding output, receipt or provenance. Allocations,
+source/spec/lock/decision pins and mandatory profile restrictions match.
+This is the allowed engineering retry path; source and thresholds stay fixed.
+
+Imported partial RES-0372 / U-0408 for seed 5 (15 seconds, 0.004167 MIG-hour)
+and RES-0373 / U-0409 for seed 3 (14 seconds, 0.003889 MIG-hour). Both ended
+observations are recorded. Actual seed 3 hardware is annotated 1g despite
+the ledger's 2g label. Consecutive miss counters are exactly one per seed,
+derived from terminal attempts; seed 4 stays complete with zero misses.
+Completed measured cost is 4.38652775 node-hour. The next budget gate is
+5.0656944167 with two unfinished-seed 80-minute requests and three-minute
+analysis, below 5.5. Verification, ended observations, measured jobs and gate
+are central T-0033/a2-misses-round1-* and a2-budget-after-misses-round1.json.
+
+The coordinator notes that the earlier-submitted job got the lower 2g slot
+in this batch. For the unchanged retries, use seed 3 then seed 5 submission
+order as a placement hint, without assuming the pattern will recur. D-0073
+does not fix their ordering. Logical runs remain RUN-0399 (seed 3) and
+RUN-0398 (seed 5); each retry uses its exact saved RunSpec and a unique ATT.
+The old source failure_action text still says five, but D-0073's twenty-miss
+reporting limit and earlier budget stop govern the controller.
+
+Second attempts submitted in seed 3 then seed 5 order:
+
+| Seed | Attempt | PBS job | Notification |
+| --- | --- | --- | --- |
+| 3 | ATT-0399-2 | 3782470.opbs | N-20261103-082841-2f2a |
+| 5 | ATT-0398-2 | 3782471.opbs | N-20261103-082845-9c21 |
+
+Each registration is a new attempt of the same logical run and the identical
+RunSpec digest (seed 3: 7ced13852acb..., seed 5: e297aa45e10b...). All reviews
+still cover source 4e6e8df. Lock hash, checkpoints, scientific config/rules,
+confirmation D-0073, profile restriction and 80-minute requests are unchanged.
+Both fresh budget artifacts passed at 5.0656944167 node-hour; the first retry
+was queried and still queued before the second submission. Each seed has one
+active attempt at most; one prior consecutive miss remains recorded until
+its next terminal outcome. No profile/dev gate pass is claimed from queueing.
+
+Both notifications are individually sealed with early_failure=true and the
+coordinator owns their listeners; notifyd is running. Central round-2
+prepared/submitted/initial-observation files and per-attempt budget/submission
+files preserve all metadata. Continue on either outcome; verify/import all
+terminal outcomes and measured costs before any next submission. Only an
+unopened retry_profile_miss permits the automatic unchanged retry. Other
+engineering failures stop/report; same-profile dev failures or A2 encoding
+failures follow the consumed/invalid rules. Keep all prior failed attempts
+and their measured usage in the final frozen analysis accounting list.
