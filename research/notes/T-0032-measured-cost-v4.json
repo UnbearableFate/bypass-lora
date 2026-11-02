@@ -1,0 +1,17 @@
+{
+  "experiment": "E-0029@1",
+  "source_commit": "dc82cfc6c1f642f9380596a6be3244dafd4147a4",
+  "measured_node_hours_to_date": 0.447916,
+  "scope": "All tests/smokes/failures/diagnostics, invalid old LR cohort/planner, fresh four-candidate calibration, planner and lock, before all8 formal runs",
+  "future_training_seconds": 34012.96928532362,
+  "reference_diagnostics_seconds": 31.871749212034047,
+  "checks_analysis_seconds_reserved": 180,
+  "scheduler_overhead_seconds_reserved": 360,
+  "projected_node_hours": 2.849641071842754,
+  "cap_node_hours": 3.5,
+  "within_cap": true,
+  "up_lr": 0.001,
+  "up_lr_lock": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0362-1/lr-lock.json",
+  "up_lr_lock_sha256": "dcd6488206ce249b5aa4233c1517d1aede7fcda31c34df3927d67f4467975062",
+  "authority": "D-0064,D-0065; RV-0090,RV-0092,RV-0094,RV-0095; sealed8arms only; no new tap/source variants or follow-up seeds"
+}

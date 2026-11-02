@@ -1,6 +1,12 @@
 # E-0029 LR calibration and current release
 
 Runtime source is now `dc82cfc6c1f642f9380596a6be3244dafd4147a4`.
+Current phase: LR lock complete (ATT-0362-1, UP=.001); exactly8 formal
+arms submitted as ATT-0363 through ATT-0370. Active continuation and full
+job/notification mapping: T-0032-formal-batch.md. Pre-formal measured cost
+.447916node-h; current v4 projection2.8496410718node-h<=3.5. The sections
+below preserve the calibration sequence and its historical notifications.
+
 The old f46a13d grid below is diagnostic-only and must never be used for LR
 selection: ATT-0349/0350 shared initialization digest4b9e9951..., but
 ATT-0351 had65ccff56... across different MIG shapes. ATT-0353-1's reviewed
@@ -53,7 +59,8 @@ The ONE prescribed endpoint3e-3 is ATT-0361-1 /3778478.opbs, submitted at
 00:22JST on dc82cfc; expected575s, wall14:30, no slice pinning. Notification
 N-20261103-002234-3b6f /T0032-up-lora-portable-endpoint is sealed1 and
 earlyfailure enabled. MSG-0918 sent its listener to the coordinator; daemon
-is running. No LR has been selected/locked and no formal/dev run submitted.
+is running at submission. This endpoint and final lock have since passed;
+the selected LR is.001. See T-0032-formal-batch.md for current formal jobs.
 
 On endpoint completion, verify the same common init and full budget/membership
 (or typed nonfinite exclusion), import result/terminal/exactusage, then
