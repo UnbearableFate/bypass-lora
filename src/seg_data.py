@@ -15,7 +15,10 @@ SEEDS = (0, 1, 2, 3, 4, 5)
 ORDER_SHA256_BY_SEED = {0: ORDER_SHA256,
                         1: '03c16b099e04ed3906b5ec775a46b3c3f2c7bd8e36d94e29043f45789fb8d716',
                         2: '0485e356affdd9baf1d122027b6d924f805979dad343de0c68105eabf4acf608',
-                        3: None, 4: None, 5: None}  # Register from E-0030 PBS smoke before training.
+                        # E-0030: registered from PBS ATT-0375-1 before formal training.
+                        3: '108aec8c1c9684c5e4a58f91da0c5b7aa56e91aab25c7b07d45874e418774b14',
+                        4: '1c94716a5e449bb711b7135751f6161f062c2456a29065de5e557b144e1f5644',
+                        5: '6005c84bf0e8610f1dda085736c9fc8f3cdd3aa3d63a0a38211939c5aa22bb23'}
 
 
 def seam_edits(reference, segmented):
