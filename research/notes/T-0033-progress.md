@@ -115,3 +115,18 @@ Pinned preflight output SHA256 values:
 
 Formal runs remain unregistered pending the changed-code review and final-source
 deterministic checks. A2 remains sealed.
+
+RES-0349 imports the validated successful preflight; U-0384 imports its measured
+usage. New order constants are committed at
+`61cd97b1881dfe3c6045c425076023f31ca91b03`. Changed-code review RV-0097 has been
+requested against E-0027's 054a54a baseline, including the new masked training
+path, lock, reader, evaluator, rules, analysis and PBS boundary. Reviewed files
+must remain unchanged until its answer.
+
+Candidate-source deterministic checks RUN-0376 / ATT-0376-1 are concurrently
+running as PBS `3780105.opbs` (debug-mig, 2-minute walltime from measured
+57.5-second suite plus allocation/startup overhead). Outputs:
+`research/artifacts/ATT-0376-1/`; notification `N-20261103-031339-bceb`.
+The coordinator must resume this role on the review answer or job notification.
+Before formal runs, inspect/import these outputs and measured usage, resolve
+review findings and rerun affected checks if the candidate source changes.
