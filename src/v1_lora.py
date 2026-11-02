@@ -60,6 +60,8 @@ def _get_parent(root, path):
 
 class LoRAModel(nn.Module):
     """Attach LoRA to Q/K/V/O and gate/up/down projections in selected layers."""
+    target_names = TARGETS
+
     def __init__(self, model, config=None):
         super().__init__()
         self.model = model
@@ -71,8 +73,8 @@ class LoRAModel(nn.Module):
         self._targets = {}
         for index in self.config.layers:
             layer = layers[index]
-            paths = [f'self_attn.{name}' for name in TARGETS[:4]] + [
-                f'mlp.{name}' for name in TARGETS[4:]]
+            paths = [f'{"self_attn" if name in TARGETS[:4] else "mlp"}.{name}'
+                     for name in self.target_names]
             for path in paths:
                 parent, name = _get_parent(layer, path)
                 base = getattr(parent, name)
@@ -113,3 +115,44 @@ class LoRAModel(nn.Module):
                     getattr(adapter, name).copy_(state[f'{i}.{path}.{name}'])
         return result
 
+
+class UpLoRALinear(LoRALinear):
+    """Up-only LoRA with seed-portable CPU initialization before device copy.
+
+    CUDA distribution kernels use a device-dependent launch grid. Drawing on
+    CPU gives identical initial A values across CPU and different MIG shapes.
+    The legacy LoRALinear implementation remains unchanged.
+    """
+    def __init__(self, base, rank, alpha):
+        nn.Module.__init__(self)
+        if not isinstance(base, nn.Linear):
+            raise TypeError('LoRA targets must be nn.Linear modules')
+        self.base = base
+        self.base.requires_grad_(False)
+        self.scale = float(alpha) / rank
+        initial = torch.empty(rank, base.in_features, device='cpu', dtype=torch.float32)
+        nn.init.kaiming_uniform_(initial, a=5 ** .5)
+        self.A = nn.Parameter(initial.to(device=base.weight.device))
+        self.B = nn.Parameter(torch.zeros(base.out_features, rank,
+                                         device=base.weight.device, dtype=torch.float32))
+
+
+class UpLoRAModel(LoRAModel):
+    """Same zero-exit LoRA, restricted to up_proj in the configured layers."""
+    target_names = ('up_proj',)
+
+    def __init__(self, model, config=None):
+        # Keep the legacy LoRAModel construction and CUDA RNG path byte-identical.
+        nn.Module.__init__(self)
+        self.model = model
+        self.config = config or LoRAConfig()
+        layers = self.model.model.layers
+        if max(self.config.layers) >= len(layers):
+            raise ValueError('configured layer index exceeds model depth')
+        self.model.requires_grad_(False)
+        self._targets = {}
+        for index in self.config.layers:
+            layer = layers[index]
+            wrapped = UpLoRALinear(layer.mlp.up_proj, self.config.rank, self.config.alpha)
+            layer.mlp.up_proj = wrapped
+            self._targets[(index, 'mlp.up_proj')] = wrapped

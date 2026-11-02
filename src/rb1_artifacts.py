@@ -6,7 +6,7 @@ import re
 import statistics
 from pathlib import Path
 
-from rb_train import E0028_ARMS, FAMILIES, LORA_RANKS, PARAMETERS, WIDTH_ARMS, contract
+from rb_train import E0028_ARMS, E0029_ARMS, FAMILIES, LORA_RANKS, PARAMETERS, UP_LORA_ARMS, WIDTH_ARMS, contract
 
 
 CONTRACT = 'E-0021@1'
@@ -105,7 +105,7 @@ def validate_formal_run(run_dir, arm, source_commit=None):
     """
     if arm not in PARAMETERS:
         raise ValueError(f'unknown RB1 arm {arm}')
-    if arm in (*WIDTH_ARMS,*E0028_ARMS):
+    if arm in (*WIDTH_ARMS,*E0028_ARMS,*E0029_ARMS):
         if not isinstance(source_commit, str) or re.fullmatch('[0-9a-f]{40}', source_commit) is None:
             raise ValueError(f'{arm}: validation requires the reviewed training source commit')
         expected_source = source_commit
@@ -150,7 +150,7 @@ def validate_formal_run(run_dir, arm, source_commit=None):
         if not isinstance(metrics.get(key), str) or re.fullmatch('[0-9a-f]{'+str(length)+'}', metrics[key]) is None:
             raise ValueError(f'{arm}: missing or invalid {key}')
     if metrics['source.commit'] != expected_source:
-        release = run_contract if arm in (*WIDTH_ARMS,*E0028_ARMS) else 'RB1'
+        release = run_contract if arm in (*WIDTH_ARMS,*E0028_ARMS,*E0029_ARMS) else 'RB1'
         raise ValueError(f'{arm}: source commit differs from covered {release} training release')
     expected_params = PARAMETERS[arm]
     for key in ('params.stored', 'params.trainable', 'params.with_grad'):
@@ -168,10 +168,15 @@ def validate_formal_run(run_dir, arm, source_commit=None):
     lock_path, split_path = Path(lock_value).resolve(), Path(split_value).resolve()
     if not lock_path.is_file() or not split_path.is_file():
         raise ValueError(f'{arm}: LR lock or split manifest file is missing')
-    lock = verify_lr_lock(lock_path)
+    if arm in UP_LORA_ARMS:
+        from rb_improve_lr import verify_lock
+        lock = verify_lock(lock_path)
+    else:
+        lock = verify_lr_lock(lock_path)
     lock_hash = reference(lock_path)['sha256']
     split_hash = reference(split_path)['sha256']
-    if lock.get('experiment') != LOCK_CONTRACT or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:
+    expected_lock_contract = 'E-0029@1' if arm in UP_LORA_ARMS else LOCK_CONTRACT
+    if lock.get('experiment') != expected_lock_contract or lock.get('locked_lrs', {}).get(FAMILIES[arm]) != learning_rate:
         raise ValueError(f'{arm}: LR lock family/value mismatch')
     if lock.get('split_manifest_sha256') != split_hash:
         raise ValueError(f'{arm}: LR lock split hash differs from actual split manifest')

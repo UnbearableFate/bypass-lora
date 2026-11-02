@@ -20,7 +20,7 @@ from bypass_model import AdapterConfig, BranchModel
 from calibrate import MODEL,REVISION,load_base
 from rb_data import BASE_SEED,STUDY,apply_confirmation,plan_batches
 from v1_data import derive_seed,audit_training_exclusions
-from v1_lora import LoRAConfig,LoRAModel
+from v1_lora import LoRAConfig,LoRAModel,UpLoRAModel
 from v1_run import (prepare,evaluate,train as v1_train,TrainingDiverged,EvaluationNonfinite,
                     preserved_evaluation_state)
 from v5_train import file_sha256,write_json,plan_metadata
@@ -36,16 +36,22 @@ ETA_EXTENSIONS=(.03125,4.)
 ETA_ARMS={f'ETA-{tap}-{eta:g}':(tap,eta) for tap in ('QK','X')
           for eta in (*ETA_GRID,*ETA_EXTENSIONS) if eta!=.25}
 E0028_ARMS=(*TAP_ARMS,*ETA_ARMS)
-LORA_RANKS={'RB1-07':7,'W-03':31}
+E0029_ARMS=('G-T','G-QN','G-N','Q-N','P-T','P-N','L-56','L-48')
+IG_ARMS=('G-T','G-QN','G-N')
+UP_LORA_ARMS=('L-56','L-48')
+LORA_RANKS={'RB1-07':7,'W-03':31,'L-56':56,'L-48':48}
 PARAMETERS={**{f'RB1-{i:02}':663552 for i in range(1,7)},
             'RB1-07':630784,'RB1-08':1318912,'RB1-09':925696,
             'W-01':2752512,'W-02':2752512,'W-03':2793472}
 PARAMETERS.update({'X-01':794624,'X-02':794624,'X-03':925696,
                    **{arm:794624 if tap=='X' else 925696 for arm,(tap,eta) in ETA_ARMS.items()}})
+PARAMETERS.update({'G-T':925696,'G-QN':794624,'G-N':794624,'Q-N':794624,
+                   'P-T':925696,'P-N':794624,'L-56':917504,'L-48':786432})
 FAMILIES={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T',
           'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C',
           'W-01':'RBc-T','W-02':'RBc-R','W-03':'RBc-L'}
 FAMILIES.update({arm:'RBc-C' for arm in E0028_ARMS})
+FAMILIES.update({arm:'RBc-UP' if arm in UP_LORA_ARMS else 'RBc-C' for arm in E0029_ARMS})
 REPRESENTATIVES={'RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-L':'RB1-07','RBc-C':'RB1-08'}
 GRIDS={'RBc-T':(1e-4,3e-4,1e-3),'RBc-L':(1e-4,3e-4,1e-3),
        'RBc-R':(3e-4,1e-3,3e-3),'RBc-C':(3e-4,1e-3,3e-3)}
@@ -54,6 +60,8 @@ EXTENSIONS={'RBc-T':(3e-5,3e-3),'RBc-L':(3e-5,3e-3),
 
 
 def contract(arm,stage):
+    if arm in E0029_ARMS:
+        return 'E-0029@1'
     if arm in E0028_ARMS:
         return 'E-0028@1'
     if arm in WIDTH_ARMS:
@@ -65,9 +73,11 @@ def adapter_config(arm,impl='prefix'):
     if arm not in PARAMETERS or arm in LORA_RANKS:
         raise ValueError('not an RB side-branch arm')
     tap,eta=ETA_ARMS.get(arm,('X' if arm in ('X-01','X-02') else 'QK',.25))
+    if arm in E0029_ARMS:
+        tap='X' if arm in ('G-N','P-N') else 'QN' if arm in ('G-QN','Q-N') else 'QK'
     return AdapterConfig(layers=LAYERS,branch='kernel_tokenwise' if arm in ('RB1-01','W-01','X-02','X-03') else 'memory',
-        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' or arm in E0028_ARMS else 'F_out',
-        tap='direct_hidden' if tap=='X' else 'qknorm_pre_rope',
+        fusion='C_dual' if arm=='RB1-08' else 'C_up' if arm=='RB1-09' or arm in (*E0028_ARMS,*E0029_ARMS) else 'F_out',
+        tap='direct_hidden' if tap=='X' else 'normalized_qk' if tap=='QN' else 'qknorm_pre_rope',
         rank=WIDTH_RANK if arm in WIDTH_ARMS else 32,
         steps=2 if arm=='RB1-03' else 4 if arm in ('RB1-04','RB1-05','RB1-06') else 1,
         fixed_query=arm=='RB1-05',eta=.0625 if arm=='RB1-06' else eta,impl=impl)
@@ -82,10 +92,14 @@ def make_model(arm,phase='R1',seed=0,checkpoint=None,impl='prefix'):
         return base
     if arm in LORA_RANKS:
         config=LoRAConfig(layers=LAYERS,rank=LORA_RANKS[arm],alpha=LORA_RANKS[arm])
-        model=LoRAModel.load_adapter(base,checkpoint) if checkpoint else LoRAModel(base,config)
+        wrapper=UpLoRAModel if arm in UP_LORA_ARMS else LoRAModel
+        model=wrapper.load_adapter(base,checkpoint) if checkpoint else wrapper(base,config)
     else:
         config=adapter_config(arm,impl)
         model=BranchModel.load_adapter(base,checkpoint) if checkpoint else BranchModel(base,config)
+        if not checkpoint and arm in ('P-T','P-N'):
+            from rb_improve_init import pair_qk
+            pair_qk(model)
     if model.config!=config:
         raise ValueError('checkpoint differs from registered RB arm')
     params=list(model.adapter_parameters())
@@ -216,6 +230,8 @@ def lock_lrs(manifests):
 
 
 def run(args):
+    if args.arm in E0029_ARMS:
+        raise ValueError('E-0029 requires rb_improve_train.py and its initialization/LR gates')
     out=args.output.resolve()
     out.mkdir(parents=True,exist_ok=True)
     metrics,passed={},False

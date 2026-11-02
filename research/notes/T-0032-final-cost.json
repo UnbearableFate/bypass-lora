@@ -1,0 +1,21 @@
+{
+  "experiment": "E-0029@1",
+  "source_commit": "dc82cfc6c1f642f9380596a6be3244dafd4147a4",
+  "terminal_executed_attempts": 35,
+  "prior_to_formal_node_h": 0.447916,
+  "formal_eight_mig_instance_hours": 8.261946,
+  "reference_reads_mig_instance_hours": 0.015,
+  "analysis_mig_instance_hours": 0.002778,
+  "measured_total_node_h": 2.517847,
+  "cap_node_h": 3.5,
+  "within_cap": true,
+  "analysis_usage_input": "research/notes/T-0032-final-scheduler-usage.json",
+  "analysis_usage_input_sha256": "4a8f0819270436fa2cac311f05bccf705caf8f77281a3c9012b19eaa3a572c6d",
+  "analysis_usage_input_attempts": 34,
+  "analysis_usage_input_node_h": 2.5171525,
+  "final_analysis_job": "3779401.opbs",
+  "final_analysis_attempt": "ATT-0373-1",
+  "analysis_measured_seconds": 10,
+  "analysis_usage_record": "U-0380",
+  "accounting": "Measured MIG instance hours /4; all failures and invalid old calibration count; ATT0352 withdrawn before submission has no usage; one quantity per accounting_ref, revisions do not add duplicates. Frozen analysis input excludes its own later usage, added here."
+}

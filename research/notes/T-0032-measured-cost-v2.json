@@ -1,0 +1,39 @@
+{
+  "experiment": "E-0029@1",
+  "source_commit": "f46a13dc4c65f6bf1292e3fafa4198af4fbd59f2",
+  "smoke_attempt": "ATT-0346-1",
+  "smoke_result": "RES-0324",
+  "smoke_job": "3777531.opbs",
+  "source_cost_file": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0346-1/cost-estimate.json",
+  "source_cost_sha256": "d4b747537ab3dc0031736b00961dbe2c3bc8749527e8f867da0293fc2ca7d8a2",
+  "source_projected_node_hours": 2.3988525506336424,
+  "measured_prior_node_hours": 0.07354125,
+  "measured_smoke_scheduler_seconds": 647,
+  "measured_smoke_mig_instance_hours": 0.179722,
+  "additional_smoke_scheduler_overhead_node_hours": 0.0019145785849306977,
+  "updated_projected_node_hours": 2.474308379218573,
+  "cap_node_hours": 3.5,
+  "within_cap": true,
+  "measured_node_hours_to_date": 0.12701325,
+  "I_G_checks": {
+    "G-T": {
+      "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0346-1/ig-G-T",
+      "passed": true
+    },
+    "G-QN": {
+      "attempt": "ATT-0347-1",
+      "result": "RES-0322",
+      "passed": true,
+      "mig_instance_hours": 0.017222
+    },
+    "G-N": {
+      "attempt": "ATT-0348-1",
+      "result": "RES-0323",
+      "passed": true,
+      "mig_instance_hours": 0.016944
+    }
+  },
+  "accounting": "MIG instance hours / 4. Adds all prior measured E-0029 work, replaces application-only smoke time with measured PBS walltime, and retains check/analysis reserves. New G-QN/G-N checks consume the source table's three-initialization allowance.",
+  "measured_usage_scope": "Through pre-calibration validation ATT-0346/0347/0348; running calibration usage is unreported until completion.",
+  "formal_training_hold": "Lifted by D-0065 / MSG-0900: exactly all eight sealed E-0029@1 arms are authorized after the LR lock and within3.5nodeh. Cite D-0064/D-0065. No new tap/source variants or follow-up seeds without a fresh coordinator decision addressing E-0028 rule10."
+}
