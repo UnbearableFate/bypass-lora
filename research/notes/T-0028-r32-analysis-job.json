@@ -1,0 +1,48 @@
+{
+  "task": "T-0028",
+  "run": "RUN-0288",
+  "attempt": "ATT-0288-1",
+  "spec_digest": "blake2b:94a64f70ea5f590c2f8be3de892784fa084e8bdfe180feeae480355a3a5c1c8a",
+  "job_id": "3771942.opbs",
+  "source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "review": "RV-0079",
+  "coverage_exception": "D-0049",
+  "input": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/r32-analysis-input.json",
+  "input_digest": "blake2b:4e44f8240928bb61f56efbbd601151018a8db2d54b9ae65ba910ad0a4af37103",
+  "expected_seconds": 30,
+  "walltime": "00:01:00",
+  "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0288-1",
+  "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-r32-analysis-20261102-121710-d9ac9a.log",
+  "notification": {
+    "notification": {
+      "id": "N-20261102-121711-0814",
+      "name": "T0028-r32-locked-analysis-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3771942.opbs"
+      ],
+      "expected": 1,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: verify locked r32 analysis input validation/bootstrap10000/rules, import result/native usage once, preserve r32 outcomes before width. If primary rule6 releases r128, submit SEG05..07 at7d8b346/RV0079/D0049 under3nodeh, then SEG05 interventions and final analysis. D0052 also authorizes an exploratory width follow-up if sealed gate does not release; do not alter sealed r32 outcomes. No confirmation/status change.",
+      "created_at": "2026-11-02T12:17:11+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T12:16:40+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-121711-0814 --notifier miyabi-g2"
+    }
+  },
+  "r32_rule_context": "E-0025@1/D-0044 unchanged; record before any width run; D-0052 exploratory override only if sealed rule6 fails",
+  "exact_cost_before_this_analysis_node_h": 1.4570833333333333
+}

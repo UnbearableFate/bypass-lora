@@ -1,0 +1,53 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "arm": "SEG-05",
+  "attempt": "ATT-0302-1",
+  "run": "RUN-0302",
+  "code_commit": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "training_attempt": "ATT-0290-1",
+  "training_result": "RES-0275",
+  "audit_attempt": "ATT-0301-1",
+  "audit_result": "RES-0278",
+  "review": "RV-0079",
+  "coverage_exception": "D-0049",
+  "job_id": "3773252.opbs",
+  "expected_seconds": 1671,
+  "walltime": "00:50:00",
+  "spec_digest": "blake2b:d81a71c040dedb91ec234fbe3f774c9438e7f423e3838f7f283636d692101642",
+  "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0302-1",
+  "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-05-iv-20261102-144809-33ed87.log",
+  "notification": {
+    "notification": {
+      "id": "N-20261102-144810-2db4",
+      "name": "T0028-SEG05-frozen-interventions-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3773252.opbs"
+      ],
+      "expected": 1,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: verify ATT-0302-1 full5 frozen SEG05 conditions(Base_seg,normal,iv_off,iv_swap,iv_reset),1000dev/task,off/Base exact and donor/checkpoint provenance. Import result/native terminal usage once. Run final locked10000-bootstrap analysis at7d8b346 under RV0079/D0049 with all15 prior cost attempts, preserved r32 results and D0044 rules; within3nodeh. D0052 fallback unused: sealed rule6 released. Add per-rule evidence without hypothesis-status or confirmation change, deliver.",
+      "created_at": "2026-11-02T14:48:10+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T14:47:00+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-144810-2db4 --notifier miyabi-g2"
+    }
+  },
+  "measured_task_mig_seconds_before_this_job": 35662,
+  "measured_exact_node_h_before_this_job": 2.4765277777777777,
+  "remaining_scope": "frozen5conditions; finallocked10000bootstrap; per-rule screening/diagnostic evidence; no status or confirmation change"
+}

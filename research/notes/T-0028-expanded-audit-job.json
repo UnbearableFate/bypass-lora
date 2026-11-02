@@ -1,0 +1,43 @@
+{
+  "task": "T-0028",
+  "attempt": "ATT-0301-1",
+  "run": "RUN-0301",
+  "job_id": "3773187.opbs",
+  "source": "8b3ef4328cecc832699ad4f67422d22a3d06d8ee",
+  "audited_scientific_source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "purpose": "Read-only expanded artifact audit and seam accounting; no scientific path changed",
+  "spec_digest": "blake2b:79e9ccbe33383a53b76cda5b570f10f07f6029fc7584cb9f2bc71dd4cca98653",
+  "notification": {
+    "notification": {
+      "id": "N-20261102-144203-4b7a",
+      "name": "T0028-expanded-artifact-seam-audit-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3773187.opbs"
+      ],
+      "expected": 1,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: verify expanded raw artifact and seam audit, import three rank128 results and native usage once; submit SEG05 controls at fixed7d8b346 then final locked analysis, within3nodeh.",
+      "created_at": "2026-11-02T14:42:03+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T14:41:59+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-144203-4b7a --notifier miyabi-g2"
+    }
+  },
+  "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-all-audit-20261102-144202-01d18b.log",
+  "expected_seconds": 30,
+  "walltime": "00:01:00"
+}

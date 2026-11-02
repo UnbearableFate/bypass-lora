@@ -1,0 +1,312 @@
+{
+  "task": "T-0028",
+  "contract": "E-0025@1",
+  "decision": "D-0044",
+  "coverage": "RV-0079/D-0049",
+  "r32_analysis_attempt": "ATT-0288-1",
+  "r32_analysis_result": "RES-0266",
+  "source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "primary": "piqa",
+  "direction": "pending_r128",
+  "release_r128": true,
+  "r128_completed": false,
+  "eligible_edge": null,
+  "per_task": {
+    "piqa": {
+      "informative": true,
+      "gain32": {
+        "numerator": 2,
+        "denominator": 125,
+        "pp": 1.6
+      },
+      "swap_drop32": {
+        "numerator": 21,
+        "denominator": 500,
+        "pp": 4.2
+      },
+      "gain128": null,
+      "swap_drop128": null,
+      "outcome": "descriptive",
+      "support_width": null,
+      "release_range": true
+    },
+    "boolq": {
+      "informative": true,
+      "gain32": {
+        "numerator": 1,
+        "denominator": 50,
+        "pp": 2
+      },
+      "swap_drop32": {
+        "numerator": 53,
+        "denominator": 1000,
+        "pp": 5.3
+      },
+      "gain128": null,
+      "swap_drop128": null,
+      "outcome": "descriptive",
+      "support_width": null,
+      "release_range": true
+    }
+  },
+  "rules": {
+    "1": {
+      "level": "diagnostic",
+      "passed": true,
+      "checks": {
+        "no_channel_identity": true,
+        "initial_matches_base": true,
+        "reload_identical": true,
+        "off_matches_base": true
+      },
+      "action": "interpret"
+    },
+    "2": {
+      "level": "screening",
+      "informative": {
+        "piqa": true,
+        "boolq": true
+      },
+      "full_lora_minus_segment_lora": {
+        "piqa": {
+          "numerator": 7,
+          "denominator": 100,
+          "pp": 7
+        },
+        "boolq": {
+          "numerator": 193,
+          "denominator": 1000,
+          "pp": 19.3
+        }
+      }
+    },
+    "3": {
+      "level": "screening",
+      "primary": "piqa",
+      "action": "compare"
+    },
+    "4": {
+      "level": "screening",
+      "learned": {
+        "SEG-01": false,
+        "SEG-02": true,
+        "SEG-03": true,
+        "SEG-04": true
+      },
+      "no_history_controls_unlearned": false
+    },
+    "5": {
+      "level": "screening",
+      "primary_r32": {
+        "informative": true,
+        "gain32": {
+          "numerator": 2,
+          "denominator": 125,
+          "pp": 1.6
+        },
+        "swap_drop32": {
+          "numerator": 21,
+          "denominator": 500,
+          "pp": 4.2
+        },
+        "gain128": null,
+        "swap_drop128": null,
+        "outcome": "descriptive",
+        "support_width": null,
+        "release_range": true
+      }
+    },
+    "6": {
+      "level": "screening",
+      "release_once": true,
+      "completed": false,
+      "decision_pin": "D-0044",
+      "no_more_width_tap_loop_after_r128": false
+    },
+    "7": {
+      "level": "screening",
+      "challenge_r32": false
+    },
+    "8": {
+      "level": "screening",
+      "secondary": "boolq",
+      "task_result": {
+        "informative": true,
+        "gain32": {
+          "numerator": 1,
+          "denominator": 50,
+          "pp": 2
+        },
+        "swap_drop32": {
+          "numerator": 53,
+          "denominator": 1000,
+          "pp": 5.3
+        },
+        "gain128": null,
+        "swap_drop128": null,
+        "outcome": "descriptive",
+        "support_width": null,
+        "release_range": true
+      },
+      "secondary_only": false,
+      "two_new_seed_replications_needed": false
+    },
+    "9": {
+      "level": "screening",
+      "macro_nll": "descriptive_only",
+      "hypothesis_status_changed": false,
+      "intervals": "descriptive conditional on trained seed0; no seed/selection uncertainty or simultaneous guarantee"
+    }
+  },
+  "bootstrap": {
+    "repeats": 10000,
+    "seed": 20261101,
+    "max_control_gain": {
+      "32": {
+        "piqa": {
+          "ci95_pp": [
+            -0.30000000000000027,
+            3.499999999999992
+          ]
+        },
+        "boolq": {
+          "ci95_pp": [
+            -0.8000000000000007,
+            4.900000000000004
+          ]
+        },
+        "macro": {
+          "ci95_pp": [
+            0.5000000000000004,
+            3.949999999999987
+          ]
+        }
+      }
+    }
+  },
+  "cost": {
+    "sources": [
+      {
+        "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/ATT-0271-terminal-observations.json",
+        "sha256": "3389c8adf63de216d0f135e0cb9a8cfcce28e6b10d9e200a0e8b5dfe407118fa",
+        "bytes": 927
+      },
+      {
+        "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/ATT-0276-terminal-observations.json",
+        "sha256": "83f7e95872e41c9dca41497e6db9c5a34c43b202bf308fe51306df5d08768b78",
+        "bytes": 929
+      },
+      {
+        "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/formal-terminal-observations.json",
+        "sha256": "ad644c6d2eb1e4cd7803e5babf8ee23f5973327b188d240b0a327353f38db35b",
+        "bytes": 7009
+      },
+      {
+        "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/ATT-0286-terminal-observations.json",
+        "sha256": "6f4947eeb0007723b0dd16349c97b0f2976e648838ec671f65ac309a59ecec20",
+        "bytes": 929
+      },
+      {
+        "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0028/ATT-0287-terminal-observations.json",
+        "sha256": "8d119a22c4620707dab65831f3f77127f8d00d30769507f52260de7103335fa3",
+        "bytes": 1523
+      }
+    ],
+    "rows": [
+      {
+        "attempt": "ATT-0271-1",
+        "accounting_ref": "miyabi-pbs:3770096.opbs",
+        "quantity": 0.1325,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:07:57 x nvnodes-mig=1",
+        "node_h": 0.033125
+      },
+      {
+        "attempt": "ATT-0276-1",
+        "accounting_ref": "miyabi-pbs:3770216.opbs",
+        "quantity": 0.015278,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:00:55 x nvnodes-mig=1",
+        "node_h": 0.0038195
+      },
+      {
+        "attempt": "ATT-0277-1",
+        "accounting_ref": "miyabi-pbs:3770249.opbs",
+        "quantity": 0.049722,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:02:59 x nvnodes-mig=1",
+        "node_h": 0.0124305
+      },
+      {
+        "attempt": "ATT-0278-1",
+        "accounting_ref": "miyabi-pbs:3770250.opbs",
+        "quantity": 0.989444,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:59:22 x nvnodes-mig=1",
+        "node_h": 0.247361
+      },
+      {
+        "attempt": "ATT-0280-1",
+        "accounting_ref": "miyabi-pbs:3770252.opbs",
+        "quantity": 1.073889,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=01:04:26 x nvnodes-mig=1",
+        "node_h": 0.26847225
+      },
+      {
+        "attempt": "ATT-0281-1",
+        "accounting_ref": "miyabi-pbs:3770253.opbs",
+        "quantity": 1.071389,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=01:04:17 x nvnodes-mig=1",
+        "node_h": 0.26784725
+      },
+      {
+        "attempt": "ATT-0279-1",
+        "accounting_ref": "miyabi-pbs:3770251.opbs",
+        "quantity": 2.053611,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=02:03:13 x nvnodes-mig=1",
+        "node_h": 0.51340275
+      },
+      {
+        "attempt": "ATT-0286-1",
+        "accounting_ref": "miyabi-pbs:3771591.opbs",
+        "quantity": 0.004722,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:00:17 x nvnodes-mig=1",
+        "node_h": 0.0011805
+      },
+      {
+        "attempt": "ATT-0287-1",
+        "accounting_ref": "miyabi-pbs:3771652.opbs",
+        "quantity": 0.437778,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:26:16 x nvnodes-mig=1",
+        "node_h": 0.1094445
+      }
+    ],
+    "node_h": 1.45708325,
+    "conversion": "node_h = measured MIG instance hours * 0.25; all declared terminal task attempts included",
+    "required_attempts": [
+      "ATT-0271-1",
+      "ATT-0276-1",
+      "ATT-0277-1",
+      "ATT-0278-1",
+      "ATT-0279-1",
+      "ATT-0280-1",
+      "ATT-0281-1",
+      "ATT-0286-1",
+      "ATT-0287-1"
+    ],
+    "terminal_coverage_complete": true,
+    "cap_node_h": 3,
+    "within_cap": true,
+    "current_analysis_usage": "pending; add terminal measured usage in delivery"
+  },
+  "width_followup_kind": "preregistered rule6 release; D0052 exploratory fallback not used",
+  "exact_total_mig_seconds_including_analysis": 20998,
+  "exact_node_h_including_analysis": 1.4581944444444443,
+  "projected_r128_branch_node_h": 1.0901570279788575,
+  "projected_total_with_width_and_reserve": 2.5983514724233014
+}

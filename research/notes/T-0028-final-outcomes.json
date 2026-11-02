@@ -1,0 +1,292 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "hypothesis": "H-0019@1",
+  "scientific_source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "review": "RV-0079",
+  "coverage_exception": "D-0049",
+  "clarification": "D-0044",
+  "fallback_D0052_used": false,
+  "final_attempt": "ATT-0303-1",
+  "final_result": "RES-0280",
+  "raw_final_analysis": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0303-1/analysis.json",
+  "preserved_r32_attempt": "ATT-0288-1",
+  "preserved_r32_result": "RES-0266",
+  "primary": "piqa",
+  "direction": "inconclusive_secondary_only",
+  "eligible_edge": null,
+  "r128_completed": true,
+  "per_task": {
+    "piqa": {
+      "informative": true,
+      "gain32": {
+        "numerator": 2,
+        "denominator": 125,
+        "pp": 1.6
+      },
+      "swap_drop32": {
+        "numerator": 21,
+        "denominator": 500,
+        "pp": 4.2
+      },
+      "gain128": {
+        "numerator": 7,
+        "denominator": 500,
+        "pp": 1.4
+      },
+      "swap_drop128": {
+        "numerator": 53,
+        "denominator": 1000,
+        "pp": 5.3
+      },
+      "outcome": "descriptive_inconclusive_D0044c",
+      "support_width": null,
+      "release_range": true
+    },
+    "boolq": {
+      "informative": true,
+      "gain32": {
+        "numerator": 1,
+        "denominator": 50,
+        "pp": 2
+      },
+      "swap_drop32": {
+        "numerator": 53,
+        "denominator": 1000,
+        "pp": 5.3
+      },
+      "gain128": {
+        "numerator": 11,
+        "denominator": 250,
+        "pp": 4.4
+      },
+      "swap_drop128": {
+        "numerator": 13,
+        "denominator": 200,
+        "pp": 6.5
+      },
+      "outcome": "supports",
+      "support_width": 128,
+      "release_range": true
+    }
+  },
+  "rules": {
+    "1": {
+      "level": "diagnostic",
+      "passed": true,
+      "checks": {
+        "no_channel_identity": true,
+        "initial_matches_base": true,
+        "reload_identical": true,
+        "off_matches_base": true
+      },
+      "action": "interpret"
+    },
+    "2": {
+      "level": "screening",
+      "informative": {
+        "piqa": true,
+        "boolq": true
+      },
+      "full_lora_minus_segment_lora": {
+        "piqa": {
+          "numerator": 7,
+          "denominator": 100,
+          "pp": 7
+        },
+        "boolq": {
+          "numerator": 193,
+          "denominator": 1000,
+          "pp": 19.3
+        }
+      }
+    },
+    "3": {
+      "level": "screening",
+      "primary": "piqa",
+      "action": "compare"
+    },
+    "4": {
+      "level": "screening",
+      "learned": {
+        "SEG-01": false,
+        "SEG-02": true,
+        "SEG-03": true,
+        "SEG-04": true,
+        "SEG-05": true,
+        "SEG-06": false,
+        "SEG-07": true
+      },
+      "no_history_controls_unlearned": false
+    },
+    "5": {
+      "level": "screening",
+      "primary_r32": {
+        "informative": true,
+        "gain32": {
+          "numerator": 2,
+          "denominator": 125,
+          "pp": 1.6
+        },
+        "swap_drop32": {
+          "numerator": 21,
+          "denominator": 500,
+          "pp": 4.2
+        },
+        "gain128": {
+          "numerator": 7,
+          "denominator": 500,
+          "pp": 1.4
+        },
+        "swap_drop128": {
+          "numerator": 53,
+          "denominator": 1000,
+          "pp": 5.3
+        },
+        "outcome": "descriptive_inconclusive_D0044c",
+        "support_width": null,
+        "release_range": true
+      }
+    },
+    "6": {
+      "level": "screening",
+      "release_once": true,
+      "completed": true,
+      "decision_pin": "D-0044",
+      "no_more_width_tap_loop_after_r128": true
+    },
+    "7": {
+      "level": "screening",
+      "challenge_r32": false
+    },
+    "8": {
+      "level": "screening",
+      "secondary": "boolq",
+      "task_result": {
+        "informative": true,
+        "gain32": {
+          "numerator": 1,
+          "denominator": 50,
+          "pp": 2
+        },
+        "swap_drop32": {
+          "numerator": 53,
+          "denominator": 1000,
+          "pp": 5.3
+        },
+        "gain128": {
+          "numerator": 11,
+          "denominator": 250,
+          "pp": 4.4
+        },
+        "swap_drop128": {
+          "numerator": 13,
+          "denominator": 200,
+          "pp": 6.5
+        },
+        "outcome": "supports",
+        "support_width": 128,
+        "release_range": true
+      },
+      "secondary_only": true,
+      "two_new_seed_replications_needed": true
+    },
+    "9": {
+      "level": "screening",
+      "macro_nll": "descriptive_only",
+      "hypothesis_status_changed": false,
+      "intervals": "descriptive conditional on trained seed0; no seed/selection uncertainty or simultaneous guarantee"
+    }
+  },
+  "bootstrap_max_control_gain": {
+    "32": {
+      "piqa": {
+        "ci95_pp": [
+          -0.30000000000000027,
+          3.499999999999992
+        ]
+      },
+      "boolq": {
+        "ci95_pp": [
+          -0.8000000000000007,
+          4.900000000000004
+        ]
+      },
+      "macro": {
+        "ci95_pp": [
+          0.5000000000000004,
+          3.949999999999987
+        ]
+      }
+    },
+    "128": {
+      "piqa": {
+        "ci95_pp": [
+          -0.40000000000000036,
+          3.1999999999999917
+        ]
+      },
+      "boolq": {
+        "ci95_pp": [
+          1.5000000000000013,
+          6.800000000000006
+        ]
+      },
+      "macro": {
+        "ci95_pp": [
+          1.3500000000000068,
+          4.549999999999999
+        ]
+      }
+    }
+  },
+  "evidence": [
+    {
+      "rule": "1",
+      "id": "EV-0130"
+    },
+    {
+      "rule": "2",
+      "id": "EV-0131"
+    },
+    {
+      "rule": "3",
+      "id": "EV-0132"
+    },
+    {
+      "rule": "4",
+      "id": "EV-0133"
+    },
+    {
+      "rule": "5",
+      "id": "EV-0134"
+    },
+    {
+      "rule": "6",
+      "id": "EV-0135"
+    },
+    {
+      "rule": "7",
+      "id": "EV-0136"
+    },
+    {
+      "rule": "8",
+      "id": "EV-0137"
+    },
+    {
+      "rule": "9",
+      "id": "EV-0138"
+    }
+  ],
+  "cost": {
+    "exact_scheduler_mig_seconds": 37382,
+    "exact_node_h": 2.595972222222222,
+    "native_node_h": 2.595972,
+    "all_attempts": 16,
+    "cap_node_h": 3,
+    "within_cap": true
+  },
+  "confirmation_evaluated": false,
+  "hypothesis_status_changed": false,
+  "replications_launched": false
+}

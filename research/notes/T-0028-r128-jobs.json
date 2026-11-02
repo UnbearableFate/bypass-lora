@@ -1,0 +1,208 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "scientific_source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "review": "RV-0079",
+  "coverage_exception": "D-0049",
+  "release": {
+    "kind": "preregistered rule6",
+    "analysis_attempt": "ATT-0288-1",
+    "analysis_result": "RES-0266",
+    "primary": "piqa",
+    "gain32_fraction": [
+      2,
+      125
+    ],
+    "gain32_pp": 1.6,
+    "all_implementation_checks_passed": true,
+    "D0052_exploratory_fallback_used": false
+  },
+  "parameter_count_each": 2752512,
+  "rank": 128,
+  "steps_each": 13115,
+  "examples_each": 26230,
+  "order_sha256": "33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf",
+  "learning_rate_each": 0.003,
+  "projection": {
+    "timing": {
+      "SEG-05": {
+        "stage": "train",
+        "queue": "short-mig",
+        "learning_rate": 0.003,
+        "rank": 128,
+        "parameters": 2752512,
+        "expected_seconds": 7393,
+        "smoke_part_seconds": 7273.654252583627,
+        "full_r32_comparable_seconds": 7393,
+        "walltime": "03:10:00"
+      },
+      "SEG-06": {
+        "stage": "train",
+        "queue": "short-mig",
+        "learning_rate": 0.003,
+        "rank": 128,
+        "parameters": 2752512,
+        "expected_seconds": 3866,
+        "smoke_part_seconds": 3468.6031051713653,
+        "full_r32_comparable_seconds": 3866,
+        "walltime": "01:40:00"
+      },
+      "SEG-07": {
+        "stage": "train",
+        "queue": "short-mig",
+        "learning_rate": 0.003,
+        "rank": 128,
+        "parameters": 2752512,
+        "expected_seconds": 3562,
+        "smoke_part_seconds": 3285.393220376718,
+        "full_r32_comparable_seconds": 3562,
+        "walltime": "01:30:00"
+      }
+    },
+    "intervention_expected_seconds": 1671,
+    "training_expected_seconds": 14821,
+    "measured_before_width_exact_node_h": 1.4581944444444443,
+    "projected_total_node_h": 2.653472222222222,
+    "cap_node_h": 3,
+    "method": "Per r128 arm use max(its measured smoke part model, observed full r32 duration for the same protocol); include SEG05 controls and .05nodeh final analysis/review reserve"
+  },
+  "notification": {
+    "notification": {
+      "id": "N-20261102-122622-0842",
+      "name": "T0028-preregistered-r128-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3772011.opbs",
+        "3772012.opbs",
+        "3772013.opbs"
+      ],
+      "expected": 3,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: validate SEG05/06/07 final rank128 runs (13115steps/26230examples/exactR1order/lockedLR.003,2752512stored/trainable/withgrad,full1000dev/task/curves/checkpoint/reload,SEG05init/Base). Import results and native usage once, then SEG05 normal/Base/off/swap/reset at7d8b346 and final locked10000-bootstrap analysis including preserved r32 results and every task cost. r128 released by sealed rule6 in RES0266 (PIQA gain1.6pp), D0052 fallback not used. Budget<=3nodeh, profiles metadata only, RV0079/D0049; no confirmation/status change.",
+      "created_at": "2026-11-02T12:26:22+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T12:21:40+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-122622-0842 --notifier miyabi-g2"
+    }
+  },
+  "runs": [
+    {
+      "arm": "SEG-05",
+      "run": "RUN-0290",
+      "attempt": "ATT-0290-1",
+      "job_id": "3772011.opbs",
+      "spec_digest": "blake2b:1fad67531e706953e8ae64f1b8f7d6623b4d263620ef3139c27cfd87c926cb1b",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0290-1",
+      "expected_seconds": 7393,
+      "walltime": "03:10:00",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-05-r128-20261102-122621-d60068.log",
+      "code_commit": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+      "script": "/work/xg24i002/x10041/bypass-lora/snapshots/7d8b3464b6145504d155268f4c667fa3ecc53b00/research/notes/T-0028-run.pbs",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-122621-d60068/script.sh",
+      "recorded_review": {
+        "status": "stale",
+        "source": "commit 7d8b3464b614",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0078 pass",
+          "RV-0079 pass"
+        ],
+        "changed": {
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ]
+        }
+      },
+      "effective_review": "covered by RV0079 with D0049 test-only exception"
+    },
+    {
+      "arm": "SEG-06",
+      "run": "RUN-0291",
+      "attempt": "ATT-0291-1",
+      "job_id": "3772012.opbs",
+      "spec_digest": "blake2b:8278982357f12d8809c7e7e849d2813656075bf438e36a37be9dc2bf4088f4f5",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0291-1",
+      "expected_seconds": 3866,
+      "walltime": "01:40:00",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-06-r128-20261102-122624-f8e42f.log",
+      "code_commit": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+      "script": "/work/xg24i002/x10041/bypass-lora/snapshots/7d8b3464b6145504d155268f4c667fa3ecc53b00/research/notes/T-0028-run.pbs",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-122624-f8e42f/script.sh",
+      "recorded_review": {
+        "status": "stale",
+        "source": "commit 7d8b3464b614",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0078 pass",
+          "RV-0079 pass"
+        ],
+        "changed": {
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ]
+        }
+      },
+      "effective_review": "covered by RV0079 with D0049 test-only exception"
+    },
+    {
+      "arm": "SEG-07",
+      "run": "RUN-0292",
+      "attempt": "ATT-0292-1",
+      "job_id": "3772013.opbs",
+      "spec_digest": "blake2b:ff403ecb74b5889fd8a6fceff9657fb33127ed13738794e466b499b9c78a881c",
+      "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0292-1",
+      "expected_seconds": 3562,
+      "walltime": "01:30:00",
+      "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-07-r128-20261102-122627-5f3f13.log",
+      "code_commit": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+      "script": "/work/xg24i002/x10041/bypass-lora/snapshots/7d8b3464b6145504d155268f4c667fa3ecc53b00/research/notes/T-0028-run.pbs",
+      "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-122627-5f3f13/script.sh",
+      "recorded_review": {
+        "status": "stale",
+        "source": "commit 7d8b3464b614",
+        "reviews": [
+          "RV-0002 pass",
+          "RV-0009 pass",
+          "RV-0060 pass",
+          "RV-0062 pass",
+          "RV-0064 pass",
+          "RV-0069 pass",
+          "RV-0078 pass",
+          "RV-0079 pass"
+        ],
+        "changed": {
+          "src/test_rb1_artifacts.py": [
+            "RV-0064",
+            "RV-0069"
+          ]
+        }
+      },
+      "effective_review": "covered by RV0079 with D0049 test-only exception"
+    }
+  ]
+}

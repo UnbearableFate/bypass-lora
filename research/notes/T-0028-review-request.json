@@ -1,0 +1,21 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "review": "RV-0078",
+  "request_ref": "DOC-0278@1",
+  "candidate_commit": "881883e0a57d0fcf6ce536fc1377f68eae670efe",
+  "tested_source": "752b50c582e3002618aed65449105de2c37fcf09",
+  "attempt": "ATT-0271-1",
+  "result": "RES-0250",
+  "pbs_job": "3770096.opbs",
+  "checks_passed": 315,
+  "checks_failed": 0,
+  "checks_skipped": 0,
+  "measured_mig_seconds": 477,
+  "measured_node_h": 0.033125,
+  "projected_all_in_node_h": 2.538108543267193,
+  "experiment_cap_node_h": 3,
+  "scoped_files_frozen": true,
+  "formal_training_started": false,
+  "SEG_dev_quality_inspected": false
+}

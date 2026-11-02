@@ -1,0 +1,49 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "clarification": "D-0044",
+  "encoding_notice": "MSG-0726",
+  "code_commit": "752b50c582e3002618aed65449105de2c37fcf09",
+  "run": "RUN-0271",
+  "attempt": "ATT-0271-1",
+  "spec_digest": "blake2b:8caca0449f084f6410056ed4c700e621007bc532b772ea5cb6077e868a74124c",
+  "job_id": "3770096.opbs",
+  "queue": "debug-mig",
+  "expected_seconds": 600,
+  "walltime": "00:15:00",
+  "output": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0271-1",
+  "source_snapshot": "/work/xg24i002/x10041/bypass-lora/snapshots/752b50c582e3002618aed65449105de2c37fcf09",
+  "script_snapshot": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/submissions/20261102-084600-a4bb61/script.sh",
+  "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-smoke-20261102-084600-a4bb61.log",
+  "notification": {
+    "notification": {
+      "id": "N-20261102-084601-7001",
+      "name": "T0028-checks-cost-smoke-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3770096.opbs"
+      ],
+      "expected": 1,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: check ATT-0271-1 allocation, XML and score-discarding seven-arm cost-smoke. Import result and usage once; add actual smoke cost to 3-node-hour projection; request code review only after all stages pass. No formal SEG training/dev score inspection before review.",
+      "created_at": "2026-11-02T08:46:01+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T07:51:43+09:00",
+      "daemon_running": false,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-084601-7001 --notifier miyabi-g2",
+      "hint": "no daemon has polled for this notifier recently: run start_command on the agent's machine"
+    }
+  }
+}

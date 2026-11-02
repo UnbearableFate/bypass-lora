@@ -1,0 +1,42 @@
+{
+  "task": "T-0028",
+  "attempt": "ATT-0286-1",
+  "run": "RUN-0286",
+  "job_id": "3771591.opbs",
+  "source": "13b03b1fa5a38761cd668c79043eb94791aa1a0e",
+  "audited_scientific_source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "expected_seconds": 30,
+  "walltime": "00:01:00",
+  "notification": {
+    "notification": {
+      "id": "N-20261102-113707-e86c",
+      "name": "T0028-initial-artifact-audit-v1",
+      "status": "open",
+      "sealed": true,
+      "jobs": [
+        "3771591.opbs"
+      ],
+      "expected": 1,
+      "when": "all_ended",
+      "queue": null,
+      "deadline": null,
+      "early_failure": true,
+      "notifier": "miyabi-g2",
+      "deliver": {
+        "method": "listener"
+      },
+      "message": "Resume researcher-1 T-0028: verify strict read-only SEG-00..04 audit then import formal results once and audit usage; submit SEG02 interventions at reviewed7d8b346 and wait. No confirmation access.",
+      "created_at": "2026-11-02T11:37:07+09:00"
+    },
+    "daemon": {
+      "notifier": "miyabi-g2",
+      "last_poll": "2026-11-02T11:36:36+09:00",
+      "daemon_running": true,
+      "poll_seconds": 300,
+      "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+      "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261102-113707-e86c --notifier miyabi-g2"
+    }
+  },
+  "spec_digest": "blake2b:fb7e39ec2638e81167f95a1a4d0ab67a3c41c97a984262d7600069ade9fb7d2d",
+  "log": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/seg-audit-20261102-113706-24956d.log"
+}

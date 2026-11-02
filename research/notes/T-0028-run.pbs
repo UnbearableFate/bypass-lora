@@ -1,0 +1,52 @@
+#!/bin/bash
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${SEG_STAGE:?registered stage required}"
+SEG_PROJECT=/work/xg24i002/x10041/bypass-lora
+SEG_SOURCE="$SEG_PROJECT/snapshots/$SR_CODE_COMMIT"
+SEG_OUT="$SEG_PROJECT/runs/$SR_ATTEMPT_ID"
+SEG_PY="$SEG_PROJECT/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$SEG_OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$SEG_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$SEG_OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$SEG_OUT/allocation.json"
+# D-0018/D-0019: ordinary training, evaluation and statistics record metadata.
+nvidia-smi -L > "$SEG_OUT/nvidia-smi.txt" 2>&1 || true
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SEG_SOURCE/src"
+export TMPDIR="/local/${PBS_JOBID}/seg-$SEG_STAGE"
+mkdir -p "$TMPDIR"
+cd "$SEG_SOURCE"
+case "$SEG_STAGE" in
+  train|base)
+    : "${SEG_ARM:?registered arm required}"
+    exec "$SEG_PY" src/seg_train.py --arm "$SEG_ARM" --stage "$SEG_STAGE" \
+      --data-dir "$SEG_PROJECT/data/v1" \
+      --split-manifest "$SEG_SOURCE/research/artifacts/T-0022/rb-confirmation.json" \
+      --lr-lock "$SEG_SOURCE/research/artifacts/T-0024/lr-lock.json" --output "$SEG_OUT"
+    ;;
+  intervention)
+    : "${SEG_ARM:?registered R_keep arm required}"
+    : "${SEG_TRAINING_RUN:?validated final training root required}"
+    : "${SEG_TRAINING_SOURCE:?reviewed training commit required}"
+    exec "$SEG_PY" src/seg_intervene.py --arm "$SEG_ARM" \
+      --training-run "$SEG_TRAINING_RUN" --training-source "$SEG_TRAINING_SOURCE" \
+      --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT"
+    ;;
+  analysis)
+    : "${SEG_ANALYSIS_INPUT:?locked analysis input required}"
+    exec "$SEG_PY" src/seg_analysis.py --input "$SEG_ANALYSIS_INPUT" \
+      --output "$SEG_OUT"
+    ;;
+  *)
+    printf 'Unknown registered SEG_STAGE: %s\n' "$SEG_STAGE" >&2
+    exit 2
+    ;;
+esac

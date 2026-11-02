@@ -1,0 +1,20 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "review": "RV-0079",
+  "recheck_of": "RV-0078",
+  "request_ref": "DOC-0280@1",
+  "final_runtime_commit": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "regression_attempt": "ATT-0276-1",
+  "regression_result": "RES-0253",
+  "regression_pbs": "3770216.opbs",
+  "tests_passed": 326,
+  "measured_task_mig_seconds": 532,
+  "measured_task_exact_node_h": 0.036944444444444446,
+  "full_projected_node_h": 2.541927987711637,
+  "cap_node_h": 3,
+  "source_bindings": "same immutable source for formal training/interventions/deterministic checks",
+  "files_frozen": true,
+  "formal_SEG_training_started": false,
+  "SEG_dev_quality_inspected": false
+}

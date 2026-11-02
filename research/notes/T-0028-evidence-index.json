@@ -1,0 +1,190 @@
+{
+  "scope": "E-0025@1/H-0019@1 segmented F dev screening, seed0; scientific source7d8b3464b6145504d155268f4c667fa3ecc53b00/RV0079/D0049; D0044 fixed before outcomes.1000dev/task;10000shared task-stratified bootstrap draws seed20261101.Intervals descriptive conditional on trained seed0,exclude seed/task/width selection uncertainty,not simultaneous;thresholds exact point-estimate gates.Frozen r32 ATT0288/RES0266 preserved.D0052 fallbackunused.No confirmation or hypothesis status change.Overall eligible_edge=null;no supports/challenges hypothesis link.",
+  "entries": [
+    {
+      "rule": "1",
+      "level": "diagnostic",
+      "summary": "Rule1 passes all four implementation checks: both widths' same-allocation iv_off/Base identity and initial/Base identity; no-channel with/without discarded segment1 exact identity at reviewed source; all7trained arms' complete same-job reloads. Locked PBS final audit additionally binds all raw rows,checkpoint/source inventories and fixed R1 donors. Interpretation permitted.",
+      "attempts": [
+        "ATT-0276-1",
+        "ATT-0287-1",
+        "ATT-0302-1",
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0253",
+        "RES-0265",
+        "RES-0279",
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "1",
+        "id": "EV-0130",
+        "warnings": [],
+        "summary": "EV-0130 diagnostic/valid"
+      }
+    },
+    {
+      "rule": "2",
+      "level": "screening",
+      "summary": "Rule2: both tasks informative. Full-context RB1-07 minus segmented LoRA SEG04 is exact+7.0pp PIQA(descriptive95%CI[4.8,9.2]) and+19.3pp BoolQ([16.1,22.5]),each>=3pp.Dynamic-range gate only; protocols differ.",
+      "attempts": [
+        "ATT-0281-1",
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0263",
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "2",
+        "id": "EV-0131",
+        "warnings": [],
+        "summary": "EV-0131 screening/valid"
+      }
+    },
+    {
+      "rule": "3",
+      "level": "screening",
+      "summary": "Rule3 selects PIQA as primary because PIQA is informative; BoolQ remains secondary. BoolQ success cannot replace the primary-task gate. No no-information stop condition fires.",
+      "attempts": [
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "3",
+        "id": "EV-0132",
+        "warnings": [],
+        "summary": "EV-0132 screening/valid"
+      }
+    },
+    {
+      "rule": "4",
+      "level": "screening",
+      "summary": "Rule4 learnability is descriptive: primary Base_seg66.1%,inclusive Base+1 threshold67.1%.SEG01=66.9% andSEG06=66.9% fail;SEG02=69.4%,SEG03=67.8%,SEG04=67.4%,SEG05=69.3%,SEG07=67.9% pass.SEG01 andSEG04 are not both unlearned,so no diagnostic downgrade of the main comparison.",
+      "attempts": [
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "4",
+        "id": "EV-0133",
+        "warnings": [],
+        "summary": "EV-0133 screening/valid"
+      }
+    },
+    {
+      "rule": "5",
+      "level": "screening",
+      "summary": "Rule5 r32 primary PIQA gain SEG02-max(SEG01,SEG03)=exact2/125=+1.6pp,descriptive95%CI[-0.3,3.5].Own-IV-normal swap drop=4.2pp[1.7,6.6],but gain<3pp,so no r32 support;descriptive r32 outcome preserved from pre-width ATT0288/RES0266.",
+      "attempts": [
+        "ATT-0288-1",
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0266",
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "5",
+        "id": "EV-0134",
+        "warnings": [],
+        "summary": "EV-0134 screening/valid"
+      }
+    },
+    {
+      "rule": "6",
+      "level": "screening",
+      "summary": "Rule6 released r128 once from0<primarygain32=1.6<3pp;all3width arms completed.Primary gain128=exact7/500=+1.4pp,descriptive95%CI[-0.4,3.2];swap drop=5.3pp[3.0,7.6].D0044c:primary descriptive/inconclusive,neither support(gain<3)nor challenge(both gains>=1).No further widening,tap or loop.D0052 exploratory fallbackunused.",
+      "attempts": [
+        "ATT-0288-1",
+        "ATT-0290-1",
+        "ATT-0291-1",
+        "ATT-0292-1",
+        "ATT-0302-1",
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0266",
+        "RES-0275",
+        "RES-0276",
+        "RES-0277",
+        "RES-0279",
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "6",
+        "id": "EV-0135",
+        "warnings": [],
+        "summary": "EV-0135 screening/valid"
+      }
+    },
+    {
+      "rule": "7",
+      "level": "screening",
+      "summary": "Rule7 r32 challenge does not fire:primarygain32=exact2/125>0.The no-width branch does not apply;the sealed conditional triplet was already released and completed.No hypothesis challenge edge.",
+      "attempts": [
+        "ATT-0288-1",
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0266",
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "7",
+        "id": "EV-0136",
+        "warnings": [],
+        "summary": "EV-0136 screening/valid"
+      }
+    },
+    {
+      "rule": "8",
+      "level": "screening",
+      "summary": "Rule8 BoolQ secondary:gain32=+2.0pp[-0.8,4.9];gain128=exact11/250=+4.4pp[1.5,6.8];own-normal swap drop128=6.5pp[3.4,9.5025]>=gain128/2=2.2pp.With informative BoolQ,this meets the r128 task-level point gates only.Primary PIQA does not meet support,so overall reducer=inconclusive_secondary_only,eligible_edge=null.The locked rule calls for two new BoolQ-seed replications before a conclusion;none launched or authorized by this evidence.",
+      "attempts": [
+        "ATT-0288-1",
+        "ATT-0290-1",
+        "ATT-0291-1",
+        "ATT-0292-1",
+        "ATT-0302-1",
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0266",
+        "RES-0275",
+        "RES-0276",
+        "RES-0277",
+        "RES-0279",
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "8",
+        "id": "EV-0137",
+        "warnings": [],
+        "summary": "EV-0137 screening/valid"
+      }
+    },
+    {
+      "rule": "9",
+      "level": "screening",
+      "summary": "Rule9 macro accuracy and answer NLL are descriptive only.Keep r32/r128 both macro67.60%;macro gain over the better matched control=+2.25pp[0.5,3.95]/+3.05pp[1.35,4.55].Final analysis contains every task/condition NLL and shared paired interval.No hypothesis status change;no supports/challenges edge;all16compute attempts cost2.595972nodeh(native),2.595972222exact scheduler basis,under3.",
+      "attempts": [
+        "ATT-0303-1"
+      ],
+      "results": [
+        "RES-0280"
+      ],
+      "record": {
+        "rule": "9",
+        "id": "EV-0138",
+        "warnings": [],
+        "summary": "EV-0138 screening/valid"
+      }
+    }
+  ]
+}

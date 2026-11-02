@@ -1,0 +1,156 @@
+{
+  "task": "T-0028",
+  "experiment": "E-0025@1",
+  "source": "7d8b3464b6145504d155268f4c667fa3ecc53b00",
+  "review": "RV-0079",
+  "coverage_decision": "D-0049",
+  "audit": {
+    "attempt": "ATT-0286-1",
+    "result": "RES-0264",
+    "pbs": "3771591.opbs",
+    "seconds": 17
+  },
+  "imports": [
+    {
+      "result": "RES-0259",
+      "attempt": "ATT-0277-1",
+      "mismatches": [],
+      "verification_scope": "7 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+      "summary": "RES-0259 complete for ATT-0277-1 (checked: 7 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+    },
+    {
+      "result": "RES-0260",
+      "attempt": "ATT-0278-1",
+      "mismatches": [],
+      "verification_scope": "13 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+      "summary": "RES-0260 complete for ATT-0278-1 (checked: 13 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+    },
+    {
+      "result": "RES-0261",
+      "attempt": "ATT-0279-1",
+      "mismatches": [],
+      "verification_scope": "15 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+      "summary": "RES-0261 complete for ATT-0279-1 (checked: 15 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+    },
+    {
+      "result": "RES-0262",
+      "attempt": "ATT-0280-1",
+      "mismatches": [],
+      "verification_scope": "13 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+      "summary": "RES-0262 complete for ATT-0280-1 (checked: 13 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+    },
+    {
+      "result": "RES-0263",
+      "attempt": "ATT-0281-1",
+      "mismatches": [],
+      "verification_scope": "13 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+      "summary": "RES-0263 complete for ATT-0281-1 (checked: 13 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+    },
+    {
+      "result": "RES-0264",
+      "attempt": "ATT-0286-1",
+      "mismatches": [],
+      "verification_scope": "1 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit",
+      "summary": "RES-0264 complete for ATT-0286-1 (checked: 1 read_locally; fields not reported: config_ref, data_revision, model_revision, metric, environment_ref, code_ref.commit)"
+    }
+  ],
+  "summary": {
+    "SEG-00": {
+      "piqa": {
+        "accuracy": 0.661,
+        "correct": 661,
+        "total": 1000,
+        "nll": 3.52468993802316
+      },
+      "boolq": {
+        "accuracy": 0.609,
+        "correct": 609,
+        "total": 1000,
+        "nll": 3.2422465912103653
+      },
+      "macro_accuracy": 0.635,
+      "macro_nll": 3.383468264616763
+    },
+    "SEG-01": {
+      "piqa": {
+        "accuracy": 0.669,
+        "correct": 669,
+        "total": 1000,
+        "nll": 3.052494123406454
+      },
+      "boolq": {
+        "accuracy": 0.638,
+        "correct": 638,
+        "total": 1000,
+        "nll": 0.6412898557335138
+      },
+      "macro_accuracy": 0.6535,
+      "macro_nll": 1.846891989569984
+    },
+    "SEG-02": {
+      "piqa": {
+        "accuracy": 0.694,
+        "correct": 694,
+        "total": 1000,
+        "nll": 2.8227210721046907
+      },
+      "boolq": {
+        "accuracy": 0.658,
+        "correct": 658,
+        "total": 1000,
+        "nll": 0.667019156657625
+      },
+      "macro_accuracy": 0.6759999999999999,
+      "macro_nll": 1.7448701143811578
+    },
+    "SEG-03": {
+      "piqa": {
+        "accuracy": 0.678,
+        "correct": 678,
+        "total": 1000,
+        "nll": 3.0567270315624686
+      },
+      "boolq": {
+        "accuracy": 0.612,
+        "correct": 612,
+        "total": 1000,
+        "nll": 0.6685583806175273
+      },
+      "macro_accuracy": 0.645,
+      "macro_nll": 1.862642706089998
+    },
+    "SEG-04": {
+      "piqa": {
+        "accuracy": 0.674,
+        "correct": 674,
+        "total": 1000,
+        "nll": 3.0144002645229526
+      },
+      "boolq": {
+        "accuracy": 0.642,
+        "correct": 642,
+        "total": 1000,
+        "nll": 0.8140787698580534
+      },
+      "macro_accuracy": 0.658,
+      "macro_nll": 1.9142395171905031
+    }
+  },
+  "checks": {
+    "initial_identity": true,
+    "reload_identity": true,
+    "no_channel_identity": true,
+    "full_dev_and_curves": true,
+    "checkpoint_binding": true,
+    "sample_order_budget_LR_accounting": true,
+    "iv_off_pending": true
+  },
+  "task_measured_mig_seconds_before_IV": 19406,
+  "task_exact_node_h_before_IV": 1.3476388888888888,
+  "task_native_rounded_node_h_before_IV": 1.34763875,
+  "cap_node_h": 3,
+  "current_intervention_attempt": "ATT-0287-1",
+  "current_intervention_job": "3771652.opbs",
+  "r128_released": false,
+  "scientific_decision": "await complete interventions and locked analysis; no hypothesis status change"
+}
