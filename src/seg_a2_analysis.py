@@ -14,6 +14,7 @@ from rb_history import donor_indices
 from seg_a2_data import ARMS, CONTRACT, SEEDS, OPENING_PROTOCOL_DECISION, verify_lock, confirmation_decision
 from seg_a2_rules import IMPLEMENTATION_CHECKS, analyze as apply_rules
 from seg_a2_descriptive import describe_a2, describe_dev, compare_dev_to_e0027, load_e0027_dev_reference
+from seg_a2_attempt_audit import audit_attempts
 from seg_artifacts import validate_rows as validate_dev_rows
 
 TASKS = ('piqa', 'boolq')
@@ -313,6 +314,8 @@ def analyze(inputs, lock_path, lock_sha256):
         verified[seed] = _verify_eval(seed, inputs['evaluations'][str(seed)], lock, lock_path,
                                       lock_sha256, expected_id_order)
     decision = shared_confirmation_decision(verified)
+    attempt_audit = audit_attempts(inputs['accounted_attempts'], inputs['evaluations'],
+                                   lock_sha256, confirmation_decision=decision)
     # Cross-seed A2 membership, gold labels, and tokenization must be paired.
     canonical_rows = verified[3]['base_rows']
     canonical = [(r['task'], r['id'], r['gold'], r['gold_loss_tokens']) for r in canonical_rows]
@@ -367,6 +370,7 @@ def analyze(inputs, lock_path, lock_sha256):
     return {**result, 'contract': CONTRACT, 'hypothesis': 'H-0029@1', 'stage': 'final',
             'lock': {'path': str(lock_path), 'sha256': lock_sha256}, 'seeds': seed_reports,
             'confirmation_decision': decision,
+            'attempt_audit': attempt_audit,
             'descriptive': {'a2': a2_descriptive, 'dev': dev_descriptive,
                 'e0027_dev_reference': prior_dev,
                 'dev_difference_from_e0027': compare_dev_to_e0027(dev_descriptive, prior_dev)},
@@ -406,6 +410,7 @@ def main():
     finally:
         _write_json(output / 'manifest.json', {
             'status': 'complete' if passed else 'partial', 'contract': CONTRACT,
+            'stage': 'analysis',
             'spec_digest': os.environ['SR_SPEC_DIGEST'],
             'metrics': {'elapsed_s': time.monotonic() - started, 'bootstrap.repeats': 10000,
                         'bootstrap.seed': 20261101, 'confirmation_evaluated': passed,

@@ -236,3 +236,42 @@ runbook. Reviewed files are frozen. Next: inspect that answer, obtain the
 coordinator's disposition if medium findings remain, and only after a passing
 review register the twelve formal training runs at the covered source.
 A2 remains sealed, and no formal training has been registered.
+
+## Formal training registration and analysis-only follow-up
+
+RV-0098 passed at f741952. Its one remaining low finding is being fixed in a
+separate analysis-only change under MSG-0962; the training path stays at the
+reviewed immutable f741952 snapshot. The new audit examines every accounted
+attempt's manifest/receipt metadata, rejects duplicate complete openings for
+a seed, permits and lists partial opened engineering attempts, and discovers
+lock-matching dev-replay/profile-miss attempts omitted from accounting. Two
+required synthetic cases plus accounting regressions are added. This change
+requires its own PBS checks and a new-round review before lock creation.
+
+The twelve formal RunSpecs were prepared as RUN-0379 through RUN-0390.
+Their initial attempts inherited stale lineage warnings despite the current
+files having passed other reviews. The coordinator resolved the exact version
+coverage in MSG-0964: add explicit reviews RV-0081, RV-0082, RV-0088,
+RV-0092, RV-0094 and RV-0095. Replacement attempts retain the same immutable
+RunSpecs and are checked as covered. The initial, unsubmitted preparations
+are recorded cancelled with no PBS job/allocation/workload; they are distinct
+from executed experiment failures. The authoritative submission table is
+`/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0033/training-submissions.json`.
+All twelve checked submission plans use short-mig, one instance each, 3h10m
+for Keep and 1h30m for the other arms, with one expected-12 notification group.
+
+All twelve covered replacement attempts were submitted at f741952 as jobs
+3780692/3780693/3780695/3780697/3780698/3780700/3780702/3780703/
+3780705/3780711/3780718/3780721.opbs. Notification
+`N-20261103-040731-ab87` (`T0033-formal-training`) is sealed with 12 members
+and early failure enabled; notifyd is running and its listener was sent to the
+coordinator in MSG-0965. The latest observation at 04:11 JST found eleven
+running, with seed-5 SEG-07 (3780721) queued for Qlist resources. Initial and
+start observations are imported; running/queued usage remains pending.
+
+The twelve superseded preparations have no PBS job or workload. U-0388
+collectively reports their known zero allocation usage as `reported`, distinct
+from measured scheduler usage. They have no execution manifests; executable
+attempt accounting uses the submitted -2 attempts. All preparation cancellation
+records remain in the research records. Exact mapping and immutable RunSpec
+digests are in `research/notes/T-0033-training-runs.json` and the central table.

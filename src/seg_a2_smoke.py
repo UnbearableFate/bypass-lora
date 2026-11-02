@@ -29,7 +29,7 @@ FILES = ['src/test_seg_seeds.py', 'src/test_seg_rules.py', 'src/test_seg_data.py
          'src/test_seg_artifacts.py', 'src/test_seg_analysis.py', 'src/test_core.py', 'src/test_rb_core.py',
          'src/test_seg_a2_data.py', 'src/test_seg_a2_predata.py', 'src/test_seg_a2_rules.py',
          'src/test_seg_a2_eval.py', 'src/test_seg_a2_analysis.py', 'src/test_seg_a2_lock.py',
-         'src/test_seg_a2_descriptive.py']
+         'src/test_seg_a2_descriptive.py', 'src/test_seg_a2_attempt_audit.py']
 NEW_ARMS = ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07')
 NEW_SEEDS = (3, 4, 5)
 CAP_NODE_H = 5.5
