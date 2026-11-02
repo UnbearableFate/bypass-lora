@@ -54,7 +54,10 @@ def vectors_from_counts(seed_counts):
 
 
 def test_exact_point_quantities_and_fixed_sequence_secondary_gate(monkeypatch):
-    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 32)
+    # Use the locked number of draws for a percentile-boundary assertion:
+    # with only 32 draws the 2.5% linearly interpolated quantile can be >0
+    # even when one draw has zero lora gain.
+    monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 10_000)
     counts = {s: counts_for(gain=100, lora=2, swap=3) for s in rules.SEEDS}
     rows = vectors_from_counts(counts)
     result = rules.analyze(counts, passing_checks(), (590, 1000), rows)
@@ -63,7 +66,8 @@ def test_exact_point_quantities_and_fixed_sequence_secondary_gate(monkeypatch):
     assert result['per_seed']['3']['swap']['numerator'] == 3
     assert result['direction'] == 'supported'
     assert result['rules']['6']['evaluated'] is True
-    assert result['secondary_confirmed'] is False  # L and its lower bound do not clear zero.
+    assert result['ci95']['L'][0] == 0
+    assert result['secondary_confirmed'] is False  # Positive L alone is insufficient.
 
 
 def test_bootstrap_uses_shared_indices_and_recomputes_max_control_per_draw(monkeypatch):
@@ -127,7 +131,7 @@ def test_strict_interval_lower_boundary_is_not_supported(monkeypatch):
 def test_fixed_sequence_skips_lora_confirmation_without_primary_support(monkeypatch):
     monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 64)
     counts = {s: counts_for(gain=0, lora=100, total=1000) for s in rules.SEEDS}
-    rows = row_vectors(1000, lora_positions=range(100))
+    rows = vectors_from_counts(counts)
     result = rules.analyze(counts, passing_checks(), (590, 1000), rows)
     assert result['direction'] == 'challenged'
     assert result['rules']['6']['evaluated'] is False
@@ -170,7 +174,7 @@ def test_input_shape_and_invalid_boolean_checks_are_rejected(monkeypatch):
     monkeypatch.setattr(rules, 'BOOTSTRAP_REPEATS', 8)
     counts = {s: counts_for(total=10) for s in rules.SEEDS}
     rows = vectors_from_counts(counts)
-    with pytest.raises(ValueError, match='row count'):
+    with pytest.raises(ValueError, match='one-dimensional and match count totals'):
         rules.analyze(counts, passing_checks(), (6, 10), row_vectors(9))
     checks = passing_checks()
     checks[3]['path_dev_same_hardware'] = 1

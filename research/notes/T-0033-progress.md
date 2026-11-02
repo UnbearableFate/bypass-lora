@@ -37,3 +37,28 @@ formal training runs only after review and the <=5.5 node-hour projection pass.
 The A2 reader/evaluator/analysis is implemented but unreviewed and unexecuted.
 No A2 job may be submitted until all pre-opening checks pass and the coordinator
 confirms the committed A2 lock SHA256 with a decision.
+
+## Failed first preflight: ATT-0374-1
+
+PBS `3779857.opbs` ended with exit 1 after 73 scheduler seconds on mg1101,
+actual 2g.24gb. The deterministic suite reported 394 passed and three failed,
+all in the new rules tests. It stopped before loading task data or timing.
+Measured usage is U-0383: 0.020278 MIG-hour = 0.0050695 node-hour.
+
+The complete `checks.log` and inspected fixture code establish three causes:
+
+- The exact-quantity test asserted a zero lower secondary interval after only
+  32 draws. With numpy's linear quantile interpolation that is not guaranteed
+  even if one draw is zero. The test now uses the preregistered 10,000 draws
+  and explicitly asserts a zero lower bound; the positive point estimate alone
+  must still fail the secondary confirmation criterion.
+- The fixed-sequence test declared 500/600 correct rows but supplied unrelated
+  100/1-row vectors. Production correctly rejected the mismatch. The corrected
+  vectors are generated from the declared counts, so it reaches the intended
+  fixed-sequence gate with Keep identical to the better control.
+- The malformed-length test expected the text `row count`, while the correct
+  error is `one-dimensional and match count totals`. It now matches that exact
+  validation error.
+
+No production threshold, validation requirement or analysis behavior changed
+for these fixes. A fresh PBS preflight is required; no result is assumed.
