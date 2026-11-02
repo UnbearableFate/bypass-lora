@@ -341,3 +341,13 @@ results, undeclared receipts, truncated known/unknown-seed receipts, invalid
 known metadata and strict complete/non-final receipt validation. Only the
 analysis audit and its tests change; training remains f741952. Next: PBS
 checks at the fix commit, then the second review of RV-0099's round before lock.
+
+Hard-termination fix candidate:
+`4e6e8dfad40feb35fab60eecf7cf2df428083b1d`. Required full exact-source PBS
+checks RUN-0392 / ATT-0392-1 are running as `3780944.opbs`, debug-mig,
+2-minute walltime. Outputs `research/artifacts/ATT-0392-1/`; notification
+`N-20261103-043626-0ff8` is sealed and notifyd is running. The coordinator
+owns the listener and resumes this role on completion. After validating and
+importing the outputs and measured usage, request RV-0099's recheck. No
+training, evaluation, lock or primary-statistic path has changed in this fix;
+the twelve formal runs remain at f741952 under N-20261103-040731-ab87.
