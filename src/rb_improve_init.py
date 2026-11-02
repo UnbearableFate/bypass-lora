@@ -106,6 +106,13 @@ def mixed_gradient(p, d, valid):
     return p[valid].float().T @ d[valid].float()
 
 
+def basis_orthogonality_error(basis):
+    """Validate stored columns in FP64, independent of TF32 matmul settings."""
+    columns = basis.double()
+    return (columns.T @ columns - torch.eye(columns.shape[1], device=columns.device,
+                                            dtype=torch.float64)).abs().max().item()
+
+
 def scaled_subspace(gradient, covariance, random_z_sum_squares, reader, rank):
     if not torch.isfinite(gradient).all() or not torch.isfinite(covariance).all():
         raise ValueError('nonfinite initialization statistics')
@@ -113,7 +120,8 @@ def scaled_subspace(gradient, covariance, random_z_sum_squares, reader, rank):
     basis = left[:, :rank]
     if not singular.square().sum() > 0:
         raise ValueError('zero I-G task gradient')
-    orth_error = (basis.T @ basis - torch.eye(rank, device=basis.device)).abs().max().item()
+    orth_error = basis_orthogonality_error(basis)
+    fp32_product_error = (basis.T @ basis - torch.eye(rank, device=basis.device)).abs().max().item()
     projected = basis @ reader.Ro.detach()
     candidate_sum = reader.eta ** 2 * (projected * (covariance @ projected)).sum().item()
     if candidate_sum <= 0 or random_z_sum_squares <= 0:
@@ -121,6 +129,8 @@ def scaled_subspace(gradient, covariance, random_z_sum_squares, reader, rank):
     scale = (random_z_sum_squares / candidate_sum) ** .5
     energy = singular.square()
     return basis * scale, {'unscaled_orthogonality_max_error': orth_error,
+        'orthogonality_check_dtype': 'torch.float64',
+        'FP32_orthogonality_product_max_error_descriptive': fp32_product_error,
         'singular_values': singular.tolist(), 'top_rank_energy_fraction': float(energy[:rank].sum()/energy.sum()),
         'scale': scale, 'random_Z_sum_squares': random_z_sum_squares,
         'unscaled_Z_sum_squares': candidate_sum}

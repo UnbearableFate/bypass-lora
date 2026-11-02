@@ -8,7 +8,7 @@ from transformers import Qwen3Config, Qwen3ForCausalLM
 
 from bypass_core import LatentReader, elu_plus_one, process_sequence, rmsnorm_no_affine
 from bypass_model import BranchModel
-from rb_improve_init import (GradientCollector, full_value_prefix, grouped_query_projection,
+from rb_improve_init import (GradientCollector, basis_orthogonality_error, full_value_prefix, grouped_query_projection,
                              mixed_gradient, pair_qk, scaled_subspace)
 from rb_improve_read import read_statistics
 from rb_improve_train import backbone_only, init_check
@@ -158,6 +158,20 @@ def test_svd_basis_is_orthogonal_and_scaled_readout_matches_random_RMS():
     basis = value / info['scale']
     torch.testing.assert_close(basis.T @ basis, torch.eye(rank), rtol=1e-5, atol=1e-6)
     torch.testing.assert_close((reader.eta * p @ value).square().mean(), random_Z.square().mean(), rtol=1e-6, atol=1e-7)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA precision regression')
+def test_orthogonality_check_measures_stored_columns_even_when_TF32_is_enabled():
+    previous = torch.backends.cuda.matmul.allow_tf32
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        basis = torch.linalg.qr(torch.randn(1024, 32, device='cuda')).Q
+        assert basis_orthogonality_error(basis) < 1e-5
+        basis[:, 0].mul_(1.001)
+        # The unchanged1e-4 gate must still reject an actually non-unit column.
+        assert basis_orthogonality_error(basis) > 1e-3
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = previous
 
 
 @pytest.mark.parametrize('rank,expected', [(56, 917504), (48, 786432)])
