@@ -1,4 +1,4 @@
-"""E-0025/E-0027 training at the RB1 sample/optimizer budget; no confirmation reader."""
+"""E-0025/E-0027/E-0030 training at the RB1 budget; no confirmation reader."""
 import argparse
 from contextlib import contextmanager
 import gc
@@ -15,7 +15,7 @@ from calibrate import MODEL, REVISION
 from rb_data import plan_batches
 from rb_train import load_data
 from rb1_artifacts import verify_lr_lock
-from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES
+from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES, SEEDS
 from seg_eval import evaluate, token_losses
 from seg_model import (make_model, KEEP, FAMILIES, PARAMETERS, state_description, parameter_digest,
                        SEED_ARMS, contract)
@@ -51,7 +51,11 @@ def prepare_plan(args, tok, require_registered=True):
     lock = verify_lr_lock(args.lr_lock)
     if file_sha256(args.split_manifest) != lock['split_manifest_sha256']:
         raise ValueError('segmented split differs from the accepted RBc lock')
-    splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
+    if seed in (3, 4, 5) or getattr(args, 'preopening', False):
+        from seg_a2_predata import load_data as load_preopening
+        splits, excluded = load_preopening(args.data_dir, args.split_manifest, tok)
+    else:
+        splits, excluded = load_data(args.data_dir, args.split_manifest, tok)
     rb = seed_plan(splits, tok, seed, [(e['task'], e['id']) for e in excluded])
     metadata = plan_metadata(rb)
     registered = ORDER_SHA256_BY_SEED[seed]
@@ -187,7 +191,10 @@ def run(args):
             'model_revision': REVISION, 'tokenizer_revision': REVISION,
             'environment.lock_sha256': file_sha256(Path(__file__).resolve().parents[1]/'uv.lock'),
             'lr_lock.sha256': file_sha256(args.lr_lock), 'split_manifest.sha256': file_sha256(args.split_manifest),
-            'hardware': torch.cuda.get_device_name(), 'failed': False, 'seed': args.seed,
+            'hardware': torch.cuda.get_device_name(), 'exec.pbs_job_id': os.environ.get('PBS_JOBID'),
+            'hardware.cuda_visible_devices': os.environ.get('CUDA_VISIBLE_DEVICES'),
+            'torch': torch.__version__, 'cuda': torch.version.cuda,
+            'failed': False, 'seed': args.seed,
             'init_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'init', args.seed),
             'train_seed': derive_seed(BASE_SEED, STUDY, 'R1', 'train', args.seed)})
         write_json(out/'config.json', vars(args)); write_json(out/'excluded-train.json', excluded)
@@ -208,6 +215,10 @@ def run(args):
                 raise ValueError('zero initialized R_keep does not match Base_seg')
             write_json(out/'initial-base-predictions.json', base_preds)
             write_json(out/'initial-predictions.json', initial)
+        elif args.seed in (3, 4, 5):
+            im, initial, _ = evaluate(model, args.arm, splits, tok)
+            write_json(out/'initial-predictions.json', initial)
+            values['initial.dev_metrics'] = im
         if args.stage == 'train':
             def monitor(step, current):
                 m, p, _ = evaluate(current, args.arm, splits, tok)
@@ -228,6 +239,12 @@ def run(args):
             values['reload.identical'] = p == p2 and all(values[k] == v for k, v in m2.items())
             if not values['reload.identical']:
                 raise ValueError('segmented same-job reload differs')
+            if args.seed in (3, 4, 5) and args.arm == 'SEG-05':
+                om, off, oa = evaluate(model, args.arm, splits, tok, kind='iv_off')
+                values['off.identical_to_Base_seg'] = off == base_preds
+                if not values['off.identical_to_Base_seg']:
+                    raise ValueError('E-0030 dev iv_off differs from same-allocation Base_seg')
+                write_json(out/'iv-off-dev.json', {'metrics': om, 'predictions': off, 'audit': oa})
             write_json(out/'checkpoint.json', {name: {'path': str(out/'adapter'/name),
                 'sha256': file_sha256(out/'adapter'/name), 'bytes': (out/'adapter'/name).stat().st_size}
                 for name in ('config.json', 'adapter.pt')})
@@ -246,7 +263,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--arm', choices=('SEG-00', *FAMILIES), required=True)
     p.add_argument('--stage', choices=('train', 'base'), required=True)
-    p.add_argument('--seed', type=int, choices=(0, 1, 2), default=0)
+    p.add_argument('--seed', type=int, choices=SEEDS, default=0)
     p.add_argument('--data-dir', required=True)
     p.add_argument('--split-manifest', type=Path, required=True)
     p.add_argument('--lr-lock', type=Path, required=True)

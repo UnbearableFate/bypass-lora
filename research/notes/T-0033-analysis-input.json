@@ -1,0 +1,40 @@
+{
+  "evaluations": {
+    "3": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0399-2",
+    "4": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0397-1",
+    "5": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0398-2"
+  },
+  "observations": [
+    "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0033/ledger-observations-preanalysis.json"
+  ],
+  "accounted_attempts": [
+    "ATT-0374-1",
+    "ATT-0375-1",
+    "ATT-0376-1",
+    "ATT-0377-1",
+    "ATT-0378-1",
+    "ATT-0379-2",
+    "ATT-0380-2",
+    "ATT-0381-2",
+    "ATT-0382-2",
+    "ATT-0383-2",
+    "ATT-0384-2",
+    "ATT-0385-2",
+    "ATT-0386-2",
+    "ATT-0387-2",
+    "ATT-0388-2",
+    "ATT-0389-2",
+    "ATT-0390-2",
+    "ATT-0391-1",
+    "ATT-0392-1",
+    "ATT-0393-1",
+    "ATT-0394-1",
+    "ATT-0395-1",
+    "ATT-0396-1",
+    "ATT-0397-1",
+    "ATT-0398-1",
+    "ATT-0398-2",
+    "ATT-0399-1",
+    "ATT-0399-2"
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "note": "Control-plane accounting only; successful A2 costs remain timing projections, no A2 data read. No independent random-placement assumption.",
+  "training_node_h_measured": 4.101388750000001,
+  "diagnostics_node_h_measured": 0.055139,
+  "lock_node_h_measured": 0.0011805,
+  "dev_replay_mig_h_measured": 0.301111,
+  "dev_replay_node_h_measured": 0.07527775,
+  "completed_node_h_measured": 4.232986,
+  "a2_each_expected_seconds": 3063.0801663770676,
+  "a2_each_requested_seconds": 4800,
+  "analysis_expected_seconds": 90,
+  "analysis_requested_seconds": 180,
+  "full_expected_without_misses_node_h": 4.877377701328556,
+  "full_requested_success_walltime_bound_without_misses_node_h": 5.2454860000000005,
+  "cap_node_h": 5.5,
+  "miss_budget_if_reserving_all_remaining_requested_walltimes_node_h": 0.25451399999999946,
+  "miss_budget_minutes_if_reserving_all_remaining_requested_walltimes": 61.08335999999987,
+  "profile_miss_scenarios": [
+    {
+      "total_profile_misses": 0,
+      "extra_node_h_if_each_1_min": 0.0,
+      "extra_node_h_if_each_2_min": 0.0,
+      "full_expected_node_h_1_min_misses": 4.877377701328556,
+      "full_expected_node_h_2_min_misses": 4.877377701328556,
+      "full_requested_success_walltime_bound_node_h_1_min_misses": 5.2454860000000005,
+      "full_requested_success_walltime_bound_node_h_2_min_misses": 5.2454860000000005
+    },
+    {
+      "total_profile_misses": 20,
+      "extra_node_h_if_each_1_min": 0.08333333333333333,
+      "extra_node_h_if_each_2_min": 0.16666666666666666,
+      "full_expected_node_h_1_min_misses": 4.960711034661889,
+      "full_expected_node_h_2_min_misses": 5.044044367995223,
+      "full_requested_success_walltime_bound_node_h_1_min_misses": 5.328819333333334,
+      "full_requested_success_walltime_bound_node_h_2_min_misses": 5.4121526666666675
+    },
+    {
+      "total_profile_misses": 40,
+      "extra_node_h_if_each_1_min": 0.16666666666666666,
+      "extra_node_h_if_each_2_min": 0.3333333333333333,
+      "full_expected_node_h_1_min_misses": 5.044044367995223,
+      "full_expected_node_h_2_min_misses": 5.210711034661889,
+      "full_requested_success_walltime_bound_node_h_1_min_misses": 5.4121526666666675,
+      "full_requested_success_walltime_bound_node_h_2_min_misses": 5.578819333333334
+    },
+    {
+      "total_profile_misses": 60,
+      "extra_node_h_if_each_1_min": 0.25,
+      "extra_node_h_if_each_2_min": 0.5,
+      "full_expected_node_h_1_min_misses": 5.127377701328556,
+      "full_expected_node_h_2_min_misses": 5.377377701328556,
+      "full_requested_success_walltime_bound_node_h_1_min_misses": 5.4954860000000005,
+      "full_requested_success_walltime_bound_node_h_2_min_misses": 5.7454860000000005
+    }
+  ],
+  "enforcement": "Recompute measured cumulative cost plus all running/requested remaining successful A2 and analysis walltime before each new attempt. Stop and report if it would exceed 5.5 node-h, even before any larger consecutive-miss limit."
+}

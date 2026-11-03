@@ -1,0 +1,34 @@
+{
+  "training_source": "f7419525d12ff511845a11fae7ae0fae5100e8f7",
+  "deterministic_checks": {
+    "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0392-1/manifest.json",
+    "sha256": "4a05664cece7d733d3c9eba92738f6309bbe241a367ae678284a31c3a5f3992f",
+    "bytes": 2293
+  },
+  "smoke": {
+    "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0375-1/manifest.json",
+    "sha256": "ced4505f542913c3ad41cc70d59322af0106317717d6edd37463fa35e2a14203",
+    "bytes": 5817
+  },
+  "split_manifest": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0022/rb-confirmation.json",
+  "runs": {
+    "3": {
+      "SEG-04": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0380-2",
+      "SEG-05": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2",
+      "SEG-06": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0381-2",
+      "SEG-07": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0382-2"
+    },
+    "4": {
+      "SEG-04": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0383-2",
+      "SEG-05": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0384-2",
+      "SEG-06": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0385-2",
+      "SEG-07": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0386-2"
+    },
+    "5": {
+      "SEG-04": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0387-2",
+      "SEG-05": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0388-2",
+      "SEG-06": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0389-2",
+      "SEG-07": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0390-2"
+    }
+  }
+}
