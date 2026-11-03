@@ -654,3 +654,39 @@ unopened retry_profile_miss permits the automatic unchanged retry. Other
 engineering failures stop/report; same-profile dev failures or A2 encoding
 failures follow the consumed/invalid rules. Keep all prior failed attempts
 and their measured usage in the final frozen analysis accounting list.
+
+MSG-1000: both unchanged second attempts completed successfully. Independent
+metadata checks (no A2 score inspection) validate exact same-profile dev
+gates with zero mismatches, complete seven-condition outputs, off/Base
+identity, 1,000 encodable A2 rows per task and exactly one D-0073 receipt /
+provenance per selected seed under the unchanged cfd2e9b0 lock. Seed 3
+ATT-0399-2 ran on mg1109/1, actual 2g; seed 5 ATT-0398-2 ran on mg1109/3,
+actual 1g. No source/config/rule changes occurred. Selected complete roots
+are seed 3 ATT-0399-2, seed 4 ATT-0397-1, seed 5 ATT-0398-2; miss counters
+reset to zero after these completions, with both earlier misses preserved.
+
+Imported RES-0374 / U-0410 (seed 3, 00:38:30, 0.641667 MIG-hour) and
+RES-0375 / U-0411 (seed 5, 00:39:05, 0.651389 MIG-hour). Completed measured
+cost is now 4.70979175 node-hour. The analysis gate reserves three minutes,
+for 4.72229175 node-hour, below 5.5.
+
+The site ledger's paginated smooth-research export contains 82 observations
+and exactly 28 terminal measured usage records for every executed task
+attempt. Saved as central T-0033/ledger-observations-preanalysis.json; the
+twelve superseded unsubmitted training preparations (reported-zero U-0388)
+remain excluded from measured execution cost, as previously reviewed.
+Read-only analysis-input.json selects the complete roots and explicitly lists
+all 28 attempts, including diagnostics, lock, three replays and two profile
+misses. Input SHA256:
+`738931eda0438a668f21f08ebd5cec670053bb003f73d37202fe59b6b2a147c6`.
+A copy is committed as T-0033-analysis-input.json.
+
+Frozen analysis RUN-0400 / ATT-0400-1 is running as PBS 3782870.opbs,
+debug-mig/select=1, three-minute request from 90 expected seconds. Source
+4e6e8df is covered by RV-0100 and all required inherited reviews. Spec digest
+`blake2b:9c5c645e09bd4a1079ab9cbe06ed251c1ce983faf4ba10dc7dab80cca55bc9a1`.
+Notification N-20261103-092025-963f is sealed with early failure enabled.
+On completion validate the application result/hash/audits, import result and
+own measured usage, then deliver the exact emitted locked primary/secondary
+outcomes with full 29-attempt cost and evidence. No interpretation beyond the
+locked rules, no source changes and no hypothesis status mutation.
