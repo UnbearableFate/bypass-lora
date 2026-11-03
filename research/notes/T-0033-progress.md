@@ -690,3 +690,38 @@ On completion validate the application result/hash/audits, import result and
 own measured usage, then deliver the exact emitted locked primary/secondary
 outcomes with full 29-attempt cost and evidence. No interpretation beyond the
 locked rules, no source changes and no hypothesis status mutation.
+
+Final verification and delivery: ATT-0400-1 completed on confirmed mg1104,
+actual 2g.24gb, application validator passed. Frozen analysis SHA256 is
+`d9af79c3b8468fac6d66fad295682213d71af563c139927396db504c632e1b55`
+(718,377 bytes), matching analysis.sha256. Source/spec/input/lock/decision
+pins, exact selected-root receipt uniqueness, full 28-prior-attempt measured
+coverage and rules 1/2 passed. No unknown-seed openings or missing-manifest
+attempts were found. The frozen report is retained unchanged/read-only.
+
+Imported analysis RES-0376 and usage U-0412: 15 scheduler seconds,
+0.004167 MIG-hour = 0.00104175 node-hour. Full executed task cost including
+analysis is 18.843334 MIG-hour = **4.7108335 node-hour**, 29 terminal measured
+attempts, within 5.5. The preanalysis report's own-usage-pending marker remains
+unchanged; final ledger (85 observations / 29 usage records) and appended
+full cost are central T-0033/ledger-observations-final.json and
+delivery-cost.json. analysis-verified.json records the final audits.
+
+Exact frozen outcome: primary direction=inconclusive. G=61/3000,
++2.033333333333333 pp; accuracy-proportion CI95 [-0.003,
+0.03866666666666667]. Per-seed gains are +3.2/+1.0/+1.9 pp (descriptive).
+Secondary rule 6: evaluated=false, confirmed=false,
+reason=fixed_sequence_not_reached; L=23/750, +3.066666666666667 pp,
+CI95 [0.007325000000000008,0.05433333333333333], descriptive only. Mean
+BoolQ Keep−swap W=27/500=5.4 pp is descriptive. No interpretation beyond
+the locked rules and no hypothesis status mutation.
+
+Results are written to research/notes/T-0033-results.md from the emitted
+analysis, including exact raw outcome values, per-seed BoolQ and NLL,
+descriptive PIQA/macro/dev comparisons, provenance, limitations and all cost
+categories. EV-0174 is confirmatory/valid evidence of this inconclusive
+pre-specified outcome, without a support/challenge relation to H-0029.
+The intervals quantify A2 row sampling, not training-seed uncertainty.
+All referenced checkpoints and metadata are retained for coordinator review.
+Task delivery now awaits coordinator acceptance and its conclusion/status
+workflow; no further task experiment, code change or A2 read is proposed.
