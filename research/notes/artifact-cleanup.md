@@ -214,3 +214,18 @@ PBS 作业 3774200（debug-mig，脚本 `/work/xg24i002/x10041/bypass-lora-maint
 - 计划：`rl export`（data_version 5257）后，PBS 作业 3783356（debug-mig，8 秒）出计划。H-0029（E-0030，41 个 attempt，T-0033 accepted）gate closed，候选 7 项 0.121 GB，全部是已结束 attempt 的源码快照（e7b1c6c、967f551、61cd97b、909b5f0、f741952、3ae1974、4e6e8df），commit 都在 master 中；没有 hold，也没有 warning。
 - 审阅：E-0030 的 12 个 checkpoint（adapter，共 0.107 GB）与全部 manifest、predictions、锁定文件和锁定分析都在 research/artifacts/ 下，按 K1 不在本工具范围内。锁定文件记录了这些 checkpoint 的哈希，它们是确认性结果 EV-0174 的来源，体积也小，所以保留，不另行删除。D-0074 的重开条件要求新的封存确认集与新 seed 重训，不需要它们。按原计划执行，没有删减条目。
 - 执行：再做一次 `rl export`（records-apply/，data_version 5258），PBS 作业 3783386（debug-mig）按 confirm.txt 的 plan.json sha256（4c229fee...）执行 apply，exit=0，删除 7 项 0.121 GB；deletions.jsonl 有 apply-start、逐项 deleted 与 apply-end。之后 `rl doctor` 检查了 377 个封存对象，只报此前已知的两个未登记对象。
+
+## 13. 执行记录（2026-11-03 晚）：H-0030 至 H-0033
+
+触发：T-0034（E-0031）与 T-0035（E-0032）都已 accepted。H-0030、H-0031 记为 inconclusive 并 stop（D-0079，结论审核 RV-0111、RV-0112），普通设置下 RB1-09 改进线的阶段交付记为 stop（D-0080）；H-0032、H-0033 记为 challenged 并 stop（D-0078，结论审核 RV-0110 pass）。计划目录 `/work/xg24i002/x10041/bypass-lora-maintenance/artifact-cleanup/20261103-h0030-h0033`，工具仍取自快照 c5b961b（artifact_cleanup.py 此后没有改动）。
+
+- 计划：`rl export`（data_version 5764）后，PBS 作业 3789060（debug-mig，13 秒）按两个范围出计划，gate 都是 closed，没有 hold，也没有 warning。
+  - H-0030、H-0031（E-0031，21 个 attempt）：候选 15 项 0.090 GB（smoke 与正式训练的 adapter 共 10 个 0.025 GB，steps.jsonl 2 个 0.005 GB，源码快照 3 个 0.060 GB），保留 283 项 0.022 GB（metadata 与 predictions）。
+  - H-0032、H-0033（E-0032，14 个 attempt）：候选 6 项 0.121 GB，全部是源码快照。
+- 审阅：
+  - 9 个源码快照（6f85da7、aedd043、49f7009；640bac7、06d191f、322bee3、b0e7a8f、9aa4d79、5b0fad0）的 commit 都在 master 中，逐个用 `git merge-base --is-ancestor` 核对过。
+  - 被结果引用的候选只有 2 个 steps.jsonl（RES-0390、RES-0391），摘要已在 manifest 与 metrics 里，与第 10、11 节的处理一致。
+  - 正式训练的 H-QVU（ATT-0409-3）与 T0-QVU（ATT-0410-2）adapter 各约 3 MB。D-0079、D-0080 的重开条件要求新的决定与新的训练，没有点名它们；比较用的逐行预测、干预结果与锁定分析 ATT-0424-1 都保留。E-0031 复评的 E-0021 RB1 checkpoint 不属于这两个范围，没有变动。
+  - E-0032 的输出（含 smoke 与 5 条训练的 adapter，共 0.185 GB）都在 research/artifacts/ 下，按 K1 不在本工具范围内。锁定分析 ATT-0423-1 的 provenance 绑定了每条训练的 manifest、predictions 与 checkpoint.json，体积也小，所以与第 12 节的 E-0030 一样保留，不另行删除。
+  - 按原计划执行，没有删减条目。
+- 执行：再做一次 `rl export`（records-apply/，data_version 5765），PBS 作业 3789126（debug-mig，9 秒）按 confirm.txt 的两个 plan.json sha256（c498c8ef...、9bdca33b...）执行 apply，都 exit=0：H-0030、H-0031 删除 15 项 0.090 GB，H-0032、H-0033 删除 6 项 0.121 GB，共 21 项 0.211 GB。两份 deletions.jsonl 都有 apply-start、逐项 deleted 与 apply-end。之后 `rl doctor` 检查了 415 个封存对象，只报此前已知的两个未登记对象。
