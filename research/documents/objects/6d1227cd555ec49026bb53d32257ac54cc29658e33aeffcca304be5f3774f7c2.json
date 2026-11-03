@@ -1,0 +1,39 @@
+{
+  "analysis": {
+    "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0400-1/analysis.json",
+    "sha256": "d9af79c3b8468fac6d66fad295682213d71af563c139927396db504c632e1b55",
+    "bytes": 718377
+  },
+  "manifest_passed": true,
+  "source_commit": "4e6e8dfad40feb35fab60eecf7cf2df428083b1d",
+  "job_id": "3782870.opbs",
+  "allocation_host": "mg1104",
+  "decision": "D-0073",
+  "lock": {
+    "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0393-1/a2-lock.json",
+    "sha256": "cfd2e9b054c26da3d43ed22dbf0c410060599d6599d5fe88c4b8cfe1b78838c5"
+  },
+  "selected_attempts": {
+    "3": "ATT-0399-2",
+    "4": "ATT-0397-1",
+    "5": "ATT-0398-2"
+  },
+  "opened_complete_attempts_per_seed": {
+    "3": 1,
+    "4": 1,
+    "5": 1
+  },
+  "accounted_prior_attempts": 28,
+  "prior_measured_node_h": 4.70979175,
+  "all_executed_attempts_with_analysis": 29,
+  "full_measured_node_h": 4.710833499999999,
+  "emitted_direction": "inconclusive",
+  "emitted_secondary_rule": {
+    "L_ci_lower_positive": true,
+    "L_positive": true,
+    "confirmed": false,
+    "evaluated": false,
+    "level": "descriptive",
+    "reason": "fixed_sequence_not_reached"
+  }
+}

@@ -1,0 +1,252 @@
+{
+  "measured_attempts": 29,
+  "rows": [
+    {
+      "attempt": "ATT-0374-1",
+      "accounting_ref": "miyabi-pbs:3779857.opbs",
+      "quantity": 0.020278,
+      "unit": "mig_instance_hours",
+      "node_h": 0.0050695,
+      "source_ref": "resources_used.walltime=00:01:13 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0375-1",
+      "accounting_ref": "miyabi-pbs:3779991.opbs",
+      "quantity": 0.1,
+      "unit": "mig_instance_hours",
+      "node_h": 0.025,
+      "source_ref": "resources_used.walltime=00:06:00 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0376-1",
+      "accounting_ref": "miyabi-pbs:3780105.opbs",
+      "quantity": 0.020278,
+      "unit": "mig_instance_hours",
+      "node_h": 0.0050695,
+      "source_ref": "resources_used.walltime=00:01:13 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0377-1",
+      "accounting_ref": "miyabi-pbs:3780297.opbs",
+      "quantity": 0.02,
+      "unit": "mig_instance_hours",
+      "node_h": 0.005,
+      "source_ref": "resources_used.walltime=00:01:12 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0378-1",
+      "accounting_ref": "miyabi-pbs:3780390.opbs",
+      "quantity": 0.02,
+      "unit": "mig_instance_hours",
+      "node_h": 0.005,
+      "source_ref": "resources_used.walltime=00:01:12 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0391-1",
+      "accounting_ref": "miyabi-pbs:3780768.opbs",
+      "quantity": 0.02,
+      "unit": "mig_instance_hours",
+      "node_h": 0.005,
+      "source_ref": "resources_used.walltime=00:01:12 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0392-1",
+      "accounting_ref": "miyabi-pbs:3780944.opbs",
+      "quantity": 0.02,
+      "unit": "mig_instance_hours",
+      "node_h": 0.005,
+      "source_ref": "resources_used.walltime=00:01:12 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0382-2",
+      "accounting_ref": "miyabi-pbs:3780697.opbs",
+      "quantity": 0.991389,
+      "unit": "mig_instance_hours",
+      "node_h": 0.24784725,
+      "source_ref": "resources_used.walltime=00:59:29 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0383-2",
+      "accounting_ref": "miyabi-pbs:3780698.opbs",
+      "quantity": 0.954167,
+      "unit": "mig_instance_hours",
+      "node_h": 0.23854175,
+      "source_ref": "resources_used.walltime=00:57:15 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0386-2",
+      "accounting_ref": "miyabi-pbs:3780703.opbs",
+      "quantity": 0.913333,
+      "unit": "mig_instance_hours",
+      "node_h": 0.22833325,
+      "source_ref": "resources_used.walltime=00:54:48 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0381-2",
+      "accounting_ref": "miyabi-pbs:3780695.opbs",
+      "quantity": 1.041944,
+      "unit": "mig_instance_hours",
+      "node_h": 0.260486,
+      "source_ref": "resources_used.walltime=01:02:31 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0385-2",
+      "accounting_ref": "miyabi-pbs:3780702.opbs",
+      "quantity": 1.077778,
+      "unit": "mig_instance_hours",
+      "node_h": 0.2694445,
+      "source_ref": "resources_used.walltime=01:04:40 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0380-2",
+      "accounting_ref": "miyabi-pbs:3780692.opbs",
+      "quantity": 1.091667,
+      "unit": "mig_instance_hours",
+      "node_h": 0.27291675,
+      "source_ref": "resources_used.walltime=01:05:30 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0387-2",
+      "accounting_ref": "miyabi-pbs:3780705.opbs",
+      "quantity": 1.141111,
+      "unit": "mig_instance_hours",
+      "node_h": 0.28527775,
+      "source_ref": "resources_used.walltime=01:08:28 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0389-2",
+      "accounting_ref": "miyabi-pbs:3780718.opbs",
+      "quantity": 1.160833,
+      "unit": "mig_instance_hours",
+      "node_h": 0.29020825,
+      "source_ref": "resources_used.walltime=01:09:39 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0390-2",
+      "accounting_ref": "miyabi-pbs:3780721.opbs",
+      "quantity": 1.046389,
+      "unit": "mig_instance_hours",
+      "node_h": 0.26159725,
+      "source_ref": "resources_used.walltime=01:02:47 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0388-2",
+      "accounting_ref": "miyabi-pbs:3780711.opbs",
+      "quantity": 2.285278,
+      "unit": "mig_instance_hours",
+      "node_h": 0.5713195,
+      "source_ref": "resources_used.walltime=02:17:07 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0379-2",
+      "accounting_ref": "miyabi-pbs:3780693.opbs",
+      "quantity": 2.344444,
+      "unit": "mig_instance_hours",
+      "node_h": 0.586111,
+      "source_ref": "resources_used.walltime=02:20:40 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0384-2",
+      "accounting_ref": "miyabi-pbs:3780700.opbs",
+      "quantity": 2.357222,
+      "unit": "mig_instance_hours",
+      "node_h": 0.5893055,
+      "source_ref": "resources_used.walltime=02:21:26 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0393-1",
+      "accounting_ref": "miyabi-pbs:3781694.opbs",
+      "quantity": 0.004722,
+      "unit": "mig_instance_hours",
+      "node_h": 0.0011805,
+      "source_ref": "resources_used.walltime=00:00:17 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0394-1",
+      "accounting_ref": "miyabi-pbs:3781728.opbs",
+      "quantity": 0.091389,
+      "unit": "mig_instance_hours",
+      "node_h": 0.02284725,
+      "source_ref": "resources_used.walltime=00:05:29 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0395-1",
+      "accounting_ref": "miyabi-pbs:3781729.opbs",
+      "quantity": 0.103333,
+      "unit": "mig_instance_hours",
+      "node_h": 0.02583325,
+      "source_ref": "resources_used.walltime=00:06:12 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0396-1",
+      "accounting_ref": "miyabi-pbs:3781730.opbs",
+      "quantity": 0.106389,
+      "unit": "mig_instance_hours",
+      "node_h": 0.02659725,
+      "source_ref": "resources_used.walltime=00:06:23 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0397-1",
+      "accounting_ref": "miyabi-pbs:3781926.opbs",
+      "quantity": 0.606111,
+      "unit": "mig_instance_hours",
+      "node_h": 0.15152775,
+      "source_ref": "resources_used.walltime=00:36:22 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0398-1",
+      "accounting_ref": "miyabi-pbs:3782396.opbs",
+      "quantity": 0.004167,
+      "unit": "mig_instance_hours",
+      "node_h": 0.00104175,
+      "source_ref": "resources_used.walltime=00:00:15 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0399-1",
+      "accounting_ref": "miyabi-pbs:3782400.opbs",
+      "quantity": 0.003889,
+      "unit": "mig_instance_hours",
+      "node_h": 0.00097225,
+      "source_ref": "resources_used.walltime=00:00:14 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0399-2",
+      "accounting_ref": "miyabi-pbs:3782470.opbs",
+      "quantity": 0.641667,
+      "unit": "mig_instance_hours",
+      "node_h": 0.16041675,
+      "source_ref": "resources_used.walltime=00:38:30 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0398-2",
+      "accounting_ref": "miyabi-pbs:3782471.opbs",
+      "quantity": 0.651389,
+      "unit": "mig_instance_hours",
+      "node_h": 0.16284725,
+      "source_ref": "resources_used.walltime=00:39:05 x nvnodes-mig=1"
+    },
+    {
+      "attempt": "ATT-0400-1",
+      "accounting_ref": "miyabi-pbs:3782870.opbs",
+      "quantity": 0.004167,
+      "unit": "mig_instance_hours",
+      "node_h": 0.00104175,
+      "source_ref": "resources_used.walltime=00:00:15 x nvnodes-mig=1"
+    }
+  ],
+  "preanalysis_node_h": 4.70979175,
+  "analysis_node_h": 0.00104175,
+  "total_node_h": 4.710833499999999,
+  "total_mig_instance_hours": 18.843333999999995,
+  "conversion": "node_h = measured MIG instance hours * 0.25",
+  "cap_node_h": 5.5,
+  "within_cap": true,
+  "terminal_coverage_complete": true,
+  "reported_zero_unsubmitted_preparations": {
+    "usage_record": "U-0388",
+    "attempts": 12,
+    "included_in_measured_execution_cost": false
+  },
+  "source_ledger": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0033/ledger-observations-final.json",
+  "frozen_analysis_report_unmodified": true
+}

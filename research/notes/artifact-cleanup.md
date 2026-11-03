@@ -206,3 +206,11 @@ PBS 作业 3774200（debug-mig，脚本 `/work/xg24i002/x10041/bypass-lora-maint
   - H-0023 至 H-0026（E-0029，36 个 attempt）：候选 55 项 0.247 GB（checkpoint 41 个 0.138 GB，steps.jsonl 8 个 0.018 GB，源码快照 6 个 0.091 GB），保留 649 项 0.036 GB。
 - 审阅：被结果引用的候选只有 steps.jsonl（RES-0303 至 RES-0316、RES-0337 至 RES-0344），摘要已在 manifest 与 metrics 里，与第 10 节的处理一致。manifest、metrics、predictions 与两份锁定分析都保留。D-0066 至 D-0071 的重开条件都要求新的封存契约与新的训练，没有点名这些 checkpoint；H-0029 的 A2 确认用新 seed 重新训练，也不用它们。因此按原计划执行，没有删减条目。
 - 执行：再做一次 `rl export`（records-apply/，data_version 4811），PBS 作业 3779701（debug-mig，11 秒）按 confirm.txt 的两个 plan.json sha256（406084c3...、a9ce9bfe...）执行 apply，都 exit=0，共删除 92 项 0.353 GB；两份 deletions.jsonl 都有 apply-start、逐项 deleted 与 apply-end。之后 `rl doctor` 检查了 357 个封存对象，只报此前已知的两个未登记对象。
+
+## 12. 执行记录（2026-11-03 上午）：H-0029
+
+触发：E-0030 交付后 T-0033 accepted；H-0029 记为 inconclusive 并暂停（D-0074，结论审核 RV-0101 pass），分段线的阶段交付记为 pause（D-0075）。计划目录 `/work/xg24i002/x10041/bypass-lora-maintenance/artifact-cleanup/20261103-h0029`，工具仍取自快照 c5b961b（artifact_cleanup.py 此后没有改动）。
+
+- 计划：`rl export`（data_version 5257）后，PBS 作业 3783356（debug-mig，8 秒）出计划。H-0029（E-0030，41 个 attempt，T-0033 accepted）gate closed，候选 7 项 0.121 GB，全部是已结束 attempt 的源码快照（e7b1c6c、967f551、61cd97b、909b5f0、f741952、3ae1974、4e6e8df），commit 都在 master 中；没有 hold，也没有 warning。
+- 审阅：E-0030 的 12 个 checkpoint（adapter，共 0.107 GB）与全部 manifest、predictions、锁定文件和锁定分析都在 research/artifacts/ 下，按 K1 不在本工具范围内。锁定文件记录了这些 checkpoint 的哈希，它们是确认性结果 EV-0174 的来源，体积也小，所以保留，不另行删除。D-0074 的重开条件要求新的封存确认集与新 seed 重训，不需要它们。按原计划执行，没有删减条目。
+- 执行：再做一次 `rl export`（records-apply/，data_version 5258），PBS 作业 3783386（debug-mig）按 confirm.txt 的 plan.json sha256（4c229fee...）执行 apply，exit=0，删除 7 项 0.121 GB；deletions.jsonl 有 apply-start、逐项 deleted 与 apply-end。之后 `rl doctor` 检查了 377 个封存对象，只报此前已知的两个未登记对象。
