@@ -61,7 +61,7 @@ def test_no_channel_with_and_without_discarded_first_is_bitwise_identical(base, 
         assert torch.equal(direct.logits, discarded.logits)
 
 
-@pytest.mark.parametrize('arm', KEEP)
+@pytest.mark.parametrize('arm', ('SEG-02', 'SEG-05'))  # E-0025 R_keep arms; E-0032 in test_seg_w.py
 def test_zero_initialization_off_reset_self_donor_and_no_backbone_KV(base, arm, record_property):
     a, b = ids()
     with torch.no_grad(): expected = base(b, use_cache=False).logits

@@ -4,6 +4,8 @@ Total length (both segments) remains <=512. Candidate IDs and answer masks
 come directly from V1. Only independently tokenizing the PIQA seam can change
 prompt IDs. BoolQ's retained Passage prefix is exactly V1's.
 """
+import re
+
 from v1_data import _encode, encode_candidates
 
 ORDER_SHA256 = '33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf'
@@ -86,3 +88,43 @@ def segment_plan(rb_batches, splits, tok):
             current.append(dict(cache[key], epoch=old['epoch'], epoch_end=old['epoch_end']))
         batches.append(current)
     return batches
+
+
+# E-0032 segment-1 write rules, frozen before training (contract Design).
+# A segment-1 token is a sentence end when its own decoded text, with trailing
+# whitespace removed, ends in one of . ? ! optionally followed by closing quotes
+# or right parentheses, and the next segment-1 token's decoded text starts with
+# whitespace (or the token is the last segment-1 token). The last valid
+# segment-1 token always writes.
+
+WRITE_RULES = ('all', 'last', 'sentence_last')
+SENTENCE_END = re.compile('[.?!][)"\'”’）]*$')
+_TOKEN_TEXT = {}
+
+
+def token_text(tok, token_id):
+    key = (tok.name_or_path, len(tok), int(token_id))
+    if key not in _TOKEN_TEXT:
+        _TOKEN_TEXT[key] = tok.decode([int(token_id)], skip_special_tokens=False,
+                                      clean_up_tokenization_spaces=False)
+    return _TOKEN_TEXT[key]
+
+
+def sentence_ends(tok, ids):
+    texts = [token_text(tok, i) for i in ids]
+    return [SENTENCE_END.search(text.rstrip()) is not None and
+            (t+1 == len(texts) or texts[t+1][:1].isspace())
+            for t, text in enumerate(texts)]
+
+
+def segment1_write(tok, ids, rule):
+    """Boolean write mask over segment-1 tokens; None means every token writes."""
+    if rule not in WRITE_RULES:
+        raise ValueError('unknown segment-1 write rule')
+    if not ids:
+        raise ValueError('segment 1 must be nonempty')
+    if rule == 'all':
+        return None
+    mask = sentence_ends(tok, ids) if rule == 'sentence_last' else [False]*len(ids)
+    mask[-1] = True
+    return mask

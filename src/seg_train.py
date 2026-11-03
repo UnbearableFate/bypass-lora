@@ -16,9 +16,9 @@ from rb_data import plan_batches
 from rb_train import load_data
 from rb1_artifacts import verify_lr_lock
 from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES, SEEDS
-from seg_eval import evaluate, token_losses
+from seg_eval import evaluate, token_losses, arm_write
 from seg_model import (make_model, KEEP, FAMILIES, PARAMETERS, state_description, parameter_digest,
-                       SEED_ARMS, contract)
+                       SEED_ARMS, contract, E0032_ARMS, WRITE_RULE, SEG05_INITIAL_SHA256)
 from bypass_model import BranchModel
 from v1_run import lr_factor, preserved_evaluation_state, example_mean_objective, TrainingDiverged
 from v5_train import file_sha256, write_json, plan_metadata
@@ -94,6 +94,7 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
     totals = {'train.steps': 0, 'train.examples': 0, 'train.input_tokens': 0,
               'train.segment1_tokens': 0, 'train.segment2_tokens': 0, 'train.loss_tokens': 0}
     accounting, grad_seen, durations = Accounting(), set(), []
+    segment1_writes = []
     state_shapes, evaluation_seconds = {}, 0.
     forward_seconds = {'segment1': 0., 'segment2': 0.}
     torch.cuda.reset_peak_memory_stats()
@@ -104,7 +105,11 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
             optimizer.zero_grad(set_to_none=True)
             ce, events = 0., []
             for e in examples:
-                losses, parts, result = token_losses(model, arm, e, tok.pad_token_id, timing_events=events)
+                first_write = arm_write(tok, arm, e['segment1_ids']) if arm in KEEP else None
+                if arm in KEEP:
+                    segment1_writes.append(len(e['segment1_ids']) if first_write is None else sum(first_write))
+                losses, parts, result = token_losses(model, arm, e, tok.pad_token_id, timing_events=events,
+                                                     first_write=first_write)
                 if isinstance(model, BranchModel) and arm in KEEP:
                     state_shapes = state_description(result.cache.memory)
                 accounting.add(parts)
@@ -150,7 +155,10 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
                 assert c['valid_tokens'] == valid
                 assert c['attention'] == c['ffn'] == totals['train.examples']
                 expected = 0 if model.config.branch == 'kernel_tokenwise' else valid
-                assert c['writes'] == c['reads'] == expected
+                # E-0032: only segment-1 writes follow the registered mask; reads and
+                # segment-2 writes stay on every valid token.
+                writes = sum(segment1_writes) if phase == 'segment1' and expected else expected
+                assert c['reads'] == expected and c['writes'] == writes
     seconds = time.monotonic()-started-evaluation_seconds
     totals.update({'train.seconds': seconds, 'intermediate.seconds': evaluation_seconds,
         'train.steady_step_seconds': sum(durations[10:])/len(durations[10:]) if len(durations)>10 else None,
@@ -160,7 +168,14 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
         'state.M_c_bytes': sum(x['M_c_bytes'] for x in state_shapes.values()),
         'state.counts_bytes': sum(x['counts_bytes'] for x in state_shapes.values()),
         'train.forward_seconds': forward_seconds})
+    if segment1_writes:
+        totals['train.segment1_writes'] = write_summary(segment1_writes)
     return totals
+
+
+def write_summary(counts):
+    return {'examples': len(counts), 'total': sum(counts), 'mean': sum(counts)/len(counts),
+            'min': min(counts), 'max': max(counts)}
 
 
 @contextmanager
@@ -179,6 +194,7 @@ def run(args):
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
     values, passed, start = {}, False, time.monotonic()
     try:
+        e0032 = args.arm in E0032_ARMS
         if args.arm not in SEED_ARMS.get(args.seed, ()) or args.stage not in ('train', 'base'):
             raise ValueError('unknown segmented seed/arm/stage')
         if (args.stage == 'base') != (args.arm == 'SEG-00'):
@@ -203,18 +219,26 @@ def run(args):
         values['load.seconds'] = time.monotonic()-tick
         if args.arm != 'SEG-00':
             values['initial.adapter_sha256'] = parameter_digest(model)
+        if args.arm in WRITE_RULE:
+            values['initial.equals_SEG-05'] = values['initial.adapter_sha256'] == SEG05_INITIAL_SHA256[args.seed]
+            if not values['initial.equals_SEG-05']:
+                raise ValueError('write-mask arm does not start from the registered SEG-05 parameters')
         values['params.stored'] = PARAMETERS[args.arm]
         values['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        if args.arm in KEEP:
+        if args.arm in KEEP or e0032:
             # Same allocation and shape, before training. No cross-job bitwise gate.
+            # E-0032 rule 1: every new arm (Keep, Reset, T0) starts at Base_seg.
             with original_backbone(model) as base:
                 _, base_preds, _ = evaluate(base, 'SEG-00', splits, tok)
-            _, initial, _ = evaluate(model, args.arm, splits, tok)
+            _, initial, initial_audit = evaluate(model, args.arm, splits, tok)
             values['initial.identical_to_Base_seg'] = initial == base_preds
             if not values['initial.identical_to_Base_seg']:
                 raise ValueError('zero initialized R_keep does not match Base_seg')
             write_json(out/'initial-base-predictions.json', base_preds)
             write_json(out/'initial-predictions.json', initial)
+            if args.arm in WRITE_RULE:
+                values['dev.segment1_writes'] = write_summary(initial_audit['segment1_writes'])
+                write_json(out/'segment1-writes-dev.json', initial_audit['segment1_writes'])
         elif args.seed in (3, 4, 5):
             im, initial, _ = evaluate(model, args.arm, splits, tok)
             write_json(out/'initial-predictions.json', initial)
@@ -223,7 +247,8 @@ def run(args):
             def monitor(step, current):
                 m, p, _ = evaluate(current, args.arm, splits, tok)
                 write_json(out/f'dev-step-{step}.json', {'step': step, 'metrics': m, 'predictions': p})
-            values.update(train(model, args.arm, batches, tok, lr, out, monitor))
+            # E-0032 records only the final checkpoint's dev predictions (no curve evals).
+            values.update(train(model, args.arm, batches, tok, lr, out, None if e0032 else monitor))
             if values['params.with_grad'] != PARAMETERS[args.arm]:
                 raise ValueError('some segmented adapter parameters never received gradients')
             tick = time.monotonic(); model.export_adapter(out/'adapter')
@@ -239,12 +264,20 @@ def run(args):
             values['reload.identical'] = p == p2 and all(values[k] == v for k, v in m2.items())
             if not values['reload.identical']:
                 raise ValueError('segmented same-job reload differs')
-            if args.seed in (3, 4, 5) and args.arm == 'SEG-05':
+            if (args.seed in (3, 4, 5) and args.arm == 'SEG-05') or e0032:
                 om, off, oa = evaluate(model, args.arm, splits, tok, kind='iv_off')
                 values['off.identical_to_Base_seg'] = off == base_preds
                 if not values['off.identical_to_Base_seg']:
-                    raise ValueError('E-0030 dev iv_off differs from same-allocation Base_seg')
+                    raise ValueError('dev iv_off differs from same-allocation Base_seg')
                 write_json(out/'iv-off-dev.json', {'metrics': om, 'predictions': off, 'audit': oa})
+            if e0032 and args.arm in KEEP:
+                # E-0025/E-0027 iv_swap on the reloaded final checkpoint: segment-1-only
+                # within-task donor state (donor written under the same mask rule).
+                tick = time.monotonic()
+                sm, swap, sa = evaluate(model, args.arm, splits, tok, kind='iv_swap')
+                values['swap.seconds'] = time.monotonic()-tick
+                values.update({'swap.'+k: v for k, v in sm.items()})
+                write_json(out/'iv-swap-dev.json', {'metrics': sm, 'predictions': swap, 'audit': sa})
             write_json(out/'checkpoint.json', {name: {'path': str(out/'adapter'/name),
                 'sha256': file_sha256(out/'adapter'/name), 'bytes': (out/'adapter'/name).stat().st_size}
                 for name in ('config.json', 'adapter.pt')})
@@ -253,7 +286,8 @@ def run(args):
         values['elapsed_s'] = time.monotonic()-start
         artifacts = [{'path': str(p), 'role': p.name, 'sha256': file_sha256(p), 'bytes': p.stat().st_size}
                      for p in out.iterdir() if p.is_file() and p.name != 'manifest.json']
-        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': contract(args.seed),
+        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
+            'contract': contract(args.seed, args.arm),
             'arm': args.arm, 'seed': args.seed, 'phase': 'SEG', 'stage': args.stage,
             'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': values, 'artifacts': artifacts,
             'validator': {'name': 'segmented_training', 'passed': passed}})

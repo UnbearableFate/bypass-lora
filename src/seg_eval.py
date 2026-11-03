@@ -6,8 +6,8 @@ import torch
 import torch.nn.functional as F
 
 from rb_history import donor_indices
-from seg_data import encode_segments
-from seg_model import forward, first_forward
+from seg_data import encode_segments, segment1_write
+from seg_model import forward, first_forward, WRITE_RULE
 from v1_run import batch_tensors, EvaluationNonfinite
 
 
@@ -17,12 +17,26 @@ def tensors(encoded, pad_id):
     return first, torch.ones_like(first), second
 
 
+def arm_write(tok, arm, ids):
+    """The arm's registered segment-1 write mask (E-0032), or None (all tokens write)."""
+    return segment1_write(tok, ids, WRITE_RULE.get(arm, 'all'))
+
+
+def write_tensor(first_write, first):
+    if first_write is None:
+        return None
+    mask = torch.tensor([first_write], dtype=torch.bool, device=first.device)
+    if mask.shape != first.shape:
+        raise ValueError('segment-1 write mask length differs from segment 1')
+    return mask
+
+
 def token_losses(model, arm, encoded, pad_id, kind='normal', donor_memory=None, force_first=False,
-                 timing_events=None):
+                 timing_events=None, first_write=None):
     first, mask, second = tensors(encoded, pad_id)
     output, parts = forward(model, arm, first, mask, second['input_ids'], second['attention_mask'],
                             kind=kind, donor_memory=donor_memory, force_first=force_first,
-                            timing_events=timing_events)
+                            timing_events=timing_events, first_write=write_tensor(first_write, first))
     labels = second['labels'][:, 1:]
     valid = labels != -100
     losses = F.cross_entropy(output.logits[:, :-1][valid].float(), labels[valid], reduction='none')
@@ -42,23 +56,28 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal', split_name='dev
     start = time.monotonic()
     segment_seconds = {'segment1': 0., 'segment2': 0.}
     donor_seconds = 0.
+    writes = [] if arm in WRITE_RULE else None
     for ri, row in enumerate(rows):
         encoded = encode_segments(tok, row)
         audit.append(encoded[0]['seam'])
+        first_write = arm_write(tok, arm, encoded[0]['segment1_ids'])
+        if writes is not None:
+            writes.append(sum(first_write))
         donor_memory = None
         if donors is not None:
             donor = rows[donors[ri]]
             donor_encoded = encode_segments(tok, donor)[0]
             ids, mask, _ = tensors(donor_encoded, tok.pad_token_id)
+            donor_write = write_tensor(arm_write(tok, arm, donor_encoded['segment1_ids']), ids)
             torch.cuda.synchronize(); donor_tick = time.monotonic()
-            donor_memory = first_forward(model, ids, mask).cache.memory
+            donor_memory = first_forward(model, ids, mask, donor_write).cache.memory
             torch.cuda.synchronize(); donor_seconds += time.monotonic()-donor_tick
             donor_map.append({'task': row['task'], 'recipient': row['id'], 'donor': donor['id']})
         scores, sums, counts = [], [], []
         for candidate in encoded:
             events = []
             losses, _, _ = token_losses(model, arm, candidate, tok.pad_token_id, kind, donor_memory,
-                                        timing_events=events)
+                                        timing_events=events, first_write=first_write)
             total = losses.sum().item()
             for phase, begin, end in events:
                 segment_seconds[phase] += begin.elapsed_time(end)/1000
@@ -82,4 +101,5 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal', split_name='dev
     if not all(math.isfinite(float(x)) for x in metrics.values()):
         raise EvaluationNonfinite('nonfinite segmented evaluation aggregate')
     return metrics, predictions, {'elapsed_s': time.monotonic()-start, 'seams': audit, 'donors': donor_map,
-                                 'forward_seconds': segment_seconds, 'donor_forward_seconds': donor_seconds}
+                                 'forward_seconds': segment_seconds, 'donor_forward_seconds': donor_seconds,
+                                 **({} if writes is None else {'segment1_writes': writes})}

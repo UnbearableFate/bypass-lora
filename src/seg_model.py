@@ -16,26 +16,45 @@ from rb_train import adapter_config, LAYERS
 from v1_data import derive_seed
 from v1_lora import LoRAConfig, LoRAModel
 
-ARMS = tuple(f'SEG-{i:02}' for i in range(8))
-KEEP = ('SEG-02', 'SEG-05')
-RESET = ('SEG-03', 'SEG-06')
-T0 = ('SEG-01', 'SEG-07')
+# E-0032: SEG-W1/W2 change only SEG-05's segment-1 write positions; SEG-X5/X6/X7
+# are SEG-05/06/07 with the X tap (input_layernorm output feeds q, k and v).
+E0032_ARMS = ('SEG-W1', 'SEG-W2', 'SEG-X5', 'SEG-X6', 'SEG-X7')
+ARMS = (*(f'SEG-{i:02}' for i in range(8)), *E0032_ARMS)
+KEEP = ('SEG-02', 'SEG-05', 'SEG-W1', 'SEG-W2', 'SEG-X5')
+RESET = ('SEG-03', 'SEG-06', 'SEG-X6')
+T0 = ('SEG-01', 'SEG-07', 'SEG-X7')
+WRITE_RULE = {'SEG-W1': 'last', 'SEG-W2': 'sentence_last'}
+X_TAP = ('SEG-X5', 'SEG-X6', 'SEG-X7')
+R128 = ('SEG-05', 'SEG-06', 'SEG-07', *E0032_ARMS)
 FAMILIES = {**{a: 'RBc-R' for a in (*KEEP, *RESET)}, **{a: 'RBc-T' for a in T0}, 'SEG-04': 'RBc-L'}
 PARAMETERS = {'SEG-00': 0, **{f'SEG-{i:02}': 663552 for i in (1, 2, 3)},
-              'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)}}
+              'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)},
+              'SEG-W1': 2752512, 'SEG-W2': 2752512, **{a: 2228224 for a in X_TAP}}
 # E-0027 trains only the r128 triplet and LoRA_seg at new seeds; seed 0 is E-0025.
-SEED_ARMS = {0: ARMS, **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07') for s in (1, 2, 3, 4, 5)}}
+# E-0032 registers its five arms at seed 0 and (one variant, rule 4) seeds 1, 2.
+SEED_ARMS = {0: ARMS, **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07', *E0032_ARMS) for s in (1, 2)},
+             **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07') for s in (3, 4, 5)}}
+
+# RES-0281 (ATT-0304-1): SEG-05 initial adapter digests; E-0032 rule 1 requires
+# SEG-W1/W2 to start from exactly these parameters at the same seed.
+SEG05_INITIAL_SHA256 = {
+    0: 'f3fc8b76c81055f77e559a4df808218899b72a3716f47ea2f8e203062eb47cf5',
+    1: 'cfe01ba0cb7b2430f7cf0715d31eade2b56d2b8576ed132bc0bec2d8d959ff4e',
+    2: '5fe32303dadc74217f587b0eaa4534af022fd0adbd8bda8b26dc3cffeaa52e33'}
 
 
-def contract(seed):
+def contract(seed, arm=None):
     if seed not in SEED_ARMS:
         raise ValueError('unknown segmented seed')
+    if arm in E0032_ARMS:
+        return 'E-0032@1'
     return 'E-0025@1' if seed == 0 else 'E-0027@1' if seed in (1, 2) else 'E-0030@1'
 
 
 def config_for(arm):
     return replace(adapter_config('RB1-01' if arm in T0 else 'RB1-02'),
-                   rank=128 if arm in ('SEG-05', 'SEG-06', 'SEG-07') else 32)
+                   rank=128 if arm in R128 else 32,
+                   tap='direct_hidden' if arm in X_TAP else 'qknorm_pre_rope')
 
 
 def make_model(arm, checkpoint=None, seed=0):
@@ -95,19 +114,27 @@ def zero_exits(model, enabled):
             handle.remove()
 
 
-def first_forward(model, first_ids, first_mask):
-    out = model(input_ids=first_ids, attention_mask=first_mask, use_cache=False)
+def first_forward(model, first_ids, first_mask, first_write=None):
+    kwargs = {} if first_write is None else {'write_mask': first_write}
+    out = model(input_ids=first_ids, attention_mask=first_mask, use_cache=False, **kwargs)
     if out.cache.backbone is not None:
         raise ValueError('segment 1 exported backbone KV')
     return out
 
 
 def forward(model, arm, first_ids, first_mask, second_ids, second_mask,
-            kind='normal', donor_memory=None, force_first=False, timing_events=None):
+            kind='normal', donor_memory=None, force_first=False, timing_events=None,
+            first_write=None):
     if kind not in ('normal', 'iv_off', 'iv_reset', 'iv_swap'):
         raise ValueError('unknown segmented intervention')
-    if kind != 'normal' and arm not in KEEP:
-        raise ValueError('only R_keep has segmented interventions')
+    if kind not in ('normal', 'iv_off') and arm not in KEEP:
+        raise ValueError('only R_keep has segmented boundary interventions')
+    if kind == 'iv_off' and arm not in KEEP and arm not in E0032_ARMS:
+        raise ValueError('iv_off is registered for R_keep and the E-0032 arms')
+    if arm in WRITE_RULE and first_write is None:
+        raise ValueError('this arm writes segment 1 only through its registered mask')
+    if first_write is not None and (arm not in KEEP or first_write.shape != first_ids.shape):
+        raise ValueError('a segment-1 write mask needs an R_keep arm and the segment-1 shape')
     if kind != 'normal' and (model.training or torch.is_grad_enabled()):
         raise ValueError('segmented interventions require frozen no-grad evaluation')
     if (kind == 'iv_swap') != (donor_memory is not None):
@@ -124,7 +151,8 @@ def forward(model, arm, first_ids, first_mask, second_ids, second_mask,
         return result
     with zero_exits(model, kind == 'iv_off'):
         if arm in KEEP or force_first:
-            first = call('segment1', first_ids, first_mask)
+            first = call('segment1', first_ids, first_mask,
+                         **({} if first_write is None else {'write_mask': first_write}))
             if isinstance(model, BranchModel):
                 if first.cache.backbone is not None:
                     raise ValueError('segment 1 exported backbone KV')
