@@ -480,8 +480,8 @@ NODES = {
     "E-0032": {
         "title": "分段协议下的第 1 段写入范围与 X tap",
         "purpose": "同时检验 H-0032 与 H-0033：在 E-0025、E-0027 的分段协议下，第 1 段少写几次，或换成 X tap，能否让 Keep 明显强于 SEG-05，并且跨段收益本身变大、在两个新 seed 上复现。",
-        "did": "seed 0 训练五个 arm：SEG-W1、SEG-W2（Keep），SEG-X5、SEG-X6、SEG-X7（X tap 的 Keep、Reset、T0）；按预登记规则至多把一个变体放到 seed 1、2。BoolQ dev 为主，PIQA 只设不退化条款。预算 seed 0 至多 2.2、含复现上限 5.0 node·h；正式训练前要过代码审核。",
-        "result": "完成（T-0035，researcher-2，实测 2.275 node·h）。seed 0 的三个变体都没有通过筛选，按规则不复现；H-0032、H-0033 记为 challenged（D-0078，结论审核 RV-0110）。五个 arm 中 W1、X5、X6 在 1g 切片上训练，只作元数据。分段线按 D-0075 保持暂停。",
+        "did": "seed 0 训练五个 arm：SEG-W1、SEG-W2（Keep），SEG-X5、SEG-X6、SEG-X7（X tap 的 Keep、Reset、T0）；按预登记规则至多把一个变体放到 seed 1、2。BoolQ dev 为主，PIQA 只设不退化条款。预算 seed 0 至多 2.2（D-0077 因成本调到 2.35）、含复现上限 5.0 node·h；正式训练前要过代码审核。",
+        "result": "完成（T-0035，researcher-2，实测 2.275 node·h）。seed 0 的三个变体都没有通过筛选，按规则不复现；H-0032、H-0033 记为 challenged（D-0078，结论审核 RV-0110）。五个 arm 中 W1、X5、X6 在 1g 切片上训练，只作元数据。分段线按 D-0075 保持暂停。合并后的回归测试中，旧测试 test_model.py 仍按 E-0032 改动之前的 write_mask 约定断言，3 项失败；测试已按新约定改写（a1317f2，只改测试，实验代码不变），维护任务 T-0036（researcher-1）复核后保留这一改写，在 master 上重跑完整的合并后测试，604 项全部通过（PBS 3789321）。这不影响 E-0032 的结果。",
     },
 }
 
