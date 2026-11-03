@@ -1,0 +1,33 @@
+{
+  "task": "T-0034",
+  "experiment": "E-0031@1",
+  "source_commit": "aedd0436ad549f4b773c21c91206ebd995215ebd",
+  "review": "RV-0104",
+  "reviewed_scientific_paths_unchanged_from": "6f85da7aa8a8b540c47e8a386e3f37dc6714f785",
+  "run": "RUN-0404",
+  "attempt": "ATT-0404-1",
+  "spec_digest": "blake2b:7ecd849e082bdc8c304c76af6e19d94322a8891105e7a1bc9ee14336d2c5d345",
+  "job_id": "3786440.opbs",
+  "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3786440/record.json",
+  "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-correct-smoke-20261103-150954-86237d.log",
+  "script": "research/notes/T-0034-smoke.pbs",
+  "notification": "N-20261103-150955-8b0c",
+  "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-150955-8b0c --notifier miyabi-g2",
+  "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+  "requested_walltime": "00:25:00",
+  "expected_seconds": 1000,
+  "profile_scope": "actual1g/2g permitted only for bounded pre-review smoke; MSG1030; new formal training stays2g; historical checkpoint reproduction separate",
+  "prior_rejections": {
+    "attempts": [
+      "ATT-0401-1",
+      "ATT-0401-2"
+    ],
+    "results": [
+      "RES-0377",
+      "RES-0379"
+    ],
+    "scheduler_seconds": 3,
+    "native_mig_instance_hours": 0.000834,
+    "node_hours": 0.0002085
+  }
+}

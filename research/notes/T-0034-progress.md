@@ -77,3 +77,10 @@ diagnostics, not substitutes for full evaluation at the respective historical
 profiles (RB1-01/07/09:2g;RB1-02:1g). Do not claim a guaranteed relative1g/2g
 speed from these records; the cost forecast uses the measured actual profile
 and must be checked against the task cap including all previous failures.
+
+Correctness smoke is registered as RUN-0404/ATT-0404-1 at source
+aedd0436ad549f4b773c21c91206ebd995215ebd and submitted as PBS3786440.opbs
+through the MCP dry-run/commit flow. Notification N-20261103-150955-8b0c is
+sealed, notifyd is running, and coordinator owns the listener named in
+T-0034-correctness-smoke-job.json. Static bash -n/diff checks passed for the
+new launcher; runtime results and code-review findings are still pending.
