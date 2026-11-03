@@ -1,0 +1,65 @@
+[
+  {
+    "record_id": "miyabi-pbs:3786715.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T15:34:45+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3786715.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3786715.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3786715/record.json"
+    },
+    "attempt_id": "ATT-0406-1",
+    "occurred_at": "2026-11-03T15:34:44+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3786715.opbs:2",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T15:36:44+09:00",
+    "source_sequence": 2,
+    "execution_state": "running",
+    "outcome": "unknown",
+    "raw_state": "R",
+    "source_ref": "qstat -f 3786715.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3786715.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3786715/record.json"
+    },
+    "attempt_id": "ATT-0406-1",
+    "occurred_at": "2026-11-03T15:34:49+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3786715.opbs:3",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T15:51:46+09:00",
+    "source_sequence": 3,
+    "execution_state": "ended",
+    "outcome": "success",
+    "raw_state": "F Exit_status=0",
+    "source_ref": "qstat -H -f 3786715.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3786715.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3786715/record.json"
+    },
+    "attempt_id": "ATT-0406-1",
+    "occurred_at": "2026-11-03T15:47:41+09:00",
+    "usage": {
+      "accounting_ref": "miyabi-pbs:3786715.opbs",
+      "quantity": 0.213056,
+      "unit": "mig_instance_hours",
+      "resource_type": "gpu_mig_instance",
+      "hardware": "GH200 MIG 2g.24gb",
+      "basis": "measured",
+      "source_ref": "resources_used.walltime=00:12:47 x nvnodes-mig=1"
+    }
+  }
+]

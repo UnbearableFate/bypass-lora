@@ -42,3 +42,14 @@ def test_cli_gates_allocated_slice_and_preserves_failure_evidence(
     assert record['uuid'] == 'MIG-assigned'
     assert (tmp_path/'nvidia-smi-L.txt').read_text() == listing
     assert guard.os.environ['CUDA_VISIBLE_DEVICES'] == 'MIG-assigned'
+
+
+@pytest.mark.parametrize('listing,code',[(BAD,0),(GOOD,3)])
+def test_historical_1g_comparison_requires_the_actual_1g_uuid(monkeypatch,tmp_path,listing,code):
+    monkeypatch.setenv('CUDA_VISIBLE_DEVICES','MIG-assigned')
+    monkeypatch.setattr(guard.subprocess,'run',lambda *a,**k:
+        SimpleNamespace(stdout=listing,stderr='',returncode=0))
+    assert guard.main(['--output',str(tmp_path),'--expected-profile','1g.24gb']) == code
+    record = json.loads((tmp_path/'mig-profile.json').read_text())
+    assert record['expected_profile'] == '1g.24gb'
+    assert record['passed'] is (code == 0)

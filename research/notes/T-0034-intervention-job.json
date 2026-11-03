@@ -1,0 +1,50 @@
+{
+  "task": "T-0034",
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "review": "RV-0107",
+  "run": "RUN-0420",
+  "attempt": "ATT-0420-1",
+  "spec_digest": "blake2b:061cb97856da7b9ed6a6efe7685aabc4a42450f3e9ff1c4b46367e408111ea01",
+  "job_id": "3787063.opbs",
+  "execution_state": "ended",
+  "outcome": "cancelled",
+  "raw_state": "FINISH no-start",
+  "superseded": true,
+  "current_action": "Parent H-QVU failed its profile guard; PBS automatically cancelled this never-started child. Register a fresh intervention against the successful retry checkpoint; do not reuse RUN-0420 metadata naming ATT-0409-2.",
+  "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3787063/record.json",
+  "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-H-QVU-swap-20261103-161007-6e85ed.log",
+  "depend": "afterok:3786995.opbs",
+  "training_attempt": "ATT-0409-2",
+  "expected_profile": "2g.24gb",
+  "expected_seconds": 600,
+  "walltime": "00:15:00",
+  "notification": {
+    "id": "N-20261103-161008-77eb",
+    "name": "T0034-H-QVU-intervention",
+    "status": "open",
+    "sealed": true,
+    "jobs": [
+      "3787063.opbs"
+    ],
+    "expected": 1,
+    "when": "all_ended",
+    "queue": null,
+    "deadline": null,
+    "early_failure": true,
+    "notifier": "miyabi-g2",
+    "deliver": {
+      "method": "listener"
+    },
+    "message": "T-0034 H-QVU intervention ATT-0420-1 ended (depends afterok3786995). Resume researcher-1: inspect normal==training and full swap conditions, actual2g, import native observations/usage/result; then initial locked analysis only after both train arms and all historical matched-profile reevaluations complete. RB1-02 still needs actual1g after first profile rejection. Keep49f7009 source and1.3/2nodeh caps. See intervention-job.json and formal-jobs.json.",
+    "created_at": "2026-11-03T16:10:08+09:00"
+  },
+  "daemon": {
+    "notifier": "miyabi-g2",
+    "last_poll": "2026-11-03T16:06:48+09:00",
+    "daemon_running": true,
+    "poll_seconds": 300,
+    "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-161008-77eb --notifier miyabi-g2"
+  },
+  "continuation": "If parent3786995 fails, cancel the held child3787063 through MCP and record cancellation; never let it silently remain held. On success inspect normal==training, swap full dev, provenance/profile, import native usage/result, then initial locked analysis only after all train/ref data ready. Source stays49f7009."
+}

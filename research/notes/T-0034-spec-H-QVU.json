@@ -1,0 +1,21 @@
+{
+  "code_ref": {
+    "commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174"
+  },
+  "config_ref": "research/notes/T-0034-run.pbs",
+  "data_revision": "RB1 V1 split sha25634277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc; fixed R1 seed0 order; A2/official validation sealed",
+  "model_revision": "da87bfb608c14b7cf20ba1ce41287e8de496c0cd",
+  "environment_ref": "/work/xg24i002/x10041/bypass-lora/envs/3c916b51337d-cuda",
+  "metric": "E-0031@1 fixed dev1000 and calibration2048 per task; V1 candidate likelihood scoring; merged macro accuracy; locked implementation and provenance checks",
+  "seed": 0,
+  "arm": "H-QVU",
+  "params": {
+    "operation": "train",
+    "phase": "R1",
+    "seed": 0,
+    "expected_mig_profile": "2g.24gb",
+    "training_budget": "13115steps/26230examples/2000069inputtokens/387653loss_tokens",
+    "learning_rate": 0.001
+  },
+  "output_spec": "manifest.json; config and checkpoint inventory; step0 Base identity;25/50/75/100dev predictions;calibration predictions;exactdev/calibration reload;iv_off;training steps/accounting;actual2g profile"
+}

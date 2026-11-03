@@ -1,0 +1,24 @@
+{
+  "arm": "QVU-analysis-initial",
+  "seed": 0,
+  "code_ref": {
+    "commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174"
+  },
+  "config_ref": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0034/analysis-input-initial.json",
+  "config_digest": "blake2b:e391b263581229ce9aa55eab5766b8aefc418be11eb44aeb8d5c6307f83d7f78",
+  "data_revision": "RB1 V1 fixed dev1000/calibration2048 per task; retained original dev plus matched-profile calibration; split34277aa4627271dbf4e0bcb9592e3014c6130d87b1766caad17c2d6b97a8a7cc; A2/official validation sealed",
+  "model_revision": "da87bfb608c14b7cf20ba1ce41287e8de496c0cd",
+  "environment_ref": "/work/xg24i002/x10041/bypass-lora/envs/3c916b51337d-cuda",
+  "metric": "E-0031 locked rules1-10 exact rational macro-accuracy gates; descriptive paired bootstrap10000 seed20261101, separate split/task strata; initial conditional-control release analysis",
+  "params": {
+    "operation": "analysis",
+    "analysis_phase": "initial_rule6_release",
+    "profile_binding_evidence": "EV-0180",
+    "producer_H": "ATT-0409-3",
+    "producer_T0": "ATT-0410-2",
+    "selected_RB102": "ATT-0412-3",
+    "intervention": "ATT-0421-1",
+    "measured_ended_node_hours": 1.04451475
+  },
+  "output_spec": "manifest.json;analysis.json with every locked rule, merged/dev task accuracy and NLL, descriptive intervals,curves/runtime/provenance; initial rule6 trigger controls completeness. No scientific decision or hypothesis-status mutation."
+}

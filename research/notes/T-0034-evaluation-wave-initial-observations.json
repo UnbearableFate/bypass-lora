@@ -1,0 +1,74 @@
+[
+  {
+    "record_id": "miyabi-pbs:3788305.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T18:07:05+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3788305.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3788305.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788305/record.json"
+    },
+    "attempt_id": "ATT-0421-1",
+    "occurred_at": "2026-11-03T18:07:04+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3788306.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T18:07:07+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3788306.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3788306.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788306/record.json"
+    },
+    "attempt_id": "ATT-0412-3",
+    "occurred_at": "2026-11-03T18:07:06+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3788307.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T18:07:09+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3788307.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3788307.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788307/record.json"
+    },
+    "attempt_id": "ATT-0412-4",
+    "occurred_at": "2026-11-03T18:07:09+09:00"
+  },
+  {
+    "record_id": "miyabi-pbs:3788308.opbs:1",
+    "source": "miyabi-mcp",
+    "observed_at": "2026-11-03T18:07:12+09:00",
+    "source_sequence": 1,
+    "execution_state": "queued",
+    "outcome": "unknown",
+    "raw_state": "Q",
+    "source_ref": "qsub 3788308.opbs @miyabi-g2",
+    "execution_ref": {
+      "kind": "hpc_job",
+      "executor_namespace": "miyabi-pbs",
+      "opaque_id": "3788308.opbs",
+      "locator": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788308/record.json"
+    },
+    "attempt_id": "ATT-0412-5",
+    "occurred_at": "2026-11-03T18:07:11+09:00"
+  }
+]

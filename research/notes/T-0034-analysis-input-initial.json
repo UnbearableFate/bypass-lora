@@ -1,0 +1,181 @@
+{
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "status": "ready_for_initial_analysis",
+  "base_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1",
+  "references": {
+    "X-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1",
+    "X-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0322-1",
+    "RB1-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0239-1",
+    "RB1-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1",
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1"
+  },
+  "reevaluations": {
+    "RB1-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1",
+    "RB1-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0412-3",
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0414-2"
+  },
+  "training_runs": {
+    "H-QVU": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0409-3",
+    "T0-QVU": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0410-2"
+  },
+  "smoke_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0406-1",
+  "intervention_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0421-1",
+  "profile_bindings": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0034/profile-bindings-initial.json",
+  "producer_checks": {
+    "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+    "status": "ready_for_initial_analysis",
+    "applies_to": [
+      "initial_rule6_release_analysis",
+      "final_analysis"
+    ],
+    "reviewer_conditions": "RV-0107/MSG-1048",
+    "verified_available_arms": [
+      "RB1-01",
+      "RB1-02",
+      "RB1-07",
+      "RB1-09"
+    ],
+    "completed": {
+      "RB1-01": {
+        "arm": "RB1-01",
+        "attempt": "ATT-0411-1",
+        "result": "RES-0388",
+        "job": "3786999.opbs",
+        "profile": "2g.24gb",
+        "run_dir": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1",
+        "manifest": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1/manifest.json",
+          "sha256": "cb137cab368e9fe5f94dc1945ca868077b59d9e1703233e9e3ac44a939b2ccab"
+        },
+        "mig_profile": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1/mig-profile.json",
+          "sha256": "6d20739d4350d2aa2c10fe3285de872c2e1d0c58d3f78ddeabf09f7ac9e4aad1"
+        },
+        "provenance": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1/provenance.json",
+          "sha256": "f3948fdc5913b9d2da194e6d2cec9156099c5f2ee0435f095fe220a097bae064"
+        },
+        "guard_passed": true,
+        "same_profile": true,
+        "flips": 0,
+        "training_hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "evaluation_hardware": "NVIDIA GH200 120GB MIG 2g.24gb"
+      },
+      "RB1-02": {
+        "arm": "RB1-02",
+        "attempt": "ATT-0412-3",
+        "result": "RES-0400",
+        "job": "3788306.opbs",
+        "profile": "1g.24gb",
+        "run_dir": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0412-3",
+        "manifest": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0412-3/manifest.json",
+          "sha256": "0642699057c6cfa16d693513563c977d64beae46af930284eafc5663921b61a0"
+        },
+        "mig_profile": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0412-3/mig-profile.json",
+          "sha256": "86729a921fb746b796dcbee559fe83df3f2bad7ecce45f2a3ca7b7e24a72de8c"
+        },
+        "provenance": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0412-3/provenance.json",
+          "sha256": "9cd2546c55b9e1b1df80530a4bd93dc6037c8ac34ebcbf18cc222dd7f29e7ee4"
+        },
+        "guard_passed": true,
+        "same_profile": true,
+        "flips": 0,
+        "training_hardware": "NVIDIA GH200 120GB MIG 1g.24gb",
+        "evaluation_hardware": "NVIDIA GH200 120GB MIG 1g.24gb"
+      },
+      "RB1-07": {
+        "arm": "RB1-07",
+        "attempt": "ATT-0413-1",
+        "result": "RES-0389",
+        "job": "3787002.opbs",
+        "profile": "2g.24gb",
+        "run_dir": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1",
+        "manifest": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1/manifest.json",
+          "sha256": "58364f51d4e74a58ced8fcae8ca04527c80fa4384e026f81370052a811e6d98f"
+        },
+        "mig_profile": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1/mig-profile.json",
+          "sha256": "d2922db9225ce63b61287bd3500260c7854b7ae59a58cd70aa09992ce981ba3e"
+        },
+        "provenance": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1/provenance.json",
+          "sha256": "c31b1a862fed58a763b2052bbb7b37e79da497618627abb2f871101bdb0b1ccb"
+        },
+        "guard_passed": true,
+        "same_profile": true,
+        "flips": 0,
+        "training_hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "evaluation_hardware": "NVIDIA GH200 120GB MIG 2g.24gb"
+      },
+      "RB1-09": {
+        "arm": "RB1-09",
+        "attempt": "ATT-0414-2",
+        "result": "RES-0392",
+        "job": "3787113.opbs",
+        "profile": "2g.24gb",
+        "run_dir": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0414-2",
+        "manifest": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0414-2/manifest.json",
+          "sha256": "5ca02b6836f0ac089c48c6a13b6c1aca205b6ed0762f202b5572f674fb191372"
+        },
+        "mig_profile": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0414-2/mig-profile.json",
+          "sha256": "b6e0a144d3f3cfc579488118d288ffc3608e15190241dca3324d9cb65a274ffc"
+        },
+        "provenance": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0414-2/provenance.json",
+          "sha256": "9da23da314d0ce2b7acd5c60820d6c15d8d7dc6f36cb3cff997a080fad4b9d5f"
+        },
+        "guard_passed": true,
+        "same_profile": true,
+        "flips": 0,
+        "training_hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "evaluation_hardware": "NVIDIA GH200 120GB MIG 2g.24gb"
+      }
+    },
+    "unavailable": {},
+    "selected_RB102": {
+      "attempt": "ATT-0412-3",
+      "job": "3788306.opbs",
+      "selection": "minimum numeric job ID among successes; MSG1061/1063; fixed before reading scores"
+    },
+    "duplicate_RB102": {
+      "attempt": "ATT-0412-5",
+      "job": "3788308.opbs",
+      "result": "RES-0401",
+      "dev_sha256": "7f2bde91fcb508adabe047d704c1c7263945dc8b51b3fc5fe19bd06dfce9038f",
+      "calibration_sha256": "3c0edbf14efe909073d2ab208e4b93c6b8b511045bcee45749ecec13b3d20356",
+      "dev_and_calibration_files_byte_identical_to_selected": true,
+      "comparison_scope": "full prediction JSON files including membership/order/gold/prediction/candidate likelihoods/NLL/token counts"
+    },
+    "intervention": {
+      "attempt": "ATT-0421-1",
+      "job": "3788305.opbs",
+      "result": "RES-0399",
+      "producer": "ATT-0409-3",
+      "actual_profile": "2g.24gb",
+      "normal_prediction_keys_identical_to_training": true
+    },
+    "training_profiles": {
+      "H-QVU": {
+        "attempt": "ATT-0409-3",
+        "result": "RES-0390",
+        "profile": "2g.24gb"
+      },
+      "T0-QVU": {
+        "attempt": "ATT-0410-2",
+        "result": "RES-0391",
+        "profile": "2g.24gb"
+      }
+    },
+    "missing": [],
+    "requirements": "Recheck these constraints for EVERY analysis input including initial rule6 release and final conditional-control analysis. This input uses no unavailable exception or smoke reevaluation as producer."
+  },
+  "measured_ended_node_hours_before_analysis": 1.04451475
+}

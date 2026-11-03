@@ -1,0 +1,95 @@
+{
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "reviews": [
+    "RV-0107",
+    "RV-0094",
+    "RV-0095"
+  ],
+  "status": "prepared_not_submitted",
+  "runs": [
+    {
+      "arm": "H-QVU",
+      "operation": "train",
+      "profile": "2g.24gb",
+      "expected_seconds": 5194,
+      "walltime": "02:10:00",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-H-QVU.json",
+      "run": "RUN-0409",
+      "attempt": "ATT-0409-2",
+      "retired_preparation": "ATT-0409-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:75dd3a12038616e82a93eeedf3da8677e3b62c0dc6c8688011cf00834b1a12f8"
+    },
+    {
+      "arm": "T0-QVU",
+      "operation": "train",
+      "profile": "2g.24gb",
+      "expected_seconds": 4726,
+      "walltime": "02:00:00",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-T0-QVU.json",
+      "run": "RUN-0410",
+      "attempt": "ATT-0410-2",
+      "retired_preparation": "ATT-0410-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:5038b73affc13083a01355f8647c5c832523c5b6ed7dfb07c10fa197db4ea932"
+    },
+    {
+      "arm": "RB1-01",
+      "operation": "reevaluate",
+      "origin": "ATT-0239-1",
+      "profile": "2g.24gb",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-RB1-01.json",
+      "run": "RUN-0411",
+      "attempt": "ATT-0411-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:1b1ceca72283483e13455c93d1f5a7f74315b65e6e06312f15652e2acbdbbfb8"
+    },
+    {
+      "arm": "RB1-02",
+      "operation": "reevaluate",
+      "origin": "ATT-0240-1",
+      "profile": "1g.24gb",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "debug-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-RB1-02.json",
+      "run": "RUN-0412",
+      "attempt": "ATT-0412-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:1fb94f30d938b81a757c94191842e33d47247a27649b102cc35ef578f2f74d7f"
+    },
+    {
+      "arm": "RB1-07",
+      "operation": "reevaluate",
+      "origin": "ATT-0245-1",
+      "profile": "2g.24gb",
+      "expected_seconds": 500,
+      "walltime": "00:12:30",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-RB1-07.json",
+      "run": "RUN-0413",
+      "attempt": "ATT-0413-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:53e04fbb95933313472eddc2c84a33e3de8a8190a51d43dd9f38c1c749295996"
+    },
+    {
+      "arm": "RB1-09",
+      "operation": "reevaluate",
+      "origin": "ATT-0247-1",
+      "profile": "2g.24gb",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-RB1-09.json",
+      "run": "RUN-0414",
+      "attempt": "ATT-0414-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:32c29b0329d068043ef496c22bbdd208508feb7ccc7fb5759d72811c4da9605e"
+    }
+  ]
+}

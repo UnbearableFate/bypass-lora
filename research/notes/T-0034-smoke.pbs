@@ -1,0 +1,42 @@
+#!/bin/bash
+# Pre-review correctness/timing only. MSG-1030 allows an actual 1g or 2g slice.
+# Full historical prediction reproduction and all new formal arms are separate.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${QVU_PRIOR_NODE_HOURS:?measured prior use required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+LOCK="$SRC/research/artifacts/T-0024/lr-lock.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0034-correctness-smoke"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt"
+cd "$SRC"
+"$PY" - "$OUT" <<'PY'
+import json,os,subprocess,sys
+from pathlib import Path
+from mig_profile_guard import allocated_profile
+out=Path(sys.argv[1])
+listing=subprocess.run(['nvidia-smi','-L'],capture_output=True,text=True,check=True,timeout=10).stdout
+profile=allocated_profile(listing,os.environ.get('CUDA_VISIBLE_DEVICES'))
+if profile['profile'] not in ('1g.24gb','2g.24gb'):
+    raise ValueError('smoke requires one known1g/2g.24gb instance')
+profile.update(passed=True,scope='correctness and timing smoke only',pbs_job_id=os.environ['PBS_JOBID'])
+(out/'mig-profile.json').write_text(json.dumps(profile,indent=2)+'\n')
+PY
+exec "$PY" src/rb_qvu_smoke.py --project "$P" --split-manifest "$SPLIT" \
+  --lr-lock "$LOCK" --data-dir "$P/data/v1" --output "$OUT" --prior-node-hours "$QVU_PRIOR_NODE_HOURS"

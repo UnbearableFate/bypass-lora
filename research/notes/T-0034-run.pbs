@@ -1,0 +1,71 @@
+#!/bin/bash
+# E-0031 registered immutable-source entrypoints; submitted only via miyabi-mcp.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${QVU_JOB:?registered operation required}"
+P=/work/xg24i002/x10041/bypass-lora
+SRC="$P/snapshots/$SR_CODE_COMMIT"
+OUT="$P/runs/$SR_ATTEMPT_ID"
+PY="$P/envs/3c916b51337d-cuda/bin/python"
+SPLIT="$SRC/research/artifacts/T-0022/rb-confirmation.json"
+LOCK="$SRC/research/artifacts/T-0024/lr-lock.json"
+mkdir -p "$OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$P" call allocation_check '{"target_system":"Miyabi-G"}' > "$OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$OUT/allocation.json"
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SRC/src"
+export TMPDIR="/local/${PBS_JOBID}/t0034-${QVU_JOB}"
+mkdir -p "$TMPDIR"
+nvidia-smi -L > "$OUT/nvidia-smi.txt"
+cd "$SRC"
+# Comparable new arms must use 2g, matching X-01/RB1-07. A wrong allocation
+# exits before model work and is still charged. Historical reevaluations use
+# the respective training profiles, with all actual profile evidence retained.
+if [[ "$QVU_JOB" = smoke || "$QVU_JOB" = train || "$QVU_JOB" = intervention ]]; then
+  "$PY" src/mig_profile_guard.py --output "$OUT"
+elif [[ "$QVU_JOB" = reevaluate ]]; then
+  : "${QVU_ARM:?registered legacy arm required}"
+  expected_profile=2g.24gb
+  if [[ "$QVU_ARM" = RB1-02 ]]; then expected_profile=1g.24gb; fi
+  "$PY" src/mig_profile_guard.py --output "$OUT" --expected-profile "$expected_profile"
+fi
+case "$QVU_JOB" in
+  smoke)
+    : "${QVU_PRIOR_NODE_HOURS:?measured prior use required}"
+    exec "$PY" src/rb_qvu_smoke.py --project "$P" --split-manifest "$SPLIT" \
+      --lr-lock "$LOCK" --data-dir "$P/data/v1" --output "$OUT" --prior-node-hours "$QVU_PRIOR_NODE_HOURS"
+    ;;
+  train)
+    : "${QVU_ARM:?registered arm required}"
+    extra=()
+    if [[ "$QVU_ARM" = U-25 || "$QVU_ARM" = T0-U-25 ]]; then
+      : "${QVU_CONDITIONAL_ANALYSIS:?rule6 analysis required}"
+      extra+=(--conditional-analysis "$QVU_CONDITIONAL_ANALYSIS")
+    fi
+    exec "$PY" src/rb_qvu_train.py --stage train --arm "$QVU_ARM" --lr-lock "$LOCK" \
+      --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT" "${extra[@]}"
+    ;;
+  reevaluate|intervention)
+    : "${QVU_ARM:?registered arm required}"
+    : "${QVU_TRAIN_RUN:?pinned training run required}"
+    extra=()
+    if [[ "$QVU_JOB" = intervention ]]; then
+      : "${QVU_TRAIN_SOURCE:?reviewed training source required}"
+      extra+=(--training-source "$QVU_TRAIN_SOURCE")
+    fi
+    exec "$PY" src/rb_qvu_eval.py --arm "$QVU_ARM" --training-run "$QVU_TRAIN_RUN" \
+      --split-manifest "$SPLIT" --data-dir "$P/data/v1" --output "$OUT" "${extra[@]}"
+    ;;
+  analysis)
+    : "${QVU_ANALYSIS_INPUT:?registered analysis input required}"
+    exec "$PY" src/rb_qvu_analysis.py --input "$QVU_ANALYSIS_INPUT" --output "$OUT"
+    ;;
+  *) exit 2 ;;
+esac

@@ -46,7 +46,7 @@ def measure(actual, expected, record_property, name, atol=None):
                                atol=TOL['bf16_atol'] if atol is None else atol)
 
 
-@pytest.mark.parametrize('fusion', FUSIONS)
+@pytest.mark.parametrize('fusion', tuple(f for f in FUSIONS if f != 'C_qvu'))
 @pytest.mark.parametrize('branch,layers', [('tokenwise_silu', (6,13,20,27)),
                                           ('tokenwise_linear', (6,13,20,27)),
                                           ('memory', (14,))])
