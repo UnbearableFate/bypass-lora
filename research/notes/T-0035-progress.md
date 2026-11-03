@@ -108,3 +108,12 @@ T-0033 runbook) and for seg_data/seg_w_checks/test_seg_w relative to
 RV-0106. The shared modules are byte-identical to the E-0030 run source
 f741952 (git diff empty), and the seg_* files were reviewed in RV-0108
 (token cache correct) with the round closed by RV-0109 pass.
+
+## D-0077 (MSG-1058, decided before results, cost only)
+
+- Seed-0 sub-budget raised from 2.2 to 2.35 node-h; the 5.0 total (with
+  replication and failures) is unchanged.
+- Rule 7 mechanism description at its full contract scope.
+- Any seed-0 job failure: stop and report before rerunning (no rerun margin
+  in the pessimistic case).
+- Recompute replication cost from measured seed-0 jobs before seeds 1-2.
