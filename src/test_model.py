@@ -348,9 +348,11 @@ def test_support_delimiter_write_scope_and_capacity(base,backend):
         assert support.accounting[14]['side']['writes']==4
         assert state.counts.tolist()==[2,2]
         assert state.slot_count==(None if backend=='kernel_matrix' else 2)
-        for phase in ('query','F'):
-            with pytest.raises(ValueError,match='only accepted'):
-                model(ids,phase=phase,memory=support.cache.memory if phase=='query' else None,write_mask=delimiters)
+        with pytest.raises(ValueError,match='read-only query phase'):
+            model(ids,phase='query',memory=support.cache.memory,write_mask=delimiters)
+        # Since E-0032 (640bac7) an F-phase write_mask is accepted only by a fresh uncached KernelMatrix forward.
+        with pytest.raises(ValueError,match='fresh uncached KernelMatrix'):
+            model(ids,phase='F',use_cache=backend=='kernel_matrix',write_mask=delimiters)
         with pytest.raises(ValueError,match='explicit write_mask'):
             model(ids,phase='support')
         invalid=delimiters.clone(); invalid[:,0]=True
