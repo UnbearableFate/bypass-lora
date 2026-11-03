@@ -121,6 +121,20 @@ def test_X_replication_requires_its_own_learned_controls():
     assert unlearned['outcomes']['H-0033'] == 'inconclusive'
 
 
+def test_X_unlearned_new_seed_controls_block_a_replication_challenge():
+    # RV-0105 M1: mean new-seed delta-gain <= 0, but a new seed's X controls did not
+    # learn, so that seed's gain_X is descriptive only and H-0033 is inconclusive.
+    seed0 = {**BASE0, 'SEG-X5': (20, 60), 'X': (620, 600)}
+    unlearned = analyze(counts(seed0, x_new(-15, {1: 618, 2: 620})), CHECKS)
+    assert unlearned['rules']['5']['mean_dg_new']['pp'] <= 0
+    assert unlearned['rules']['5']['x_controls_unlearned'] is True
+    assert unlearned['rules']['5']['challenges'] is False
+    assert unlearned['outcomes']['H-0033'] == 'inconclusive'
+    learned = analyze(counts(seed0, x_new(-15, {1: 620, 2: 620})), CHECKS)
+    assert learned['rules']['5']['x_controls_unlearned'] is False
+    assert learned['outcomes']['H-0033'] == 'challenges'
+
+
 def test_seed0_challenges_and_invalid_implementation():
     result = analyze(counts({'SEG-W1': (0, 60), 'SEG-W2': (-3, 60), 'SEG-X5': (0, 60), 'X': (600, 600)}), CHECKS)
     assert result['outcomes'] == {'H-0032': 'challenges', 'H-0033': 'challenges'}

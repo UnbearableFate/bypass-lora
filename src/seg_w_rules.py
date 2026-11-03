@@ -114,7 +114,11 @@ def analyze(counts, checks):
                  'mean_delta_3seed_descriptive': number(sum(q[s]['delta'] for s in SEEDS)/3),
                  'mean_dg_3seed_descriptive': number(sum(q[s]['delta_gain'] for s in SEEDS)/3),
                  'per_seed': {str(s): describe(q[s]) for s in SEEDS}}
-        rule5['challenges'] = mean_dg <= 0
+        # Contract rule 5: a new seed where X's own controls did not learn makes that
+        # seed's gain_X descriptive only, so H-0033 is then inconclusive (no challenge).
+        x_unlearned = V == 'SEG-X5' and not all(q[s]['controls_learned'] for s in NEW_SEEDS)
+        rule5['x_controls_unlearned'] = x_unlearned
+        rule5['challenges'] = mean_dg <= 0 and not x_unlearned
 
     unsupported = {V: q0[V]['delta'] <= 0 for V in VARIANTS}
     outcomes = {}
