@@ -1,6 +1,7 @@
 """E-0031 PBS-only real counts, paired initialization, timing and budget forecast."""
 import argparse
 import gc
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -32,9 +33,11 @@ def run(args):
             raise ValueError('smoke child incomplete')
         return manifest['metrics']
     try:
+        if not math.isfinite(args.prior_node_hours) or args.prior_node_hours < 0:
+            raise ValueError('prior measured node-hours must be finite and nonnegative')
         with (out/'pytest.txt').open('w') as log:
             subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
-                'src/test_rb_qvu.py', 'src/test_rb_qvu_analysis.py', 'src/test_rb_tap.py',
+                'src/test_rb_qvu.py', 'src/test_rb_qvu_analysis.py', 'src/test_mig_profile_guard.py', 'src/test_rb_tap.py',
                 'src/test_rb_train.py', 'src/test_rb1_artifacts.py', 'src/test_rb1_intervene.py'],
                 check=True, stdout=log, stderr=subprocess.STDOUT)
         metrics['pytest_exit'] = 0
@@ -75,7 +78,10 @@ def run(args):
                     *(() if arm == 'RB1-07' else ('--eval-limit', '16')))
                 for arm,attempt in LEGACY.items()}
         calibration_s = refs['RB1-07']['calibration.seconds']
-        dev_s = refs['RB1-07']['dev_eval.seconds']
+        # LoRA dev timing is historically about5% below side-branch timing;
+        # reserve10% explicitly rather than treating it as a matched measurement.
+        measured_dev_s = refs['RB1-07']['dev_eval.seconds']
+        dev_s = measured_dev_s * 1.1
         training = {arm: value['train.steady_step_seconds']*13115 + 8*dev_s + 2*calibration_s +
             value['load.seconds'] + 30 for arm,value in arms.items()}
         # All four complete legacy reevaluations are reserved even though one was
@@ -84,15 +90,18 @@ def run(args):
         intervention_s = 3*dev_s + 30  # normal + swap (recipient and donor)
         smoke_s = time.monotonic()-tick
         initial = (sum(training[a] for a in ('H-QVU','T0-QVU')) + reevaluation_s +
-            intervention_s + smoke_s + 120)/14400
+            intervention_s + smoke_s + 120)/14400 + args.prior_node_hours
         conditional = initial + sum(training[a] for a in ('U-25','T0-U-25'))/14400
-        cost = {'contract':'E-0031@1', 'training_seconds':training, 'calibration_seconds':calibration_s,
+        cost = {'contract':'E-0031@1', 'source_commit':os.environ['SR_CODE_COMMIT'],
+            'prior_measured_node_hours':args.prior_node_hours,
+            'measured_LoRA_dev_seconds':measured_dev_s, 'dev_timing_reserve_factor':1.1,
+            'training_seconds':training, 'calibration_seconds':calibration_s,
             'dev_seconds':dev_s, 'reevaluation_seconds':reevaluation_s,
             'intervention_seconds':intervention_s, 'smoke_seconds':smoke_s,
             'analysis_and_retry_reserve_seconds':120, 'initial_node_hours':initial,
             'with_conditionals_node_hours':conditional, 'initial_cap':1.3, 'total_cap':2.0,
             'within_caps':initial <= 1.3 and conditional <= 2.0,
-            'method':'80 steady steps;13115 total;8 dev and2 calibration passes per arm;MIG-hours/4;full4 legacy reevaluations;3 intervention dev passes;smoke plus120seconds'}
+            'method':'80 steady steps;13115 total;8 dev and2 calibration passes per arm;LoRA dev timing x1.1 reserve;MIG-hours/4;full4 legacy reevaluations;3 intervention dev passes;this smoke plus120seconds;all prior measured node-hours added once'}
         write_json(out/'cost-estimate.json', cost)
         metrics.update({'arms':arms, 'references':refs, 'source_commit':os.environ['SR_CODE_COMMIT'],
             'hardware':torch.cuda.get_device_name(), 'initial_projected_node_hours':initial,
@@ -114,4 +123,5 @@ if __name__ == '__main__':
     p.add_argument('--lr-lock', type=Path, required=True)
     p.add_argument('--data-dir', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--prior-node-hours', type=float, required=True)
     run(p.parse_args())

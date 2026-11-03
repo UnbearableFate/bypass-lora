@@ -100,3 +100,25 @@ load; if one truly cannot load, add unavailable-reason fallback and recheck.
 Do not edit reviewed scientific files or move runs to current HEAD merely
 because later notes have been committed. The coordinator owns the existing
 N-20261103-150955-8b0c notification and will resume this role on completion.
+
+## MSG-1043: completed diagnostic smoke and required final revision
+
+ATT-0404-1 is ended/success, all76tests, real count/gradient/initialization
+checks,4training smoke children and4retained checkpoint children complete.
+Actual MIG1g.24gb on mg1102; native807s/0.224167 MIG-hours imported once;
+RES-0381 complete and EV-0175 diagnostic/valid. No scientific effect scores
+were used. The historical RB1-07 full-dev comparison had18cross-profile
+flips; do not substitute it for a2g reproduction. All other bounded legacy
+checks had0flips, including RB1-02 at its actual1g profile.
+
+Coordinator MSG-1043 now explicitly requires L2 fixed (supersedes the earlier
+conditional deferral), followed by a new review round and final-source smoke.
+The revised analysis accepts diagnostic unavailable-reason entries without
+blocking rules3/4, while RB1-07 remains mandatory. New regression tests run
+the analysis with an absent RB1-02 and check the primary mandatory guard.
+The smoke forecast now takes mandatory prior measured node-hours; initial
+prior is0.05625025 including all3ended attempts. Formal historical reevaluation
+launchers now guard2g for RB1-01/07/09 and1g for RB1-02; formal new arms stay2g.
+The final snapshot must be committed before its counted smoke and remain
+fixed for all subsequent scientific executions. Note-only HEAD changes are
+not execution-source changes. No formal training has started.

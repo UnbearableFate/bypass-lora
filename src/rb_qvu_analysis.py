@@ -106,8 +106,28 @@ def interval(comparisons, left, right):
     return {'estimate_pp':-value['estimate_pp'], 'ci95_pp':[-value['ci95_pp'][1],-value['ci95_pp'][0]]}
 
 
+def legacy_inputs(entries):
+    """Rule8 diagnostic failures do not remove the mandatory rule3 LoRA arm."""
+    available, unavailable = {}, {}
+    for arm in LEGACY:
+        value = entries[arm]
+        if isinstance(value, dict):
+            if arm == 'RB1-07':
+                raise ValueError('RB1-07 reevaluation is mandatory for rule3')
+            if set(value) != {'unavailable'} or not isinstance(value['unavailable'], str) or not value['unavailable'].strip():
+                raise ValueError('unavailable diagnostic checkpoint requires an explicit reason')
+            unavailable[arm] = value['unavailable']
+        elif isinstance(value, str) and value:
+            available[arm] = Path(value)
+        else:
+            raise ValueError('reevaluation requires a path or unavailable reason')
+    return available, unavailable
+
+
 def analyze(spec):
     sources, dev, cal, runtime, curves = {}, {}, {}, {}, {}
+    legacy_available, legacy_unavailable = legacy_inputs(spec['reevaluations'])
+    compatibility = {}
     base = Path(spec['base_run'])
     if reference(base/'manifest.json')['sha256'] != ACCEPTED_BASE_MANIFEST_SHA256:
         raise ValueError('Base reference changed')
@@ -127,13 +147,16 @@ def analyze(spec):
             cal[arm] = read(root/'calibration-predictions.json')
             validate_calibration(cal[arm],manifest['metrics'])
     for arm,attempt in LEGACY.items():
+        if arm in legacy_unavailable:
+            sources[arm] = {'unavailable':legacy_unavailable[arm]}
+            continue
         root = Path(spec['references'][arm])
         if root.name != attempt:
             raise ValueError('legacy training reference differs from contract')
         manifest, refs, _ = validate_formal_run(root,arm)
         dev[arm] = validate_rows(read(root/'predictions.json'),arm,dev['Base'])
         check_metrics(dev[arm],manifest['metrics'],arm)
-        rerun = Path(spec['reevaluations'][arm])
+        rerun = legacy_available[arm]
         m = complete(rerun/'manifest.json')
         if (m.get('arm') != arm or m.get('stage') != 'checkpoint_evaluation' or
                 m['metrics'].get('source.commit') != spec['source_commit'] or
@@ -146,6 +169,7 @@ def analyze(spec):
         flips = sum(a['prediction'] != b['prediction'] for a,b in zip(reevaluated,dev[arm]))
         if flips != m['metrics']['compatibility']['flips'] or (m['metrics']['compatibility']['same_profile'] and flips):
             raise ValueError('legacy compatibility check failed')
+        compatibility[arm] = m['metrics']['compatibility']
         cal[arm] = read(rerun/'calibration-predictions.json')
         validate_calibration(cal[arm],m['metrics'])
         sources[arm] = {'training':refs, 'reevaluation':{name:reference(rerun/name) for name in
@@ -230,13 +254,16 @@ def analyze(spec):
     if not result['6_conditional_controls']['triggered'] and any(a in merged for a in ('U-25','T0-U-25')):
         raise ValueError('untriggered conditional controls were trained')
     result['1_implementation'] = {'passed':True,'arms':initial_checks,
-        'checkpoint_compatibility':{a:complete(Path(spec['reevaluations'][a])/'manifest.json')['metrics']['compatibility'] for a in LEGACY}}
+        'checkpoint_compatibility':compatibility,
+        'diagnostic_checkpoints_unavailable':legacy_unavailable}
     intervals = paired_intervals(merged)
     result['3_H0030']['interval_d_X'] = interval(intervals,'H-QVU','X-01')
     result['3_H0030']['interval_d_L'] = interval(intervals,'H-QVU','RB1-07')
     result['4_H0031']['interval_d_h'] = interval(intervals,'H-QVU','T0-QVU')
-    result['8_resolution'] = {f'{a}_minus_{b}':interval(intervals,a,b) for a,b in
-        (('RB1-02','RB1-01'),('RB1-07','RB1-09'),('RB1-07','X-01'))}
+    result['8_resolution'] = {'unavailable':legacy_unavailable, 'comparisons':{
+        f'{a}_minus_{b}':(interval(intervals,a,b) if a in scores and b in scores else
+            {'available':False,'reasons':{arm:legacy_unavailable[arm] for arm in (a,b) if arm in legacy_unavailable}})
+        for a,b in (('RB1-02','RB1-01'),('RB1-07','RB1-09'),('RB1-07','X-01'))}}
     return {'contract':'E-0031@1', 'source_commit':spec['source_commit'], 'rules':result,
         'merged_performance':{a:summarize_rows(r) for a,r in merged.items()},
         'dev_performance':{a:summarize_rows(r) for a,r in dev.items()}, 'curves':curves, 'runtime':runtime,

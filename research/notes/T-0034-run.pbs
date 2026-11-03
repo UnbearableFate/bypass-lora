@@ -26,15 +26,21 @@ mkdir -p "$TMPDIR"
 nvidia-smi -L > "$OUT/nvidia-smi.txt"
 cd "$SRC"
 # Comparable new arms must use 2g, matching X-01/RB1-07. A wrong allocation
-# exits before model work and is still charged. Legacy reevaluations report
-# their actual profile and all prediction flips against the training profile.
+# exits before model work and is still charged. Historical reevaluations use
+# the respective training profiles, with all actual profile evidence retained.
 if [[ "$QVU_JOB" = smoke || "$QVU_JOB" = train || "$QVU_JOB" = intervention ]]; then
   "$PY" src/mig_profile_guard.py --output "$OUT"
+elif [[ "$QVU_JOB" = reevaluate ]]; then
+  : "${QVU_ARM:?registered legacy arm required}"
+  expected_profile=2g.24gb
+  if [[ "$QVU_ARM" = RB1-02 ]]; then expected_profile=1g.24gb; fi
+  "$PY" src/mig_profile_guard.py --output "$OUT" --expected-profile "$expected_profile"
 fi
 case "$QVU_JOB" in
   smoke)
+    : "${QVU_PRIOR_NODE_HOURS:?measured prior use required}"
     exec "$PY" src/rb_qvu_smoke.py --project "$P" --split-manifest "$SPLIT" \
-      --lr-lock "$LOCK" --data-dir "$P/data/v1" --output "$OUT"
+      --lr-lock "$LOCK" --data-dir "$P/data/v1" --output "$OUT" --prior-node-hours "$QVU_PRIOR_NODE_HOURS"
     ;;
   train)
     : "${QVU_ARM:?registered arm required}"

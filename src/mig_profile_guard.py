@@ -1,4 +1,4 @@
-"""Require the allocated MIG UUID to be 2g.24gb before comparable GPU work.
+"""Require the allocated MIG UUID to match its comparison's requested profile.
 
 Run after the site's allocation check and before model imports. This guard
 preserves CUDA_VISIBLE_DEVICES and saves nvidia-smi evidence even on rejection.
@@ -27,10 +27,11 @@ def allocated_profile(listing, visible):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--expected-profile',choices=('1g.24gb','2g.24gb'),default='2g.24gb')
     args = parser.parse_args(argv)
     out = args.output.resolve()
     out.mkdir(parents=True,exist_ok=True)
-    record = {'expected_profile':'2g.24gb','passed':False,
+    record = {'expected_profile':args.expected_profile,'passed':False,
               'cuda_visible_devices':os.environ.get('CUDA_VISIBLE_DEVICES'),
               'pbs_job_id':os.environ.get('PBS_JOBID'),'host':socket.gethostname()}
     try:
@@ -41,7 +42,7 @@ def main(argv=None):
             raise ValueError('nvidia-smi -L failed: '+result.stderr.strip())
         record.update(allocated_profile(result.stdout,record['cuda_visible_devices']))
         if record['profile'] != record['expected_profile']:
-            raise ValueError('allocated MIG '+record['profile']+';required MIG 2g.24gb')
+            raise ValueError('allocated MIG '+record['profile']+';required MIG '+record['expected_profile'])
         record['passed'] = True
     except (OSError,ValueError,subprocess.TimeoutExpired) as exc:
         record['error'] = str(exc)

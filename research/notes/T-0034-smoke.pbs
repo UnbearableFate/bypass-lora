@@ -5,6 +5,7 @@ set -euo pipefail
 : "${SR_ATTEMPT_ID:?registered attempt required}"
 : "${SR_CODE_COMMIT:?registered source required}"
 : "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${QVU_PRIOR_NODE_HOURS:?measured prior use required}"
 P=/work/xg24i002/x10041/bypass-lora
 SRC="$P/snapshots/$SR_CODE_COMMIT"
 OUT="$P/runs/$SR_ATTEMPT_ID"
@@ -38,4 +39,4 @@ profile.update(passed=True,scope='correctness and timing smoke only',pbs_job_id=
 (out/'mig-profile.json').write_text(json.dumps(profile,indent=2)+'\n')
 PY
 exec "$PY" src/rb_qvu_smoke.py --project "$P" --split-manifest "$SPLIT" \
-  --lr-lock "$LOCK" --data-dir "$P/data/v1" --output "$OUT"
+  --lr-lock "$LOCK" --data-dir "$P/data/v1" --output "$OUT" --prior-node-hours "$QVU_PRIOR_NODE_HOURS"
