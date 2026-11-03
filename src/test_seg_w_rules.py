@@ -130,9 +130,12 @@ def test_X_unlearned_new_seed_controls_block_a_replication_challenge():
     assert unlearned['rules']['5']['x_controls_unlearned'] is True
     assert unlearned['rules']['5']['challenges'] is False
     assert unlearned['outcomes']['H-0033'] == 'inconclusive'
+    assert unlearned['rules']['6']['replication_mean_dg<=0'] is True
+    assert unlearned['rules']['6']['replication_challenge'] is False
     learned = analyze(counts(seed0, x_new(-15, {1: 620, 2: 620})), CHECKS)
     assert learned['rules']['5']['x_controls_unlearned'] is False
     assert learned['outcomes']['H-0033'] == 'challenges'
+    assert learned['rules']['6']['replication_challenge'] is True
 
 
 def test_seed0_challenges_and_invalid_implementation():

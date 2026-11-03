@@ -16,7 +16,7 @@ import numpy as np
 from rb1_analysis import measured_cost
 from rb1_artifacts import read, reference, finite_tree
 from seg_artifacts import validate_rows
-from seg_model import PARAMETERS, E0032_ARMS, WRITE_RULE, X_TAP, SEG05_INITIAL_SHA256, KEEP
+from seg_model import PARAMETERS, E0032_ARMS, WRITE_RULE, X_TAP, SEG05_INITIAL_SHA256, KEEP, T0
 from seg_w_rules import analyze, VARIANTS, CONTROLS, REFERENCE, number
 from v5_train import write_json
 
@@ -83,8 +83,12 @@ def run_rows(root, arm, seed, source, order):
                                   read(root/'iv-off-dev.json')['predictions'] == base,
               'reload_identical': m.get('reload.identical') is True,
               'parameters': m.get('params.stored') == m.get('params.trainable') == m.get('params.with_grad') == PARAMETERS[arm],
-              'segment2_writes_all_tokens': all(c['writes'] == c['reads'] == m['train.segment2_tokens']
-                                                for c in m['runtime.accounting']['segment2'].values())}
+              'executed_phases': set(m['runtime.accounting']) == ({'segment1', 'segment2'} if arm in KEEP
+                                                                  else {'segment2'})}
+    # seg_train convention: a T0 branch has no state, so it records 0 writes/reads.
+    seg2 = m['train.segment2_tokens']; io = 0 if arm in T0 else seg2
+    checks['segment2_accounting'] = all(c['valid_tokens'] == seg2 and c['writes'] == c['reads'] == io
+                                        for c in m['runtime.accounting']['segment2'].values())
     if arm in WRITE_RULE:
         checks['initial_equals_SEG05'] = m.get('initial.adapter_sha256') == SEG05_INITIAL_SHA256[seed]
         train_writes = m['train.segment1_writes']
@@ -146,13 +150,21 @@ def run(args):
         raise ValueError('analysis input is not for E-0032@1')
     order, values = None, {'input': reference(args.input)}
     rule1 = {}
-    # Rule-1 checks outside the training runs: smoke (tests, masks, init digests) and replay.
+    # Rule-1 checks outside the training runs: smoke (tests, masks, init digests) and replay,
+    # both bound to their stage and to the declared rule-1 source (checked against the
+    # training source in the conclusion review; both are reported).
     smoke = read(spec['smoke_manifest']); replay = read(spec['replay_manifest'])
+    rule1_source = spec['rule1_source']
     rule1['smoke_checks_passed'] = (smoke.get('status') == 'complete' and smoke['validator']['passed'] is True and
+                                    smoke.get('stage') == 'rule1_smoke' and smoke.get('source_commit') == rule1_source and
                                     smoke['metrics'].get('checks.failed') == 0 and smoke['metrics'].get('checks.cases', 0) > 0)
-    rule1['replay_rows_identical'] = (replay.get('status') == 'complete' and
+    rule1['replay_rows_identical'] = (replay.get('status') == 'complete' and replay['validator']['passed'] is True and
+                                      replay.get('stage') in ('checkpoint_replay', 'rule1_smoke') and
+                                      replay.get('source_commit') == rule1_source and
+                                      replay['metrics'].get('replay.hardware') == 'NVIDIA GH200 120GB MIG 2g.24gb' and
                                       replay['metrics'].get('replay.rows_identical') is True)
-    values['rule1_sources'] = {'smoke': reference(spec['smoke_manifest']), 'replay': reference(spec['replay_manifest'])}
+    values['rule1_sources'] = {'smoke': reference(spec['smoke_manifest']), 'replay': reference(spec['replay_manifest']),
+                               'rule1_source': rule1_source, 'training_source': spec['training_source']}
     all_counts, rows_by_seed, provenance, describe = {}, {}, {}, {}
     for seed in (0, 1, 2):
         base_rows = read(RUNS+REFERENCE_FILES[seed]['SEG-00'][0])
