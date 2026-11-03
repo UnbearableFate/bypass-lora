@@ -37,6 +37,7 @@ ETA_ARMS={f'ETA-{tap}-{eta:g}':(tap,eta) for tap in ('QK','X')
           for eta in (*ETA_GRID,*ETA_EXTENSIONS) if eta!=.25}
 E0028_ARMS=(*TAP_ARMS,*ETA_ARMS)
 E0029_ARMS=('G-T','G-QN','G-N','Q-N','P-T','P-N','L-56','L-48')
+E0031_ARMS=('H-QVU','T0-QVU','U-25','T0-U-25')
 IG_ARMS=('G-T','G-QN','G-N')
 UP_LORA_ARMS=('L-56','L-48')
 LORA_RANKS={'RB1-07':7,'W-03':31,'L-56':56,'L-48':48}
@@ -47,11 +48,13 @@ PARAMETERS.update({'X-01':794624,'X-02':794624,'X-03':925696,
                    **{arm:794624 if tap=='X' else 925696 for arm,(tap,eta) in ETA_ARMS.items()}})
 PARAMETERS.update({'G-T':925696,'G-QN':794624,'G-N':794624,'Q-N':794624,
                    'P-T':925696,'P-N':794624,'L-56':917504,'L-48':786432})
+PARAMETERS.update({'H-QVU':629000,'T0-QVU':629000,'U-25':619400,'T0-U-25':619400})
 FAMILIES={**{f'RB1-{i:02}':'RBc-R' for i in range(2,7)},'RB1-01':'RBc-T',
           'RB1-07':'RBc-L','RB1-08':'RBc-C','RB1-09':'RBc-C',
           'W-01':'RBc-T','W-02':'RBc-R','W-03':'RBc-L'}
 FAMILIES.update({arm:'RBc-C' for arm in E0028_ARMS})
 FAMILIES.update({arm:'RBc-UP' if arm in UP_LORA_ARMS else 'RBc-C' for arm in E0029_ARMS})
+FAMILIES.update({arm:'RBc-C' for arm in E0031_ARMS})
 REPRESENTATIVES={'RBc-T':'RB1-01','RBc-R':'RB1-02','RBc-L':'RB1-07','RBc-C':'RB1-08'}
 GRIDS={'RBc-T':(1e-4,3e-4,1e-3),'RBc-L':(1e-4,3e-4,1e-3),
        'RBc-R':(3e-4,1e-3,3e-3),'RBc-C':(3e-4,1e-3,3e-3)}
@@ -60,6 +63,8 @@ EXTENSIONS={'RBc-T':(3e-5,3e-3),'RBc-L':(3e-5,3e-3),
 
 
 def contract(arm,stage):
+    if arm in E0031_ARMS:
+        return 'E-0031@1'
     if arm in E0029_ARMS:
         return 'E-0029@1'
     if arm in E0028_ARMS:
@@ -72,6 +77,11 @@ def contract(arm,stage):
 def adapter_config(arm,impl='prefix'):
     if arm not in PARAMETERS or arm in LORA_RANKS:
         raise ValueError('not an RB side-branch arm')
+    if arm in E0031_ARMS:
+        return AdapterConfig(layers=LAYERS, rank=17 if arm.endswith('QVU') else 25,
+            branch='kernel_tokenwise' if arm.startswith('T0-') else 'memory',
+            fusion='C_qvu' if arm.endswith('QVU') else 'C_up',
+            tap='direct_hidden', steps=1, eta=.25, impl=impl)
     tap,eta=ETA_ARMS.get(arm,('X' if arm in ('X-01','X-02') else 'QK',.25))
     if arm in E0029_ARMS:
         tap='X' if arm in ('G-N','P-N') else 'QN' if arm in ('G-QN','Q-N') else 'QK'
@@ -230,6 +240,8 @@ def lock_lrs(manifests):
 
 
 def run(args):
+    if args.arm in E0031_ARMS:
+        raise ValueError('E-0031 requires rb_qvu_train.py and its fixed-budget gates')
     if args.arm in E0029_ARMS:
         raise ValueError('E-0029 requires rb_improve_train.py and its initialization/LR gates')
     out=args.output.resolve()

@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from bypass_core import LatentReader, process_sequence, process_kernel_tokenwise
 
 
-FUSIONS = ('F_out', 'F_pre', 'F_attnres', 'C_gate', 'C_up', 'C_dual')
+FUSIONS = ('F_out', 'F_pre', 'F_attnres', 'C_gate', 'C_up', 'C_dual', 'C_qvu')
 # E-0014 R6: initial tau of the learnable centered-cosine address temperature.
 CENTERED_COS_TEMPERATURE_INIT = 10.
 
@@ -71,6 +71,9 @@ class AdapterConfig:
             raise ValueError('T0 requires accumulating increment recurrence')
         if self.branch == 'kernel_tokenwise' and self.backend != 'kernel_matrix':
             raise ValueError('T0 uses the KernelMatrix parameter family')
+        if self.fusion == 'C_qvu' and (self.tap != 'direct_hidden' or
+                self.branch not in ('memory', 'kernel_tokenwise')):
+            raise ValueError('q/v/up writes require a direct-hidden memory or T0 read')
 
 
 class LowDimProjection(nn.Module):
@@ -113,15 +116,32 @@ class FeatureTap:
 
 
 class Fusion(nn.Module):
-    def __init__(self, kind, rank, width, intermediate):
+    def __init__(self, kind, rank, width, intermediate, query_width=None, value_width=None):
         super().__init__()
         self.kind = kind
         if kind.startswith('F_'):
             self.P = nn.Parameter(torch.zeros(rank, width))
         if kind in ('C_gate', 'C_dual'):
             self.C_g = nn.Parameter(torch.zeros(rank, intermediate))
-        if kind in ('C_up', 'C_dual'):
+        if kind in ('C_up', 'C_dual', 'C_qvu'):
             self.C_u = nn.Parameter(torch.zeros(rank, intermediate))
+        if kind == 'C_qvu':
+            self.C_q = nn.Parameter(torch.zeros(rank, query_width))
+            self.C_v = nn.Parameter(torch.zeros(rank, value_width))
+
+    @contextmanager
+    def attention_writes(self, attention, z):
+        """Inject before Q normalization/RoPE and before GQA value replication."""
+        handles = []
+        try:
+            for name, matrix in (('q_proj', self.C_q), ('v_proj', self.C_v)):
+                delta = z @ matrix
+                handles.append(getattr(attention, name).register_forward_hook(
+                    lambda module, inputs, output, delta=delta: output + delta.to(output.dtype)))
+            yield
+        finally:
+            for handle in handles:
+                handle.remove()
 
     def forward(self, h, u, z, mlp, norm):
         if self.kind == 'F_out':
@@ -179,7 +199,8 @@ class SideBranch(nn.Module):
                                        if config.backend == 'centered_cos_slot' else None)
         else:
             self.A = nn.Parameter(torch.randn(d, config.rank) / d ** .5)
-        self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features)
+        self.fusion = Fusion(config.fusion, config.rank, d, layer.mlp.gate_proj.out_features,
+                             layer.self_attn.q_proj.out_features, layer.self_attn.v_proj.out_features)
         # Created last so that memory-path initialization is unchanged by its presence.
         self.prior = PriorPath(d, config.prior_rank) if config.prior_rank else None
         self.diagnostics = None
@@ -245,14 +266,27 @@ class AdaptedLayer(nn.Module):
         valid, state, phase, write_mask = self.request
         layer = self.original
         n = layer.input_layernorm(hidden_states)
-        with FeatureTap(layer.self_attn, self.side.config.tap).capture(n) as features:
-            o, _ = layer.self_attn(hidden_states=n, attention_mask=attention_mask,
-                                  position_ids=position_ids, past_key_values=past_key_values,
-                                  use_cache=use_cache, cache_position=cache_position,
-                                  position_embeddings=position_embeddings, **kwargs)
+        early_read = self.side.config.fusion == 'C_qvu'
+        if early_read:
+            if phase != 'F':
+                raise ValueError('q/v/up writes are defined only for the F line')
+            features = dict(q=n, k=n, v=n)
+            z, state, counts = self.side(n, features, state, valid, phase, write_mask, self.runtime)
+            with self.side.fusion.attention_writes(layer.self_attn, z):
+                o, _ = layer.self_attn(hidden_states=n, attention_mask=attention_mask,
+                                      position_ids=position_ids, past_key_values=past_key_values,
+                                      use_cache=use_cache, cache_position=cache_position,
+                                      position_embeddings=position_embeddings, **kwargs)
+        else:
+            with FeatureTap(layer.self_attn, self.side.config.tap).capture(n) as features:
+                o, _ = layer.self_attn(hidden_states=n, attention_mask=attention_mask,
+                                      position_ids=position_ids, past_key_values=past_key_values,
+                                      use_cache=use_cache, cache_position=cache_position,
+                                      position_embeddings=position_embeddings, **kwargs)
         h = hidden_states + o
         u = layer.post_attention_layernorm(h)
-        z, state, counts = self.side(u, features, state, valid, phase, write_mask, self.runtime)
+        if not early_read:
+            z, state, counts = self.side(u, features, state, valid, phase, write_mask, self.runtime)
         self.result = (state, counts)
         if phase == 'support':
             return h + layer.mlp(u)
