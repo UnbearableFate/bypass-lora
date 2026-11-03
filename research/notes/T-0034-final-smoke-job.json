@@ -1,0 +1,20 @@
+{
+  "task": "T-0034",
+  "experiment": "E-0031@1",
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "review": "RV-0107",
+  "run": "RUN-0406",
+  "attempt": "ATT-0406-1",
+  "spec_digest": "blake2b:1cee287746140819ab0a7f35db64a87db76f09d1f9f82e24041ec6b526abb409",
+  "prior_measured_node_hours": 0.05625025,
+  "job_id": "3786715.opbs",
+  "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3786715/record.json",
+  "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-final-smoke-20261103-153444-a40b3c.log",
+  "script": "research/notes/T-0034-smoke.pbs",
+  "notification": "N-20261103-153445-e123",
+  "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-153445-e123 --notifier miyabi-g2",
+  "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+  "requested_walltime": "00:21:00",
+  "expected_seconds": 840,
+  "next_action": "Inspect runtime outputs incl full-analysis absent-RB102 regression, import native usage/result, obtain RV0107 pass; update cumulative cap1.3/2.0 cost table before formal training on this exact source"
+}

@@ -1,15 +1,16 @@
 # E-0031 cumulative cost and execution source
 
-Current status after coordinator MSG-1043: aedd043 is historical diagnostic
-evidence, not the final execution source. The coordinator requested the rule8
-fallback now. A new source snapshot, code-review round and counted smoke are
-required before formal training. Freeze that replacement snapshot for every
-subsequent scientific execution. All use below remains charged.
+Current execution source is49f70094b78474ef0158dd631e3b25ea6ebdd174,
+pending RV-0107 and counted smoke ATT-0406-1/PBS3786715. Freeze this snapshot
+for every subsequent scientific execution. The coordinator requested the
+rule8 fallback in MSG-1043; all use below remains charged. aedd043 is now
+historical diagnostic evidence and is not accepted as final-source smoke.
 
 Historical first passed-smoke execution source: aedd0436ad549f4b773c21c91206ebd995215ebd.
-Use this exact commit for the counted smoke, both formal QVU arms, retained
-checkpoint reevaluations, H-QVU intervention, analysis and any rule6 controls.
-Later note-only commits do not change this registered execution source.
+The original plan to retain aedd043 was superseded by the required rule8 fix.
+Use49f7009 for counted smoke, formal QVU arms, checkpoint reevaluations,
+intervention, analysis and any rule6 controls. Later note-only commits do not
+change this registered execution source.
 RV-0104 passed; reviewer-2 MSG-1037 confirmed that src/ is identical between
 the reviewed6f85da7 and aedd043. The added smoke-only launcher is allowed on
 actual1g/2g for pre-review correctness/timing (coordinator MSG-1030).
@@ -80,3 +81,11 @@ scores, and records missing rule8 comparisons without blocking rules3/4.
 RB1-07 remains mandatory. A full-file analysis regression with RB1-02 absent
 and a separate RB1-07 mandatory failure test will run in the replacement PBS
 smoke. Reviewed-code changes receive the requested new review round.
+
+The revision is committed as49f7009. New RV-0107 (round1of2) is assigned to
+reviewer-2 with author-model gpt-6.1-sol. The exact-source smoke ATT-0406-1
+is registered/submitted with prior_node_hours0.05625025. Its walltime request
+is21min =1.5x840s (previous807s plus33s regression allowance). On completion
+import measured scheduler usage; add only current scheduler/application
+overhead beyond the application elapsed already included in its forecast.
+Do not add0.05625025 again: the revised forecast explicitly includes it.

@@ -122,3 +122,14 @@ launchers now guard2g for RB1-01/07/09 and1g for RB1-02; formal new arms stay2g.
 The final snapshot must be committed before its counted smoke and remain
 fixed for all subsequent scientific executions. Note-only HEAD changes are
 not execution-source changes. No formal training has started.
+
+Final-source revision49f70094b78474ef0158dd631e3b25ea6ebdd174 is committed
+and staged read-only. RV-0107 is the requested new review round (reviewer-2,
+author-model gpt-6.1-sol); leave its paths unchanged until the answer. Static
+diff and both launcher bash syntax checks passed; new runtime checks pending.
+Exact-source counted smoke RUN-0406/ATT-0406-1 is submitted as PBS3786715.
+It carries prior_node_hours0.05625025 and notification N-20261103-153445-e123.
+Coordinator must hold its listener from T-0034-final-smoke-job.json; notifyd
+is running. On completion import outputs and native observations/usage,
+require RV-0107 pass and updated cumulative cost <=1.3initial/2.0total,
+then train and reevaluate on49f7009 (not later note-only HEAD).
