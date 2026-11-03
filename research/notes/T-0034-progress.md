@@ -133,3 +133,36 @@ Coordinator must hold its listener from T-0034-final-smoke-job.json; notifyd
 is running. On completion import outputs and native observations/usage,
 require RV-0107 pass and updated cumulative cost <=1.3initial/2.0total,
 then train and reevaluate on49f7009 (not later note-only HEAD).
+
+## RV-0107 passed; execution conditions for its two low findings
+
+RV-0107 passed with no medium/high findings; RV-0104 L1/L2 are both fixed.
+The final-source90tests passed in28.03s inside ATT-0406-1 on actual2g.24gb,
+mg1099/PBS3786715. Remaining smoke outputs are still running. Do not infer
+the final cost or full-check completion from pytest alone.
+
+Reviewer-2 MSG-1048 accepted procedural handling of the two new lows without
+another code review or source change. For EVERY analysis spec, including the
+first rule6-release analysis and final conditional-control analysis:
+
+- Bind legacy reevaluations only to their separate registered reevaluate
+  attempts executed with matched-profile guards. Never bind a smoke's
+  reference-RB1-07 directory, even if its source/stage otherwise match.
+- Check all four available legacy entries in analysis.json under
+  rules.1_implementation.checkpoint_compatibility: same_profile must be true,
+  flips must be0. Match RB1-01/07/09 to2g and RB1-02 to1g using each run's
+  actual nvidia-smi evidence and mig-profile.json (passed true with expected
+  and actual profile equal). Keep each profile artifact path and digest in
+  the analysis input/binding note. Conclusion review must see these records.
+- If an optional diagnostic checkpoint cannot load, bind its unavailable
+  reason to the failed attempt, manifest and log with the actual load error.
+  A same-profile prediction mismatch, OOM or other runtime failure must not
+  be relabeled unavailable. RB1-07 remains mandatory. Preserve the evidence
+  in the task note and analysis input for conclusion review.
+
+These conditions concern actual producer selection; scientific source49f7009
+stays fixed. Before every analysis run, inspect the bound producer manifests
+and guards; after it runs inspect the compatibility output again before
+importing scientific evidence or releasing rule6. Cite this note together
+with the binding artifact in the diagnostic evidence provided to the
+coordinator/conclusion reviewer.

@@ -89,3 +89,11 @@ is21min =1.5x840s (previous807s plus33s regression allowance). On completion
 import measured scheduler usage; add only current scheduler/application
 overhead beyond the application elapsed already included in its forecast.
 Do not add0.05625025 again: the revised forecast explicitly includes it.
+
+RV-0107 passed. The90final-source tests have passed on actual2g.24gb in
+ATT-0406-1; other smoke work and its cost estimate are still pending.
+Reviewer MSG-1048 accepts closing its two new lows by explicit actual-input
+checks on every analysis (initial rule6 release included). See the current
+T-0034-progress.md section for the mandatory matched-profile producer binding,
+zero-flip verification and failed-load provenance needed by conclusion review.
+No new scientific-source change is needed for these procedural conditions.
