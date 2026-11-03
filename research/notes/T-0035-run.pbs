@@ -46,7 +46,7 @@ case "$SEG_STAGE" in
     exec "$SEG_PY" src/seg_train.py --arm "$SEG_ARM" --stage train --seed "$SEG_SEED" \
       "${DATA[@]}" --output "$SEG_OUT"
     ;;
-  mechanism|analysis)
+  mechanism|analysis|steps)
     : "${SEG_INPUT:?analysis input required}"
     exec "$SEG_PY" "src/seg_w_$SEG_STAGE.py" --input "$SEG_INPUT" --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT"
     ;;
