@@ -84,3 +84,19 @@ through the MCP dry-run/commit flow. Notification N-20261103-150955-8b0c is
 sealed, notifyd is running, and coordinator owns the listener named in
 T-0034-correctness-smoke-job.json. Static bash -n/diff checks passed for the
 new launcher; runtime results and code-review findings are still pending.
+
+## RV-0104 passed; smoke tests passed, other outputs pending
+
+Reviewer-2 returned pass with two low findings (MSG-1034). The76 selected
+tests passed in28.20s inside ATT-0404-1 on actual1g.24gb (mg1102,
+PBS3786440); remaining real-model registration/timing/compatibility outputs
+are still running. No formal training has started.
+
+Reviewer-2 MSG-1037 confirmed src/ is unchanged between6f85da7 and aedd043.
+L1 is closed by freezing aedd043 as every scientific execution's source and
+adding earlier failures in the manual cost table (T-0034-cost.md). L2's
+conditional handling is accepted: no recheck needed if diagnostic checkpoints
+load; if one truly cannot load, add unavailable-reason fallback and recheck.
+Do not edit reviewed scientific files or move runs to current HEAD merely
+because later notes have been committed. The coordinator owns the existing
+N-20261103-150955-8b0c notification and will resume this role on completion.
