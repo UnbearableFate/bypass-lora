@@ -179,3 +179,22 @@ ATT-0421-1/PBS3788305; old cancelled RUN-0420 is not reused. RB1-02
 ATT-0412-3/4/5 are PBS3788306/7/8. Required profiles remain2g/1g respectively;
 minimum numeric successful job ID selects the RB1-02 producer. Notification
 N-20261103-180705-6699 covers all4; see evaluation-wave-jobs.json.
+
+## Final measured total
+
+| Attempt | PBS | Outcome | Seconds | Native MIG h | Node h |
+| --- | --- | --- | ---: | ---: | ---: |
+| ATT-0421-1 | 3788305 | H intervention complete,2g | 593 | 0.164722 | 0.0411805 |
+| ATT-0412-3 | 3788306 | selected RB1-02 complete,1g | 591 | 0.164167 | 0.04104175 |
+| ATT-0412-4 | 3788307 | wrong2g guard rejection | 1 | 0.000278 | 0.0000695 |
+| ATT-0412-5 | 3788308 | duplicate RB1-02 complete,1g | 565 | 0.156944 | 0.039236 |
+| ATT-0424-1 | 3788665 | final locked analysis complete | 10 | 0.002778 | 0.0006945 |
+| All ended charged work incl prior tables | | | 15051 | 4.180837 | 1.04520925 |
+
+Native filtered ledger summary in T-0034-final-cost.json confirms19submitted
+job references all ended:11success,7guard failures,1cancelled FINISH no-start.
+All18charged jobs' native accounting_refs are imported once. The cancelled
+dependency never allocated/ran and has no usage export; two prepared-only
+registrations had no PBS jobs. This is below the1.3initial and2.0total caps.
+No future-work forecast is charged as usage. Conditional controls were not
+triggered, so there is no required further computation or resource request.

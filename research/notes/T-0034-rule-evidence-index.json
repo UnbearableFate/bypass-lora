@@ -1,0 +1,70 @@
+{
+  "experiment": "E-0031@1",
+  "analysis_attempt": "ATT-0424-1",
+  "analysis_result": "RES-0405",
+  "hypothesis_statuses_unchanged": true,
+  "directional_support_challenge_edges_added": false,
+  "reason": "Both locked hypothesis outcomes are inconclusive; do not label neutral screening evidence supports or challenges. Coordinator conclusion review can inspect these records plus the complete experiment arm table and analysis artifact.",
+  "rules": [
+    {
+      "rule": 1,
+      "evidence": "EV-0185",
+      "level": "diagnostic",
+      "summary": "规则1：实现检查通过。90项PBS测试含q/v/up顺序、CPU成对初始化、非零出口首梯度/冻结主干、因果性、左右padding与reload；H/T正式stored/trainable/with-grad均629000，完整dev的step0/iv_off等于同分配Base、dev/cal重载含分数一致；四个历史checkpoint全部按训练MIG规格复评且same_profile=true/flips0。分析已逐一验证来源与配对行，无unavailable例外。"
+    },
+    {
+      "rule": 2,
+      "evidence": "EV-0186",
+      "level": "screening",
+      "summary": "规则2（描述）：H-QVU/T0-QVU的dev宏平均为78.10%/78.05%，相对Base70.15%分别+7.95/+7.90pp，均超过Base+1pp。此可学性通过不等于实用门或历史门成立。"
+    },
+    {
+      "rule": 3,
+      "evidence": "EV-0187",
+      "level": "screening",
+      "summary": "规则3/H-0030：合并H-QVU78.1660105%，X-01 78.1496063%，LoRA RB1-07 78.7401575%。d_X=+0.016404pp，描述95%CI[-0.557743,+0.590551]；d_L=-0.574147pp，CI[-1.213911,+0.049213]。d_X未到+1且d_L<0，但d_X严格大于0，按锁定规则为inconclusive。dev描述d_X=-0.05、d_L=-0.85pp。不是supports或challenges，未改假说状态。"
+    },
+    {
+      "rule": 4,
+      "evidence": "EV-0188",
+      "level": "screening",
+      "summary": "规则4/H-0031：合并H-QVU−T0-QVU=+0.098425pp，描述95%CI[-0.524934,+0.688976]；dev normal−swap=+1.90pp，CI[+0.85,+2.95]。虽然swap降幅超过1pp，d_h未到+1且严格大于0，因此锁定历史门为inconclusive；swap不能单独支持历史收益。未改假说状态。"
+    },
+    {
+      "rule": 5,
+      "evidence": "EV-0189",
+      "level": "screening",
+      "summary": "规则5（描述）：T0-QVU合并宏平均78.0675853%；对X-01为-0.082021pp，95%CI[-0.721785,+0.557743]；对RB1-07为-0.672572pp（RB1-07−T0的CI[+0.082021,+1.279528]）。T0未通过实用门，不能给历史读取记功。"
+    },
+    {
+      "rule": 6,
+      "evidence": "EV-0190",
+      "level": "diagnostic",
+      "summary": "规则6：H-QVU与T0-QVU均未同时满足相对X-01至少+1pp且不低于RB1-07，条件对照triggered=false、complete=true。U-25与T0-U-25未释放或执行正式训练；仅此前预登记的80步实现/计时smoke存在，不作效果比较。"
+    },
+    {
+      "rule": 7,
+      "evidence": "EV-0191",
+      "level": "diagnostic",
+      "summary": "规则7：H-0030与H-0031均未supports，T0-QVU也未通过实用门；两新seed复现触发=false，T0实用配置单独复现触发=false。本任务未增加seed或额外对照。"
+    },
+    {
+      "rule": 8,
+      "evidence": "EV-0192",
+      "level": "diagnostic",
+      "summary": "规则8零训练分辨率诊断：合并RB1-02−RB1-01=-0.410105pp，95%CI[-1.033465,+0.213255]；RB1-07−RB1-09=+0.557743pp，CI[-0.098835,+1.213911]；RB1-07−X-01=+0.590551pp，CI[-0.049213,+1.246719]。四个checkpoint均可用、同规格dev零翻转。RB102选最小成功job3788306，另一个成功job3788308的dev/cal文件含似然逐字节相同，重复及失败用量全部计入。"
+    },
+    {
+      "rule": 9,
+      "evidence": "EV-0193",
+      "level": "diagnostic",
+      "summary": "规则9：描述区间均按固定10000次、seed20261101、dev/cal分别任务分层和共用索引生成；合并每任务3048行，原dev与calibration互不重合且与训练行不相交。区间未纳入seed/选择不确定性，calibration曾用于LR/eta选择的限制保留。只适用此seed0/LR1e-3和普通RB设置，A2及官方validation未开封。"
+    },
+    {
+      "rule": 10,
+      "evidence": "EV-0194",
+      "level": "diagnostic",
+      "summary": "规则10的预登记触发检查为true：H-0030与H-0031都未supports，且T0未通过实用门，因此analysis.coordinator_stop_review_required=true。这里只记录门槛事实；停止路线/假说状态须由协调者做结论审核后决定。未新增混合LoRA或排序损失实验，未在本任务作路线决定。"
+    }
+  ]
+}

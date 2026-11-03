@@ -294,3 +294,43 @@ null on purpose and must not be executed. Apply MSG-1048 checks to this first
 rule6-release analysis and any final analysis. H/T0/RB101/RB107/RB109 are
 already successful and must not be rerun. The cancelled old ATT-0420-1 is
 never a valid intervention producer.
+
+## Final completion — no required runs remain
+
+Coordinator MSG-1063 confirmed the last evaluation wave ended/acknowledged.
+H intervention ATT-0421-1 is complete at2g from current producer ATT-0409-3,
+normal dev predictions reproduce training. Imported RES-0399. RB1-02
+ATT-0412-3/3788306 and duplicate ATT-0412-5/3788308 both pass actual1g,
+same_profile=true/flips0, full dev/calibration. Selected minimum job3788306
+as pre-specified. The two full prediction files are byte-identical including
+scores/NLL; imported RES-0400/0401 and all duplicate usage. ATT-0412-4 was
+wrong2g, rejected in1s, imported partial RES-0402. Three RB1-02 profile
+rejections in total; no unavailable exception was needed.
+
+Before analysis, rechecked all four available legacy manifests, guards,
+expected/actual profiles and0flips, and froze source inputs/binding digests
+under the main project's research/artifacts/T-0034. The audit is EV-0180;
+T-0034-profile-binding-audit.md lists each actual mig-profile.json and the
+duplicate SHA256s for conclusion review. No smoke producer was substituted.
+
+Registered and ran locked initial analysis ATT-0424-1/PBS3788665 in PBS
+from49f7009. Complete/passed in10s; native observations/usage imported and
+RES-0405 records the full analysis. Its complete field is true because
+rule6=false, so this is also the final task analysis. H-0030/H-0031 both
+classify inconclusive by exact pre-registered arithmetic; T0 practical gate
+false; rule7replication false. U25/T0-U25 were not released for formal
+training. Rule10's coordinator_stop_review_required=true is reported to
+the coordinator without taking the route decision or changing hypothesis
+statuses. No further workload is required by this task.
+
+Per-rule evidence is EV-0185 through EV-0194, indexed in
+T-0034-rule-evidence-index.json. Neutral H0030/H0031 outcomes were not
+misrepresented as directional supports/challenges links; include EV-0187/0188,
+RES-0405 and the full artifact in the coordinator conclusion-review proposal.
+All results, intervals, quarter curves, validation and constraints are in
+T-0034-delivery.md. Final ledger:19submitted jobs all ended,11success,
+7profile guard failures,1cancelled no-start;18charged jobs totaling
+4.180837native MIG-instance hours =1.04520925node-hours (below1.3initial).
+Prepared-only ATT-0409-1/0410-1 never submitted. See T-0034-final-cost.json.
+No cleanup, merge, rebase or push was performed. Task delivery/acceptance and
+the coordinator's independent conclusion review are next.
