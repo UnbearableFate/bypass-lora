@@ -166,3 +166,74 @@ and guards; after it runs inspect the compatibility output again before
 importing scientific evidence or releasing rule6. Cite this note together
 with the binding artifact in the diagnostic evidence provided to the
 coordinator/conclusion reviewer.
+
+## Formal batch and guarded retries (current continuation)
+
+Final smoke imported as RES-0382/EV-0176. All90tests, real counts/initial
+pairing, child reload/identity checks and frozen-source cost gate passed.
+Formal cost release is T-0034-formal-cost-release.json: initial1.0101741017,
+with conditionals1.6694988604node-hours before subsequent guard failures.
+All scientific execution remains49f70094b78474ef0158dd631e3b25ea6ebdd174.
+
+Explicit supplementary passing RV-0094/RV-0095 scopes cover three inherited
+files reported stale by the first training registrations; exact git diffs
+were empty. See T-0034-inherited-review-coverage.md. ATT-0409-1/0410-1 were
+prepared only, retired before any submission, then replaced by covered
+ATT-0409-2/0410-2 with the identical immutable RunSpecs. No duplicate training
+was launched. All actual execution attempts report code review covered.
+
+Initial batch metadata and notification are T-0034-formal-jobs.json,
+N-20261103-160419-5dfa (coordinator holds its listener). Initial H-QVU,
+RB1-02 and RB1-09 got wrong profiles and exited at their guards in2s each:
+ATT-0409-2/PBS3786995 actual1g instead2g (RES-0386), ATT-0412-1/3787000
+actual2g instead1g (RES-0385), ATT-0414-1/3787005 actual1g instead2g
+(RES-0387). Native observations and usage have been imported once; these
+are pre-model scheduling diagnostics, not model-load or scientific failures.
+
+The afterok H intervention ATT-0420-1/PBS3787063 is ended/cancelled,
+FINISH no-start: PBS automatically terminated it because its parent3786995
+had failed before the dependency was submitted. No application ran and no
+native usage was exported. Do not resubmit RUN-0420 unchanged: its immutable
+producer metadata names failed ATT-0409-2. Register a fresh intervention
+spec naming the successful current H retry when available.
+
+Coordinator MSG-1059 authorized guarded retries, no vnode resource (qsub
+rejects it), and an explicit diagnostic-only RB1-02 exception after10
+consecutive wrong-profile rejections, with every attempt/log attached. That
+administrative exception is not a fabricated model-load failure; keep its
+coordinator provenance visible to conclusion review if it becomes necessary.
+Only1RB1-02 wrong-profile failure has been recorded so far. H and T0 must
+both actually run on2g. RB1-09 must match its historical2g profile.
+
+Latest retry metadata: T-0034-formal-retry-jobs.json. Notification
+N-20261103-161637-a3a1 is sealed3, notifyd running; coordinator must hold:
+
+`/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-161637-a3a1 --notifier miyabi-g2`
+
+| Arm | Current attempt | PBS | Last observed state |
+| --- | --- | --- | --- |
+| H-QVU | ATT-0409-3 | 3787112.opbs | queued retry; must pass2g guard |
+| T0-QVU | ATT-0410-2 | 3786996.opbs | running, actual2g mg1112 |
+| RB1-01 | ATT-0411-1 | 3786999.opbs | complete/success, imported RES-0388 |
+| RB1-02 | ATT-0412-2 | 3787111.opbs | queued retry; must pass1g guard |
+| RB1-07 | ATT-0413-1 | 3787002.opbs | complete/success, imported RES-0389 |
+| RB1-09 | ATT-0414-2 | 3787113.opbs | queued retry; must pass2g guard |
+
+Completed RB1-01/RB1-07 evaluation used full1000dev and2048calibration rows
+per task, frozen49f7009 and correct historical checkpoint producers. Both
+same_profile=true/flips0; each guard passed actual/expected2g. Native489s
+and541s usage imported. EV-0177 records these checks only, not a hypothesis
+effect. T-0034-analysis-profile-bindings.json lists each guard/manifest/
+provenance path and is deliberately partial until remaining arms complete.
+Do not rerun these successful original evaluations or the running T0.
+
+All ended charged work currently totals2613scheduler seconds and0.725836
+native MIG-instance hours =0.181459node-hours. Running/queued usage remains
+unreported, not zero. Conservative initial/conditional forecasts with the
+three additional2s failures are1.0105911017/1.6699158604, still within1.3/2.0.
+On notification inspect latest retry guards/application outputs, import
+native usage/results, retry wrong profiles within MSG-1059/budget, then
+intervene on successful H and run initial locked analysis. Apply MSG-1048
+input checks to EVERY analysis, including the first rule6 release. No
+conditional U25 arm has been released or trained formally. No hypothesis
+state or route decision has been changed.

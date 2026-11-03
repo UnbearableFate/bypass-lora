@@ -1,0 +1,140 @@
+{
+  "task": "T-0034",
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "reviews": [
+    "RV-0107",
+    "RV-0094",
+    "RV-0095"
+  ],
+  "coordinator_instruction": "MSG-1059",
+  "notification": {
+    "id": "N-20261103-161637-a3a1",
+    "name": "T0034-profile-retry-1",
+    "status": "open",
+    "sealed": true,
+    "jobs": [
+      "3787111.opbs",
+      "3787112.opbs",
+      "3787113.opbs"
+    ],
+    "expected": 3,
+    "when": "all_ended",
+    "queue": null,
+    "deadline": null,
+    "early_failure": true,
+    "notifier": "miyabi-g2",
+    "deliver": {
+      "method": "listener"
+    },
+    "message": "T-0034 guarded retry group ended: RB1-02 ATT0412-2, H-QVU ATT0409-3, RB1-09 ATT0414-2; source49f7009. Resume researcher-1: inspect guards/application and import native observations/usage/results; same profiles mandatory. Old H afterok intervention ATT0420-1 automatically cancelled no-start, so schedule fresh intervention only for successful current H checkpoint (new RunSpec producer metadata). RB102 has1prior wrong-profile failure; coordinator MSG1059 caps consecutive profile retries at10 then diagnostic unavailable with all evidence. Other originals T0 ATT0410-2,RB01 ATT0411-1,RB07 ATT0413-1 continue; original group listener still active. See formal-retry-jobs.json.",
+    "created_at": "2026-11-03T16:16:37+09:00"
+  },
+  "daemon": {
+    "notifier": "miyabi-g2",
+    "last_poll": "2026-11-03T16:11:51+09:00",
+    "daemon_running": true,
+    "poll_seconds": 300,
+    "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-161637-a3a1 --notifier miyabi-g2"
+  },
+  "retries": [
+    {
+      "arm": "RB1-02",
+      "operation": "reevaluate",
+      "origin": "ATT-0240-1",
+      "profile": "1g.24gb",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-RB1-02.json",
+      "run": "RUN-0412",
+      "attempt": "ATT-0412-2",
+      "coverage": "covered",
+      "spec_digest": "blake2b:1fb94f30d938b81a757c94191842e33d47247a27649b102cc35ef578f2f74d7f",
+      "requested_walltime": "00:15:30",
+      "supersedes_attempt": "ATT-0412-1",
+      "supersedes_job": "3787000.opbs",
+      "job_id": "3787111.opbs",
+      "submission_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3787111/record.json",
+      "pbs_output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-retry-RB1-02-20261103-161636-74ec23.log"
+    },
+    {
+      "arm": "H-QVU",
+      "operation": "train",
+      "profile": "2g.24gb",
+      "expected_seconds": 5194,
+      "walltime": "02:10:00",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-H-QVU.json",
+      "run": "RUN-0409",
+      "attempt": "ATT-0409-3",
+      "retired_preparation": "ATT-0409-1",
+      "coverage": "covered",
+      "spec_digest": "blake2b:75dd3a12038616e82a93eeedf3da8677e3b62c0dc6c8688011cf00834b1a12f8",
+      "requested_walltime": "02:10:00",
+      "supersedes_attempt": "ATT-0409-2",
+      "supersedes_job": "3786995.opbs",
+      "job_id": "3787112.opbs",
+      "submission_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3787112/record.json",
+      "pbs_output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-retry-H-QVU-20261103-161640-dd774d.log"
+    },
+    {
+      "arm": "RB1-09",
+      "operation": "reevaluate",
+      "origin": "ATT-0247-1",
+      "profile": "2g.24gb",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "spec_path": "/work/xg24i002/x10041/bypass-lora-worktrees/researcher-1/research/notes/T-0034-spec-RB1-09.json",
+      "run": "RUN-0414",
+      "attempt": "ATT-0414-2",
+      "coverage": "covered",
+      "spec_digest": "blake2b:32c29b0329d068043ef496c22bbdd208508feb7ccc7fb5759d72811c4da9605e",
+      "requested_walltime": "00:15:30",
+      "supersedes_attempt": "ATT-0414-1",
+      "supersedes_job": "3787005.opbs",
+      "job_id": "3787113.opbs",
+      "submission_record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3787113/record.json",
+      "pbs_output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-retry-RB1-09-20261103-161643-764893.log"
+    }
+  ],
+  "still_use_original_attempts": [
+    {
+      "arm": "T0-QVU",
+      "attempt": "ATT-0410-2",
+      "job_id": "3786996.opbs"
+    },
+    {
+      "arm": "RB1-01",
+      "attempt": "ATT-0411-1",
+      "job_id": "3786999.opbs"
+    },
+    {
+      "arm": "RB1-07",
+      "attempt": "ATT-0413-1",
+      "job_id": "3787002.opbs"
+    }
+  ],
+  "old_intervention": {
+    "attempt": "ATT-0420-1",
+    "job_id": "3787063.opbs",
+    "state": "ended",
+    "outcome": "cancelled",
+    "raw_state": "FINISH no-start",
+    "reason": "PBS automatically terminated the never-started afterok child because parent3786995 had already failed its profile guard; no fresh intervention submitted yet"
+  },
+  "profile_retry_policy": {
+    "H_QVU": "must match T0 actual2g; continue guarded retry within budget",
+    "RB1_09": "must use historical2g; continue guarded retry",
+    "RB1_02": "try actual1g; currently1consecutive wrong-profile rejection; MSG1059 caps at10 then coordinator diagnostic-only unavailable exception with all attempts/logs; do not pretend a model load failure"
+  },
+  "known_measured_ended_node_hours": 0.181459,
+  "completed_reference_results": [
+    {"arm":"RB1-01","attempt":"ATT-0411-1","job":"3786999.opbs","result":"RES-0388"},
+    {"arm":"RB1-07","attempt":"ATT-0413-1","job":"3787002.opbs","result":"RES-0389"}
+  ],
+  "diagnostic_evidence": "EV-0177",
+  "running_usage": "unreported until native terminal accounting; never assume zero",
+  "continuation": "Inspect latest retry guards and results on notification. Re-register intervention using SUCCESSFUL CURRENT H attempt as immutable producer metadata (old RUN0420 still names failed ATT0409-2 and must not be reused). Preserve source49f7009. Initial/final analysis input checks required by MSG1048. Do not re-run successful original T0/RB01/RB07."
+}

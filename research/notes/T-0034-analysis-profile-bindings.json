@@ -1,0 +1,54 @@
+{
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "status": "partial_bindings_not_ready_for_analysis",
+  "applies_to": [
+    "initial_rule6_release_analysis",
+    "final_analysis"
+  ],
+  "reviewer_conditions": "RV-0107/MSG-1048",
+  "required_arms": [
+    "RB1-01",
+    "RB1-02",
+    "RB1-07",
+    "RB1-09"
+  ],
+  "completed": {
+    "RB1-01": {
+      "attempt": "ATT-0411-1",
+      "result": "RES-0388",
+      "job": "3786999.opbs",
+      "run_dir": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1",
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1/manifest.json",
+      "mig_profile": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1/mig-profile.json",
+      "provenance": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1/provenance.json",
+      "guard_passed": true,
+      "expected_profile": "2g.24gb",
+      "actual_profile": "2g.24gb",
+      "same_profile": true,
+      "flips": 0,
+      "dev_examples_per_task": 1000,
+      "calibration_examples_per_task": 2048
+    },
+    "RB1-07": {
+      "attempt": "ATT-0413-1",
+      "result": "RES-0389",
+      "job": "3787002.opbs",
+      "run_dir": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1",
+      "manifest": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1/manifest.json",
+      "mig_profile": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1/mig-profile.json",
+      "provenance": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1/provenance.json",
+      "guard_passed": true,
+      "expected_profile": "2g.24gb",
+      "actual_profile": "2g.24gb",
+      "same_profile": true,
+      "flips": 0,
+      "dev_examples_per_task": 1000,
+      "calibration_examples_per_task": 2048
+    }
+  },
+  "missing": [
+    "RB1-02",
+    "RB1-09"
+  ],
+  "requirements": "Before every initial/final analysis fill all available arms, verify source/producer/guard and same_profile=true/flips0, include this binding file and each mig-profile.json in the diagnostic evidence for conclusion review. Unavailable needs explicit coordinator decision and all failure provenance; do not pretend wrong-profile/no-start was a model-load failure."
+}

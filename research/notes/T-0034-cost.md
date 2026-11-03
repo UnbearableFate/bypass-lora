@@ -1,7 +1,7 @@
 # E-0031 cumulative cost and execution source
 
 Current execution source is49f70094b78474ef0158dd631e3b25ea6ebdd174,
-pending RV-0107 and counted smoke ATT-0406-1/PBS3786715. Freeze this snapshot
+passed RV-0107 and counted smoke ATT-0406-1/PBS3786715. Freeze this snapshot
 for every subsequent scientific execution. The coordinator requested the
 rule8 fallback in MSG-1043; all use below remains charged. aedd043 is now
 historical diagnostic evidence and is not accepted as final-source smoke.
@@ -22,7 +22,8 @@ actual1g/2g for pre-review correctness/timing (coordinator MSG-1030).
 | ATT-0401-1 | 3786303.opbs | 1g rejected before workload | 2 | 0.000556 | 0.000139 |
 | ATT-0401-2 | 3786323.opbs | 1g rejected before workload | 1 | 0.000278 | 0.0000695 |
 | ATT-0404-1 | 3786440.opbs | passed correctness/timing smoke; actual1g | 807 | 0.224167 | 0.05604175 |
-| Total completed | | | 810 | 0.225001 | 0.05625025 |
+| ATT-0406-1 | 3786715.opbs | passed final-source smoke; actual2g | 767 | 0.213056 | 0.053264 |
+| Total completed | | | 1577 | 0.438057 | 0.10951425 |
 
 Native observations and usage were imported once for each accounting_ref;
 partial result records are RES-0377 and RES-0379. The ledger's generic2g
@@ -97,3 +98,58 @@ checks on every analysis (initial rule6 release included). See the current
 T-0034-progress.md section for the mandatory matched-profile producer binding,
 zero-flip verification and failed-load provenance needed by conclusion review.
 No new scientific-source change is needed for these procedural conditions.
+
+## Final smoke verified and formal cost release
+
+ATT-0406-1 has completed with90tests passed, including the complete-analysis
+RB1-02-unavailable regression and mandatory RB1-07 failure test. All4real
+registration checks and all8children are complete/passed. Actual2g.24gb,
+mg1099. H/T0 QVU stored/trainable/with-grad629000; U25 pair619400; paired CPU
+SHA values match; all exits received nonzero first-step gradients; frozen
+backbone and finite train/reload/iv_off checks passed. H/T0 QVU steady steps
+0.247453769/0.211776897seconds. Same-profile full RB1-07 dev has0flips.
+The bounded RB1-02 cross-profile check has1flip, so its formal1g reevaluation
+remains required. Imported complete RES-0382 and diagnostic EV-0176.
+
+Formal release receipt is T-0034-formal-cost-release.json. It starts from
+the PBS-produced cost-estimate.json (initial0.9798966535, conditional1.6392214122),
+already including prior0.05625025 and the final smoke's754.060463application
+seconds. Add only the final smoke's native scheduler/application difference
+0.0008986900node-hours. Increase historical reevaluation reserves to610seconds
+each for RB1-01/02/09 and500seconds for RB1-07; increase intervention reserve
+to600seconds using reviewed comparable2g timings. This adds0.0293787582.
+The resulting forecasts are **1.0101741017 initial** and **1.6694988604 with
+conditionals**, below1.3/2.0 including all completed use. These are forecasts,
+not guaranteed runtime; retain actual usage for all further attempts.
+
+Submit H-QVU expected5194seconds/walltime2h10m and T0-QVU4726seconds/2h,
+both with2g guard on short-mig. Submit historical reevaluations with respective
+training-profile guards (RB1-02:1g, others2g), walltimes approximately1.5x
+the above per-arm reservations. A wrong-profile allocation exits before model
+work and is charged; check existing jobs before any retry. Freeze source49f7009
+for all these jobs. Coordinator MSG-1053 authorizes continuation on passing
+smoke/review and this within-cap cost update. No rule6 controls are released yet.
+
+## Formal work accounted before waiting on retries
+
+| Attempt | PBS | Actual profile/outcome | Seconds | Native MIG h | Node h |
+| --- | --- | --- | ---: | ---: | ---: |
+| ATT-0409-2 | 3786995 | actual1g rejected; expected2g | 2 | 0.000556 | 0.000139 |
+| ATT-0412-1 | 3787000 | actual2g rejected; expected1g | 2 | 0.000556 | 0.000139 |
+| ATT-0414-1 | 3787005 | actual1g rejected; expected2g | 2 | 0.000556 | 0.000139 |
+| ATT-0411-1 | 3786999 | actual2g; complete RB1-01 eval | 489 | 0.135833 | 0.03395825 |
+| ATT-0413-1 | 3787002 | actual2g; complete RB1-07 eval | 541 | 0.150278 | 0.0375695 |
+| All ended work incl prior table | | | 2613 | 0.725836 | 0.181459 |
+
+Every native accounting_ref is imported exactly once. The cancelled afterok
+child ATT-0420-1/PBS3787063 has FINISH no-start and no exported usage;
+no workload ran. Prepared-only ATT-0409-1/0410-1 never had a PBS allocation.
+Keep running/queued work unreported until the native terminal observation.
+
+T0-QVU remains running on2g; original RB1-01/RB1-07 results are imported
+RES-0388/0389 and profile checks are EV-0177. H/RB1-02/RB1-09 retries are
+ATT-0409-3/0412-2/0414-2; details/notification in formal-retry-jobs.json.
+The last release projection plus0.000417 for3guard failures is
+1.0105911017initial/1.6699158604with-conditionals. It retains the original
+conservative reservations for already-completed reevaluations rather than
+using their small savings to expand scope. Reconcile all later actual use.
