@@ -17,6 +17,7 @@ equal its recorded predictions.json.
 """
 import argparse
 import gc
+import json
 import math
 import os
 from pathlib import Path
@@ -37,11 +38,15 @@ from seg_train import tokenizer, prepare_plan, train, write_summary
 from v1_run import prepare
 from v5_train import write_json
 
-FILES = ['src/test_seg_w.py', 'src/test_seg_w_rules.py', 'src/test_seg_model.py', 'src/test_seg_data.py',
+FILES = ['src/test_seg_w.py', 'src/test_seg_w_rules.py', 'src/test_seg_w_analysis.py', 'src/test_seg_model.py', 'src/test_seg_data.py',
          'src/test_seg_seeds.py', 'src/test_core.py', 'src/test_rb_core.py']
 SEED0_CAP_NODE_H, TOTAL_CAP_NODE_H = 2.2, 5.0
 REPLAY_RUN = Path('/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2')
 REPLAY = {'arm': 'SEG-05', 'seed': 3, 'hardware': 'NVIDIA GH200 120GB MIG 2g.24gb'}
+
+
+def stage(name, start):
+    print(json.dumps({'stage': name, 'elapsed_s': round(time.monotonic()-start, 1)}), flush=True)
 
 
 def checks(out):
@@ -125,6 +130,7 @@ def timing(tok, out, batches_full, splits, lock):
         _, after, _ = evaluate(reloaded, arm, splits, tok, limit=32); reload_s = time.monotonic()-tick
         if before != after:
             raise ValueError('smoke same-job reload identity failed')
+        print(json.dumps({'arm': arm, 'steady_step_seconds': m['train.steady_step_seconds']}), flush=True)
         arms[arm] = {**m, 'load.seconds': load, 'eval32.seconds': eval_s, 'eval32.forward_seconds': audit['forward_seconds'],
                      'save.seconds': save_s, 'reload32.seconds': reload_s, 'reload.identical': True,
                      'interventions32.seconds': interventions}
@@ -205,24 +211,24 @@ def main():
     try:
         values['hardware'] = torch.cuda.get_device_name()
         if args.mode != 'replay':
-            values.update(checks(out))
+            values.update(checks(out)); stage('checks', start)
         if args.mode == 'smoke':
             tok = tokenizer()
             args.seed = 0
             splits, batches, metadata, _, lock = prepare_plan(args, tok)
             if metadata['plan.order_sha256'] != ORDER_SHA256:
                 raise ValueError('seed-0 plan differs from E-0025')
-            values['plan'] = metadata
+            values['plan'] = metadata; stage('plan', start)
             masks = mask_audit(tok, batches, splits)
-            write_json(out/'write-masks.json', masks); values['write_masks'] = masks
+            write_json(out/'write-masks.json', masks); values['write_masks'] = masks; stage('write_masks', start)
             values['initial_digests'] = {str(s): d for s, d in digests().items()}
-            write_json(out/'initial-digests.json', values['initial_digests'])
+            write_json(out/'initial-digests.json', values['initial_digests']); stage('digests', start)
             smoke = timing(tok, out, batches, splits, lock)
-            write_json(out/'cost-smoke.json', smoke)
+            write_json(out/'cost-smoke.json', smoke); stage('timing', start)
             values.update({'smoke.all_arms': len(smoke['arms']), 'smoke.reload_identical': True,
                 'smoke.no_dev_scores_retained': True, 'projection': smoke['projection']})
         if args.mode == 'replay' or args.replay:
-            values.update(replay(args.data_dir, out))
+            values.update(replay(args.data_dir, out)); stage('replay', start)
         values['confirmation_evaluated'] = False
         passed = True
     finally:

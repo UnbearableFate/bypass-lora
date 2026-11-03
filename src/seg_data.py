@@ -99,15 +99,20 @@ def segment_plan(rb_batches, splits, tok):
 
 WRITE_RULES = ('all', 'last', 'sentence_last')
 SENTENCE_END = re.compile('[.?!][)"\'”’）]*$')
+# id(tokenizer) -> (tokenizer, {token id: decoded text}). The tokenizer is held,
+# so its id cannot be reused. Never call len(tok) here: the fast tokenizer's
+# len() rebuilds the full vocabulary on every call (ATT-0403-1 timed out).
 _TOKEN_TEXT = {}
 
 
 def token_text(tok, token_id):
-    key = (tok.name_or_path, len(tok), int(token_id))
-    if key not in _TOKEN_TEXT:
-        _TOKEN_TEXT[key] = tok.decode([int(token_id)], skip_special_tokens=False,
-                                      clean_up_tokenization_spaces=False)
-    return _TOKEN_TEXT[key]
+    owner, cache = _TOKEN_TEXT.setdefault(id(tok), (tok, {}))
+    assert owner is tok
+    token_id = int(token_id)
+    if token_id not in cache:
+        cache[token_id] = tok.decode([token_id], skip_special_tokens=False,
+                                     clean_up_tokenization_spaces=False)
+    return cache[token_id]
 
 
 def sentence_ends(tok, ids):

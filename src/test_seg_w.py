@@ -22,8 +22,8 @@ class FakeTokenizer:
     def __init__(self, texts):
         self.texts = texts
 
-    def __len__(self):
-        return len(self.texts)
+    def __len__(self):  # fast tokenizers rebuild the vocabulary in len(): must not be called
+        raise AssertionError('token_text must not call len(tokenizer)')
 
     def decode(self, ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
         assert not skip_special_tokens and not clean_up_tokenization_spaces
@@ -67,6 +67,21 @@ def test_write_masks_always_include_the_last_token():
         segment1_write(tok, [], 'last')
     with pytest.raises(ValueError):
         segment1_write(tok, [0], 'first')
+
+
+def test_token_text_is_cached_per_tokenizer_object():
+    _TOKEN_TEXT.clear()
+    calls = []
+    class Counting(FakeTokenizer):
+        def decode(self, ids, **kwargs):
+            calls.append(tuple(ids))
+            return super().decode(ids, **kwargs)
+    one, two = Counting(['a', '.', ' b']), Counting(['x', '!', ' y'])
+    for _ in range(3):
+        assert sentence_ends(one, [0, 1, 2]) == [False, True, False]
+        assert sentence_ends(two, [0, 1, 2]) == [False, True, False]
+    assert len(calls) == 6
+    assert segment1_write(two, [2, 0], 'sentence_last') == [False, True]
 
 
 def test_real_tokenizer_sentence_ends_follow_the_text():
