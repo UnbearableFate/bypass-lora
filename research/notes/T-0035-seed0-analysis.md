@@ -161,5 +161,37 @@ There is no replication spend.
 - At seed 0, the SEG-05 controls and the X controls are both below the
   learnability line, so seed-0 gains are biased upward (contract rule 2/3).
 - Three arms ran on 1g and two on 2g. Per D-0018/D-0019 this is metadata only.
-- SEG-X7 PIQA (52.9) is far below SEG-07 (67.9). PIQA is descriptive and is
-  not part of any X gate. No cause has been investigated.
+- SEG-X7 PIQA (52.9) vs SEG-07 (67.9): closed by the steps diagnostic below.
+
+## SEG-X7 training failure (diagnostic, MSG-1065; ATT-0425-1, RES-0406)
+
+A read-only PBS diagnostic at 5b0fad0 read steps.jsonl from the five seed-0
+runs and from the 12 retained E-0030 runs (seeds 3-5, SEG-04/05/06/07).
+Windows are 100 steps.
+
+- **SEG-X7's spike.** After warmup reaches the peak LR, the window mean
+  example_mean_nll jumps from 2.495 (steps 601-700) to 4.561 (701-800).
+  preclip_norm peaks at 178.8 at step 792.
+- **The loss never recovers.** From step 801 on, SEG-X7 minus SEG-X6 is at
+  least 0.77 nat in every window, with a mean of 1.33. Over the last 2,000
+  steps it is 2.953 against X6 2.083, X5 1.879, W1 1.969 and W2 1.965.
+- **Dev NLL rises with it.** SEG-X7's PIQA dev NLL is 5.18; the other 16
+  runs fall between 2.84 and 3.07.
+- **A large gradient norm alone does not mark a failure.** Norms above 50
+  also appear in SEG-X6 (159.9), SEG-X5 (86.7) and SEG-W2 (86.4). The
+  E-0030 SEG-07 runs reach 579-992, yet their loss tracks SEG-06: the mean
+  window difference is about 0, and over the last 2,000 steps it is -0.014
+  to -0.018. Only SEG-X7 stays above its partner after the spike.
+- **The other jump is not arm-specific.** The jump at the window starting at
+  step 5401 (+1.0 to +1.3 nat) appears in every examined run, across arms
+  and seeds.
+
+Conclusion: SEG-X7 is a failed control. Its loss spiked and did not recover,
+so its BoolQ 61.2 and PIQA 52.9 are not valid estimates of T0_X(0). No rule
+outcome changes:
+- gain_X(0) already uses max(Reset_X, T0_X) = Reset_X (61.6).
+- Rule 3 for X fails on Δ_X(0) = -0.8 alone. A better-trained T0_X could
+  only lower gain_X.
+- Rule 6 uses Δ_X(0) only.
+- The X controls' learnability at seed 0 is descriptive, and the analysis
+  does not use it.
