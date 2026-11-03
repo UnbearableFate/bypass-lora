@@ -86,8 +86,8 @@ E-0032 measured usage to date: U-0414 0.018333 + U-0418 0.515278 + U-0416
 |---|---|---|---|---|
 | seed 0 (usage + training + 0.07) | 2.13 | 2.17 | 2.32 | 2.2 |
 | replication W (2 x W arm) | 0.99 | 0.99 | 1.07 | |
-| replication X (2 x X5/X6/X7) | 1.83 | 1.86 | 2.01 | |
-| total worst case (+0.05 analysis) | 4.01 | 4.08 | 4.38 | 5.0 |
+| replication X (2 x X5/X6/X7) | 1.83 | 1.85 | 1.96 | |
+| total worst case (+0.05 analysis) | 4.01 | 4.07 | 4.33 | 5.0 |
 
 The central projection is within 2.2. The pessimistic case exceeds it by up
 to 0.12 (no failures allowed). The total stays within 5.0. Replication cost is
