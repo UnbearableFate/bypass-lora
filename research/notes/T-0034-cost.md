@@ -153,3 +153,29 @@ The last release projection plus0.000417 for3guard failures is
 1.0105911017initial/1.6699158604with-conditionals. It retains the original
 conservative reservations for already-completed reevaluations rather than
 using their small savings to expand scope. Reconcile all later actual use.
+
+## Both formal trains complete; current evaluation-wave release
+
+| Attempt | PBS | Outcome | Seconds | Native MIG h | Node h |
+| --- | --- | --- | ---: | ---: | ---: |
+| ATT-0409-3 | 3787112 | H-QVU complete, actual2g | 5252 | 1.458889 | 0.36472225 |
+| ATT-0410-2 | 3786996 | T0-QVU complete, actual2g | 4852 | 1.347778 | 0.3369445 |
+| ATT-0414-2 | 3787113 | RB1-09 full eval complete, actual2g | 573 | 0.159167 | 0.03979175 |
+| ATT-0412-2 | 3787111 | wrong2g rejected, expected1g | 1 | 0.000278 | 0.0000695 |
+| All ended work incl previous tables | | | 13291 | 3.691948 | 0.922987 |
+
+Native terminal usage and results RES-0390/0391/0392/0393 are imported once.
+No formal training or successful legacy evaluation needs repetition.
+Current wave reserves all3parallel RB1-02 attempts authorized by MSG-1061,
+so even3successes (two duplicate evaluations) remain within the cap. Receipt
+T-0034-evaluation-wave-cost.json uses actual ended0.922987 +600s intervention
++3x610s RB1-02 +120s analysis +20s guard reserve, yielding1.1014592222initial.
+Both conditional controls'9494.276525seconds with5%timing reserve add
+0.6922909966, total1.7937502189. U25 is still conditional on the locked gate;
+the reservation is not release. Count every future failure and duplicate.
+
+Intervention now correctly names producer ATT-0409-3 as new RUN-0421,
+ATT-0421-1/PBS3788305; old cancelled RUN-0420 is not reused. RB1-02
+ATT-0412-3/4/5 are PBS3788306/7/8. Required profiles remain2g/1g respectively;
+minimum numeric successful job ID selects the RB1-02 producer. Notification
+N-20261103-180705-6699 covers all4; see evaluation-wave-jobs.json.

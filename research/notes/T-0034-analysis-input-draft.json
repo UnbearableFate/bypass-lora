@@ -1,0 +1,31 @@
+{
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "status": "draft_not_ready_for_execution",
+  "pending_fields": [
+    "reevaluations.RB1-02: choose min successful job ID and compare any duplicates",
+    "intervention_run: verify latest successful2g attempt and normal==training"
+  ],
+  "base_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0024-1",
+  "references": {
+    "X-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0321-1",
+    "X-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0322-1",
+    "RB1-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0239-1",
+    "RB1-02": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0240-1",
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0245-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0247-1"
+  },
+  "reevaluations": {
+    "RB1-01": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0411-1",
+    "RB1-02": null,
+    "RB1-07": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0413-1",
+    "RB1-09": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0414-2"
+  },
+  "training_runs": {
+    "H-QVU": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0409-3",
+    "T0-QVU": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0410-2"
+  },
+  "smoke_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0406-1",
+  "intervention_run": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0421-1",
+  "profile_bindings": "research/notes/T-0034-analysis-profile-bindings.json",
+  "required_preexecution_checks": "Per MSG1048 verify every available legacy same_profile=true/flips0 and correct guard; cite each mig-profile path in input and conclusion evidence. Per MSG1061 choose minimum successful RB102 job ID; do not choose by score. If10consecutive profile failures, attach coordinator exception and all actual logs without pretending a load failure. Execute ONLY source49f7009 through PBS after registration; U25 controls only if exact rule6 triggers."
+}

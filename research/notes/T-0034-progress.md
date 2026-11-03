@@ -237,3 +237,60 @@ intervene on successful H and run initial locked analysis. Apply MSG-1048
 input checks to EVERY analysis, including the first rule6 release. No
 conditional U25 arm has been released or trained formally. No hypothesis
 state or route decision has been changed.
+
+## MSG-1061: both formal trains complete; evaluation wave active
+
+All original/retry notification groups are ended and coordinator-acknowledged.
+H-QVU ATT-0409-3/PBS3787112 and T0-QVU ATT-0410-2/PBS3786996 are
+complete/passed in actual2g (mg1111/mg1112). Imported RES-0390/0391 and native
+terminal usage5252/4852s,1.458889/1.347778MIG-hours. Both execute49f7009,
+have identical CPU init SHA matching final smoke, fixed R1 order/13115steps/
+26230examples/2000069inputtokens/387653loss-tokens/LR1e-3, and exactly629000
+stored/trainable/with-grad parameters. Full step0/iv_off Base identity and
+dev/cal reload equality pass. All quarter dev files and final predictions
+are preserved. EV-0178 records implementation/cost checks only; effect gates
+remain uncomputed pending swap/locked analysis. Peak CUDA3367694848/
+3364760576bytes; steady steps0.231128618/0.206598341seconds.
+
+RB1-09 ATT-0414-2/PBS3787113 is complete at matched2g, dev0flips,
+full calibration, imported RES-0392/EV-0179 and573s/0.159167MIG-hours.
+RB1-02 ATT-0412-2/PBS3787111 was rejected before model work (actual2g,
+expected1g), native1s/0.000278MIG-hours, partial RES-0393. Consecutive RB1-02
+profile failures are now2/10, not10. T-0034-analysis-profile-bindings.json
+contains the three successful separate legacy producer guards/provenance;
+only RB1-02 is missing. All prior observations/results/usage imported once.
+
+Total ended use now13291scheduler seconds,3.691948native MIG-hours,
+**0.922987node-hours**. T-0034-evaluation-wave-cost.json reserves600s for
+intervention, all3potentially successful RB1-02 duplicates at610s each,
+120s analysis and20s extra guard cost:1.1014592222initial. Including both
+potential rule6 controls plus5%timing reserve gives1.7937502189, below1.3/2.0.
+This worst case counts every concurrent duplicate; do not omit usage.
+
+MSG-1061 permits up to3concurrent RB1-02 attempts. Current frozen-source
+wave (all review covered) is in T-0034-evaluation-wave-jobs.json:
+
+| Operation | Attempt | PBS | Required profile |
+| --- | --- | --- | --- |
+| H-QVU normal/swap from successful ATT-0409-3 | ATT-0421-1 | 3788305.opbs | 2g |
+| RB1-02 attempt3 | ATT-0412-3 | 3788306.opbs | 1g |
+| RB1-02 attempt4 | ATT-0412-4 | 3788307.opbs | 1g |
+| RB1-02 attempt5 | ATT-0412-5 | 3788308.opbs | 1g |
+
+N-20261103-180705-6699 is sealed4 with early failure; notifyd is running.
+Coordinator holds the listener after the WAIT notice. If multiple RB1-02
+attempts succeed, select the minimum numeric job ID (fixed before outcomes),
+count all duplicate usage, and report full per-row prediction/likelihood
+agreement for duplicates. Each rejected profile increments the2/10 count.
+Keep the1g guard. If needed, follow MSG-1061's explicit diagnostic exception
+after10profile failures with all attempts/logs, stating the true scheduling
+reason rather than claiming a load failure. No U25 control is released yet.
+
+On completion inspect application/guard/spec and current H producer metadata,
+normal==training and full swap outputs; import native usage/results. Finalize
+the profile binding file and the draft T-0034-analysis-input-draft.json before
+registering/running the initial locked analysis on49f7009. Draft RB1-02 is
+null on purpose and must not be executed. Apply MSG-1048 checks to this first
+rule6-release analysis and any final analysis. H/T0/RB101/RB107/RB109 are
+already successful and must not be rerun. The cancelled old ATT-0420-1 is
+never a valid intervention producer.

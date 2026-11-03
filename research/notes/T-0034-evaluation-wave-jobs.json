@@ -1,0 +1,121 @@
+{
+  "task": "T-0034",
+  "source_commit": "49f70094b78474ef0158dd631e3b25ea6ebdd174",
+  "coordinator_instruction": "MSG-1061",
+  "cost": "research/notes/T-0034-evaluation-wave-cost.json",
+  "notification": {
+    "id": "N-20261103-180705-6699",
+    "name": "T0034-intervention-and-RB102",
+    "status": "open",
+    "sealed": true,
+    "jobs": [
+      "3788305.opbs",
+      "3788306.opbs",
+      "3788307.opbs",
+      "3788308.opbs"
+    ],
+    "expected": 4,
+    "when": "all_ended",
+    "queue": null,
+    "deadline": null,
+    "early_failure": true,
+    "notifier": "miyabi-g2",
+    "deliver": {
+      "method": "listener"
+    },
+    "message": "T-0034 current H swap plus3parallel RB1-02 attempts ended. Resume researcher-1: verify current producer ATT0409-3, actual2g intervention normal==training and swap; RB102 actual1g same_profile=true/flips0. Choose minimum jobid successful RB102, report row agreement for duplicates and count all usage. Prior2wrong-profile failures; add each rejected attempt to10cap per MSG1061. Then49f7009 locked analysis with all four matched-profile binding checks; conditional U25 only if rule6 triggers. Measured prior0.922987nodeh, forecast max3success1.10146initial/1.79376with-conditionals, caps1.3/2.0. Coordinator owns listener; see evaluation-wave-jobs.json.",
+    "created_at": "2026-11-03T18:07:05+09:00"
+  },
+  "daemon": {
+    "notifier": "miyabi-g2",
+    "last_poll": "2026-11-03T18:02:15+09:00",
+    "daemon_running": true,
+    "poll_seconds": 300,
+    "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+    "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-180705-6699 --notifier miyabi-g2"
+  },
+  "jobs": [
+    {
+      "arm": "H-QVU",
+      "operation": "intervention",
+      "run": "RUN-0421",
+      "attempt": "ATT-0421-1",
+      "profile": "2g.24gb",
+      "origin": "ATT-0409-3",
+      "expected_seconds": 600,
+      "walltime": "00:15:00",
+      "queue": "short-mig",
+      "spec_digest": "blake2b:94dfec4bb0d899e143fc4901c87a135af3222584d24b4965d73532278c31d195",
+      "job_id": "3788305.opbs",
+      "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788305/record.json",
+      "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-H-swap-20261103-180704-f81f6b.log"
+    },
+    {
+      "arm": "RB1-02",
+      "operation": "reevaluate",
+      "run": "RUN-0412",
+      "attempt": "ATT-0412-3",
+      "profile": "1g.24gb",
+      "origin": "ATT-0240-1",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "profile_attempt_number": 3,
+      "spec_digest": "blake2b:1fb94f30d938b81a757c94191842e33d47247a27649b102cc35ef578f2f74d7f",
+      "job_id": "3788306.opbs",
+      "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788306/record.json",
+      "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-ATT-0412-3-20261103-180706-9cc5c5.log"
+    },
+    {
+      "arm": "RB1-02",
+      "operation": "reevaluate",
+      "run": "RUN-0412",
+      "attempt": "ATT-0412-4",
+      "profile": "1g.24gb",
+      "origin": "ATT-0240-1",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "profile_attempt_number": 4,
+      "spec_digest": "blake2b:1fb94f30d938b81a757c94191842e33d47247a27649b102cc35ef578f2f74d7f",
+      "job_id": "3788307.opbs",
+      "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788307/record.json",
+      "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-ATT-0412-4-20261103-180708-538a4e.log"
+    },
+    {
+      "arm": "RB1-02",
+      "operation": "reevaluate",
+      "run": "RUN-0412",
+      "attempt": "ATT-0412-5",
+      "profile": "1g.24gb",
+      "origin": "ATT-0240-1",
+      "expected_seconds": 610,
+      "walltime": "00:15:30",
+      "queue": "short-mig",
+      "profile_attempt_number": 5,
+      "spec_digest": "blake2b:1fb94f30d938b81a757c94191842e33d47247a27649b102cc35ef578f2f74d7f",
+      "job_id": "3788308.opbs",
+      "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3788308/record.json",
+      "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-ATT-0412-5-20261103-180711-eec958.log"
+    }
+  ],
+  "prior_RB102_profile_failures": [
+    {
+      "attempt": "ATT-0412-1",
+      "job": "3787000.opbs",
+      "result": "RES-0385",
+      "scheduler_seconds": 2
+    },
+    {
+      "attempt": "ATT-0412-2",
+      "job": "3787111.opbs",
+      "result": "RES-0393",
+      "scheduler_seconds": 1
+    }
+  ],
+  "prior_failure_count": 2,
+  "max_consecutive_profile_failures": 10,
+  "selection_rule": "Choose minimum numeric job ID among successful actual1g RB102 attempts; count all duplicate usage and report per-row predictions/likelihood agreement. Group contains3parallel attempts, so new rejected attempts each increment count independently.",
+  "measured_ended_node_hours_before_this_group": 0.922987,
+  "continuation": "Validate applications and guards, import native observations/usage/results once, update profile bindings to ready; run initial locked analysis on49f7009 only after matching RB102 or explicit coordinator exception and successful current H normal/swap. Never use cancelled ATT0420. Draft input is not ready until pending fields cleared. No formal U25 controls yet."
+}
