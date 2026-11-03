@@ -193,7 +193,9 @@ def test_masked_segment1_writes_only_the_mask_and_segment2_is_unchanged(base, ar
         # Segment-1 positions before the first write read an empty state: zero increment.
         captured = {}
         layer = model.adapters()[model.config.layers[0]]
-        handle = layer.side.register_forward_hook(lambda m, args, output: captured.setdefault('z', output[0]))
+        def hook(module, args, output):  # observe only: a forward hook returning a value replaces the output
+            captured['z'] = output[0]
+        handle = layer.side.register_forward_hook(hook)
         try:
             first_forward(model, a, torch.ones_like(a), write)
         finally:
