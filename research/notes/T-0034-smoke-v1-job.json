@@ -1,0 +1,26 @@
+{
+  "task": "T-0034",
+  "experiment": "E-0031@1",
+  "source_commit": "6f85da7aa8a8b540c47e8a386e3f37dc6714f785",
+  "review": "RV-0104",
+  "run": "RUN-0401",
+  "attempt": "ATT-0401-2",
+  "spec_digest": "blake2b:d104ac55e76574329678a5310ef74299deed550811ee26d3bfaf5e67383afa7f",
+  "job_id": "3786323.opbs",
+  "record": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/jobs/3786323/record.json",
+  "output": "/work/xg24i002/x10041/bypass-lora/.miyabi-mcp/logs/T0034-smoke-v1b-20261103-150309-09794a.log",
+  "notification": "N-20261103-150310-7299",
+  "listen_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notify listen --id N-20261103-150310-7299 --notifier miyabi-g2",
+  "start_command": "/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp notifyd ensure --notifier miyabi-g2",
+  "requested_walltime": "00:25:00",
+  "expected_seconds": 1000,
+  "first_attempt": {
+    "attempt": "ATT-0401-1",
+    "job_id": "3786303.opbs",
+    "result": "RES-0377",
+    "outcome": "profile_guard_rejection_before_workload",
+    "scheduler_seconds": 2,
+    "native_mig_instance_hours": 0.000556,
+    "node_hours": 0.000139
+  }
+}
