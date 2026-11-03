@@ -117,3 +117,11 @@ f741952 (git diff empty), and the seg_* files were reviewed in RV-0108
 - Any seed-0 job failure: stop and report before rerunning (no rerun margin
   in the pessimistic case).
 - Recompute replication cost from measured seed-0 jobs before seeds 1-2.
+
+## Seed 0 done (see T-0035-seed0-analysis.md)
+
+- Training ATT-0415-1..0419-1 all complete (RES-0394..0398; U-0431..0435,
+  8.167222 MIG-h). Rule-7 mechanism ATT-0422-1 (RES-0403, U-0440). Analysis
+  ATT-0423-1 (RES-0404, U-0441): rule 1 38/38; no variant passed screening;
+  H-0032 challenges, H-0033 challenges (screening); no replication.
+- E-0032 measured total 2.274236 node-h (<= 2.35 seed-0, D-0077; <= 5.0).
