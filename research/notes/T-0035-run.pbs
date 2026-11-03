@@ -1,0 +1,54 @@
+#!/bin/bash
+# E-0032 stages execute only from registered immutable snapshots in PBS.
+set -euo pipefail
+: "${SR_ATTEMPT_ID:?registered attempt required}"
+: "${SR_CODE_COMMIT:?registered source required}"
+: "${SR_SPEC_DIGEST:?registered spec digest required}"
+: "${SEG_STAGE:?registered stage required}"
+SEG_PROJECT=/work/xg24i002/x10041/bypass-lora
+SEG_SOURCE="$SEG_PROJECT/snapshots/$SR_CODE_COMMIT"
+SEG_OUT="$SEG_PROJECT/research/artifacts/$SR_ATTEMPT_ID"
+SEG_PY="$SEG_PROJECT/envs/3c916b51337d-cuda/bin/python"
+mkdir -p "$SEG_OUT"
+/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
+  --project-dir "$SEG_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
+  > "$SEG_OUT/allocation.json"
+/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$SEG_OUT/allocation.json"
+nvidia-smi -L > "$SEG_OUT/nvidia-smi.txt"
+# Record the allocated MIG profile. The replay must run on 2g.24gb (the
+# checkpoint's training slice); it exits here, before any evaluation, otherwise.
+PROFILE_OK=0
+if /usr/bin/python3 -I "$SEG_SOURCE/src/mig_profile_guard.py" --output "$SEG_OUT"; then PROFILE_OK=1; fi
+if [ "$SEG_STAGE" = replay ] && [ "$PROFILE_OK" != 1 ]; then exit 3; fi
+source /etc/profile.d/modules.sh
+module load cuda/12.8
+export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
+export PYTHONPATH="$SEG_SOURCE/src"
+export TMPDIR="/local/${PBS_JOBID}/seg-w-$SEG_STAGE"
+mkdir -p "$TMPDIR"
+cd "$SEG_SOURCE"
+DATA=(--data-dir "$SEG_PROJECT/data/v1"
+      --split-manifest "$SEG_SOURCE/research/artifacts/T-0022/rb-confirmation.json"
+      --lr-lock "$SEG_SOURCE/research/artifacts/T-0024/lr-lock.json")
+case "$SEG_STAGE" in
+  smoke)
+    REPLAY=()
+    if [ "$PROFILE_OK" = 1 ]; then REPLAY=(--replay); fi
+    exec "$SEG_PY" src/seg_w_checks.py --mode smoke "${REPLAY[@]}" "${DATA[@]}" --output "$SEG_OUT"
+    ;;
+  checks|replay)
+    exec "$SEG_PY" src/seg_w_checks.py --mode "$SEG_STAGE" "${DATA[@]}" --output "$SEG_OUT"
+    ;;
+  train)
+    : "${SEG_ARM:?registered arm required}" "${SEG_SEED:?registered seed required}"
+    exec "$SEG_PY" src/seg_train.py --arm "$SEG_ARM" --stage train --seed "$SEG_SEED" \
+      "${DATA[@]}" --output "$SEG_OUT"
+    ;;
+  mechanism|analysis|steps)
+    : "${SEG_INPUT:?analysis input required}"
+    exec "$SEG_PY" "src/seg_w_$SEG_STAGE.py" --input "$SEG_INPUT" --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT"
+    ;;
+  *) exit 2 ;;
+esac

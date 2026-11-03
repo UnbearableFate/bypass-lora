@@ -228,7 +228,7 @@ class SideBranch(nn.Module):
             self.diagnostics = result.diagnostics
             return result.outputs, result.state, result.accounting
         result = process_sequence(q, k, v, self.reader, state=state, valid=valid,
-                                  write=(write_mask if phase == 'support' else valid) if phase != 'query' else torch.zeros_like(valid),
+                                  write=(valid if write_mask is None else write_mask) if phase != 'query' else torch.zeros_like(valid),
                                   read=valid if phase != 'support' else torch.zeros_like(valid),
                                   steps=cfg.steps, mode=cfg.mode, update=cfg.update,
                                   readout=cfg.readout, backend=cfg.backend,
@@ -379,8 +379,14 @@ class BranchModel(nn.Module):
             raise ValueError('provide cache or memory, not both')
         if phase == 'query' and cache is None and memory is None:
             raise ValueError('query requires explicit support memory')
-        if phase != 'support' and write_mask is not None:
-            raise ValueError('write_mask is only accepted in support phase')
+        if phase == 'query' and write_mask is not None:
+            raise ValueError('write_mask is not accepted in the read-only query phase')
+        # E-0032: an F-phase write mask restricts which valid tokens write the
+        # KernelMatrix state; reads stay on every valid token.
+        if phase == 'F' and write_mask is not None and (
+                self.config.branch != 'memory' or self.config.backend != 'kernel_matrix' or
+                runtime is not None or cache is not None or use_cache):
+            raise ValueError('an F-phase write_mask requires a fresh uncached KernelMatrix forward')
         if attention_mask is None:
             if cache is not None:
                 raise ValueError('cached forward needs the complete attention mask')
@@ -391,6 +397,7 @@ class BranchModel(nn.Module):
                 if self.config.write_scope == 'visible_fact_delimiter':
                     raise ValueError('visible_fact_delimiter requires an explicit write_mask')
                 write_mask = valid
+        if write_mask is not None:
             if write_mask.shape != valid.shape or write_mask.dtype != torch.bool:
                 raise ValueError('write_mask must be boolean with the input shape')
             if (write_mask & ~valid).any():
