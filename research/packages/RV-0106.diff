@@ -1,0 +1,1367 @@
+diff --git a/research/notes/T-0035-run.pbs b/research/notes/T-0035-run.pbs
+new file mode 100644
+index 0000000..7f3f83d
+--- /dev/null
++++ b/research/notes/T-0035-run.pbs
+@@ -0,0 +1,54 @@
++#!/bin/bash
++# E-0032 stages execute only from registered immutable snapshots in PBS.
++set -euo pipefail
++: "${SR_ATTEMPT_ID:?registered attempt required}"
++: "${SR_CODE_COMMIT:?registered source required}"
++: "${SR_SPEC_DIGEST:?registered spec digest required}"
++: "${SEG_STAGE:?registered stage required}"
++SEG_PROJECT=/work/xg24i002/x10041/bypass-lora
++SEG_SOURCE="$SEG_PROJECT/snapshots/$SR_CODE_COMMIT"
++SEG_OUT="$SEG_PROJECT/research/artifacts/$SR_ATTEMPT_ID"
++SEG_PY="$SEG_PROJECT/envs/3c916b51337d-cuda/bin/python"
++mkdir -p "$SEG_OUT"
++/work/xg24i002/x10041/miyabi-toolbox/miyabi-mcp/bin/miyabi-mcp \
++  --project-dir "$SEG_PROJECT" call allocation_check '{"target_system":"Miyabi-G"}' \
++  > "$SEG_OUT/allocation.json"
++/usr/bin/jq -e '.ok == true and .context.runtime_execution_allowed == true' "$SEG_OUT/allocation.json"
++nvidia-smi -L > "$SEG_OUT/nvidia-smi.txt"
++# Record the allocated MIG profile. The replay must run on 2g.24gb (the
++# checkpoint's training slice); it exits here, before any evaluation, otherwise.
++PROFILE_OK=0
++if /usr/bin/python3 -I "$SEG_SOURCE/src/mig_profile_guard.py" --output "$SEG_OUT"; then PROFILE_OK=1; fi
++if [ "$SEG_STAGE" = replay ] && [ "$PROFILE_OK" != 1 ]; then exit 3; fi
++source /etc/profile.d/modules.sh
++module load cuda/12.8
++export HF_HOME=/work/xg24i002/x10041/hf_home HF_HUB_OFFLINE=1
++export TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
++export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
++export PYTHONPATH="$SEG_SOURCE/src"
++export TMPDIR="/local/${PBS_JOBID}/seg-w-$SEG_STAGE"
++mkdir -p "$TMPDIR"
++cd "$SEG_SOURCE"
++DATA=(--data-dir "$SEG_PROJECT/data/v1"
++      --split-manifest "$SEG_SOURCE/research/artifacts/T-0022/rb-confirmation.json"
++      --lr-lock "$SEG_SOURCE/research/artifacts/T-0024/lr-lock.json")
++case "$SEG_STAGE" in
++  smoke)
++    REPLAY=()
++    if [ "$PROFILE_OK" = 1 ]; then REPLAY=(--replay); fi
++    exec "$SEG_PY" src/seg_w_checks.py --mode smoke "${REPLAY[@]}" "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  checks|replay)
++    exec "$SEG_PY" src/seg_w_checks.py --mode "$SEG_STAGE" "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  train)
++    : "${SEG_ARM:?registered arm required}" "${SEG_SEED:?registered seed required}"
++    exec "$SEG_PY" src/seg_train.py --arm "$SEG_ARM" --stage train --seed "$SEG_SEED" \
++      "${DATA[@]}" --output "$SEG_OUT"
++    ;;
++  mechanism|analysis)
++    : "${SEG_INPUT:?analysis input required}"
++    exec "$SEG_PY" "src/seg_w_$SEG_STAGE.py" --input "$SEG_INPUT" --data-dir "$SEG_PROJECT/data/v1" --output "$SEG_OUT"
++    ;;
++  *) exit 2 ;;
++esac
+diff --git a/src/bypass_model.py b/src/bypass_model.py
+index 79c3b42..68eeaf0 100644
+--- a/src/bypass_model.py
++++ b/src/bypass_model.py
+@@ -207,7 +207,7 @@ class SideBranch(nn.Module):
+             self.diagnostics = result.diagnostics
+             return result.outputs, result.state, result.accounting
+         result = process_sequence(q, k, v, self.reader, state=state, valid=valid,
+-                                  write=(write_mask if phase == 'support' else valid) if phase != 'query' else torch.zeros_like(valid),
++                                  write=(valid if write_mask is None else write_mask) if phase != 'query' else torch.zeros_like(valid),
+                                   read=valid if phase != 'support' else torch.zeros_like(valid),
+                                   steps=cfg.steps, mode=cfg.mode, update=cfg.update,
+                                   readout=cfg.readout, backend=cfg.backend,
+@@ -345,8 +345,14 @@ class BranchModel(nn.Module):
+             raise ValueError('provide cache or memory, not both')
+         if phase == 'query' and cache is None and memory is None:
+             raise ValueError('query requires explicit support memory')
+-        if phase != 'support' and write_mask is not None:
+-            raise ValueError('write_mask is only accepted in support phase')
++        if phase == 'query' and write_mask is not None:
++            raise ValueError('write_mask is not accepted in the read-only query phase')
++        # E-0032: an F-phase write mask restricts which valid tokens write the
++        # KernelMatrix state; reads stay on every valid token.
++        if phase == 'F' and write_mask is not None and (
++                self.config.branch != 'memory' or self.config.backend != 'kernel_matrix' or
++                runtime is not None or cache is not None or use_cache):
++            raise ValueError('an F-phase write_mask requires a fresh uncached KernelMatrix forward')
+         if attention_mask is None:
+             if cache is not None:
+                 raise ValueError('cached forward needs the complete attention mask')
+@@ -357,6 +363,7 @@ class BranchModel(nn.Module):
+                 if self.config.write_scope == 'visible_fact_delimiter':
+                     raise ValueError('visible_fact_delimiter requires an explicit write_mask')
+                 write_mask = valid
++        if write_mask is not None:
+             if write_mask.shape != valid.shape or write_mask.dtype != torch.bool:
+                 raise ValueError('write_mask must be boolean with the input shape')
+             if (write_mask & ~valid).any():
+diff --git a/src/seg_data.py b/src/seg_data.py
+index 1a6be1b..178b87a 100644
+--- a/src/seg_data.py
++++ b/src/seg_data.py
+@@ -4,6 +4,8 @@ Total length (both segments) remains <=512. Candidate IDs and answer masks
+ come directly from V1. Only independently tokenizing the PIQA seam can change
+ prompt IDs. BoolQ's retained Passage prefix is exactly V1's.
+ """
++import re
++
+ from v1_data import _encode, encode_candidates
+ 
+ ORDER_SHA256 = '33759bc20322d0c9981128dd8574438546fc3439194ab32b7c79e35e0f0fc2bf'
+@@ -86,3 +88,43 @@ def segment_plan(rb_batches, splits, tok):
+             current.append(dict(cache[key], epoch=old['epoch'], epoch_end=old['epoch_end']))
+         batches.append(current)
+     return batches
++
++
++# E-0032 segment-1 write rules, frozen before training (contract Design).
++# A segment-1 token is a sentence end when its own decoded text, with trailing
++# whitespace removed, ends in one of . ? ! optionally followed by closing quotes
++# or right parentheses, and the next segment-1 token's decoded text starts with
++# whitespace (or the token is the last segment-1 token). The last valid
++# segment-1 token always writes.
++
++WRITE_RULES = ('all', 'last', 'sentence_last')
++SENTENCE_END = re.compile('[.?!][)"\'”’）]*$')
++_TOKEN_TEXT = {}
++
++
++def token_text(tok, token_id):
++    key = (tok.name_or_path, len(tok), int(token_id))
++    if key not in _TOKEN_TEXT:
++        _TOKEN_TEXT[key] = tok.decode([int(token_id)], skip_special_tokens=False,
++                                      clean_up_tokenization_spaces=False)
++    return _TOKEN_TEXT[key]
++
++
++def sentence_ends(tok, ids):
++    texts = [token_text(tok, i) for i in ids]
++    return [SENTENCE_END.search(text.rstrip()) is not None and
++            (t+1 == len(texts) or texts[t+1][:1].isspace())
++            for t, text in enumerate(texts)]
++
++
++def segment1_write(tok, ids, rule):
++    """Boolean write mask over segment-1 tokens; None means every token writes."""
++    if rule not in WRITE_RULES:
++        raise ValueError('unknown segment-1 write rule')
++    if not ids:
++        raise ValueError('segment 1 must be nonempty')
++    if rule == 'all':
++        return None
++    mask = sentence_ends(tok, ids) if rule == 'sentence_last' else [False]*len(ids)
++    mask[-1] = True
++    return mask
+diff --git a/src/seg_eval.py b/src/seg_eval.py
+index ccf123c..79e507a 100644
+--- a/src/seg_eval.py
++++ b/src/seg_eval.py
+@@ -6,8 +6,8 @@ import torch
+ import torch.nn.functional as F
+ 
+ from rb_history import donor_indices
+-from seg_data import encode_segments
+-from seg_model import forward, first_forward
++from seg_data import encode_segments, segment1_write
++from seg_model import forward, first_forward, WRITE_RULE
+ from v1_run import batch_tensors, EvaluationNonfinite
+ 
+ 
+@@ -17,12 +17,26 @@ def tensors(encoded, pad_id):
+     return first, torch.ones_like(first), second
+ 
+ 
++def arm_write(tok, arm, ids):
++    """The arm's registered segment-1 write mask (E-0032), or None (all tokens write)."""
++    return segment1_write(tok, ids, WRITE_RULE.get(arm, 'all'))
++
++
++def write_tensor(first_write, first):
++    if first_write is None:
++        return None
++    mask = torch.tensor([first_write], dtype=torch.bool, device=first.device)
++    if mask.shape != first.shape:
++        raise ValueError('segment-1 write mask length differs from segment 1')
++    return mask
++
++
+ def token_losses(model, arm, encoded, pad_id, kind='normal', donor_memory=None, force_first=False,
+-                 timing_events=None):
++                 timing_events=None, first_write=None):
+     first, mask, second = tensors(encoded, pad_id)
+     output, parts = forward(model, arm, first, mask, second['input_ids'], second['attention_mask'],
+                             kind=kind, donor_memory=donor_memory, force_first=force_first,
+-                            timing_events=timing_events)
++                            timing_events=timing_events, first_write=write_tensor(first_write, first))
+     labels = second['labels'][:, 1:]
+     valid = labels != -100
+     losses = F.cross_entropy(output.logits[:, :-1][valid].float(), labels[valid], reduction='none')
+@@ -42,23 +56,28 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal', split_name='dev
+     start = time.monotonic()
+     segment_seconds = {'segment1': 0., 'segment2': 0.}
+     donor_seconds = 0.
++    writes = [] if arm in WRITE_RULE else None
+     for ri, row in enumerate(rows):
+         encoded = encode_segments(tok, row)
+         audit.append(encoded[0]['seam'])
++        first_write = arm_write(tok, arm, encoded[0]['segment1_ids'])
++        if writes is not None:
++            writes.append(sum(first_write))
+         donor_memory = None
+         if donors is not None:
+             donor = rows[donors[ri]]
+             donor_encoded = encode_segments(tok, donor)[0]
+             ids, mask, _ = tensors(donor_encoded, tok.pad_token_id)
++            donor_write = write_tensor(arm_write(tok, arm, donor_encoded['segment1_ids']), ids)
+             torch.cuda.synchronize(); donor_tick = time.monotonic()
+-            donor_memory = first_forward(model, ids, mask).cache.memory
++            donor_memory = first_forward(model, ids, mask, donor_write).cache.memory
+             torch.cuda.synchronize(); donor_seconds += time.monotonic()-donor_tick
+             donor_map.append({'task': row['task'], 'recipient': row['id'], 'donor': donor['id']})
+         scores, sums, counts = [], [], []
+         for candidate in encoded:
+             events = []
+             losses, _, _ = token_losses(model, arm, candidate, tok.pad_token_id, kind, donor_memory,
+-                                        timing_events=events)
++                                        timing_events=events, first_write=first_write)
+             total = losses.sum().item()
+             for phase, begin, end in events:
+                 segment_seconds[phase] += begin.elapsed_time(end)/1000
+@@ -82,4 +101,5 @@ def evaluate(model, arm, splits, tok, limit=None, kind='normal', split_name='dev
+     if not all(math.isfinite(float(x)) for x in metrics.values()):
+         raise EvaluationNonfinite('nonfinite segmented evaluation aggregate')
+     return metrics, predictions, {'elapsed_s': time.monotonic()-start, 'seams': audit, 'donors': donor_map,
+-                                 'forward_seconds': segment_seconds, 'donor_forward_seconds': donor_seconds}
++                                 'forward_seconds': segment_seconds, 'donor_forward_seconds': donor_seconds,
++                                 **({} if writes is None else {'segment1_writes': writes})}
+diff --git a/src/seg_model.py b/src/seg_model.py
+index a23f3f4..5a1253e 100644
+--- a/src/seg_model.py
++++ b/src/seg_model.py
+@@ -16,26 +16,45 @@ from rb_train import adapter_config, LAYERS
+ from v1_data import derive_seed
+ from v1_lora import LoRAConfig, LoRAModel
+ 
+-ARMS = tuple(f'SEG-{i:02}' for i in range(8))
+-KEEP = ('SEG-02', 'SEG-05')
+-RESET = ('SEG-03', 'SEG-06')
+-T0 = ('SEG-01', 'SEG-07')
++# E-0032: SEG-W1/W2 change only SEG-05's segment-1 write positions; SEG-X5/X6/X7
++# are SEG-05/06/07 with the X tap (input_layernorm output feeds q, k and v).
++E0032_ARMS = ('SEG-W1', 'SEG-W2', 'SEG-X5', 'SEG-X6', 'SEG-X7')
++ARMS = (*(f'SEG-{i:02}' for i in range(8)), *E0032_ARMS)
++KEEP = ('SEG-02', 'SEG-05', 'SEG-W1', 'SEG-W2', 'SEG-X5')
++RESET = ('SEG-03', 'SEG-06', 'SEG-X6')
++T0 = ('SEG-01', 'SEG-07', 'SEG-X7')
++WRITE_RULE = {'SEG-W1': 'last', 'SEG-W2': 'sentence_last'}
++X_TAP = ('SEG-X5', 'SEG-X6', 'SEG-X7')
++R128 = ('SEG-05', 'SEG-06', 'SEG-07', *E0032_ARMS)
+ FAMILIES = {**{a: 'RBc-R' for a in (*KEEP, *RESET)}, **{a: 'RBc-T' for a in T0}, 'SEG-04': 'RBc-L'}
+ PARAMETERS = {'SEG-00': 0, **{f'SEG-{i:02}': 663552 for i in (1, 2, 3)},
+-              'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)}}
++              'SEG-04': 630784, **{f'SEG-{i:02}': 2752512 for i in (5, 6, 7)},
++              'SEG-W1': 2752512, 'SEG-W2': 2752512, **{a: 2228224 for a in X_TAP}}
+ # E-0027 trains only the r128 triplet and LoRA_seg at new seeds; seed 0 is E-0025.
+-SEED_ARMS = {0: ARMS, **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07') for s in (1, 2, 3, 4, 5)}}
++# E-0032 registers its five arms at seed 0 and (one variant, rule 4) seeds 1, 2.
++SEED_ARMS = {0: ARMS, **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07', *E0032_ARMS) for s in (1, 2)},
++             **{s: ('SEG-04', 'SEG-05', 'SEG-06', 'SEG-07') for s in (3, 4, 5)}}
+ 
++# RES-0281 (ATT-0304-1): SEG-05 initial adapter digests; E-0032 rule 1 requires
++# SEG-W1/W2 to start from exactly these parameters at the same seed.
++SEG05_INITIAL_SHA256 = {
++    0: 'f3fc8b76c81055f77e559a4df808218899b72a3716f47ea2f8e203062eb47cf5',
++    1: 'cfe01ba0cb7b2430f7cf0715d31eade2b56d2b8576ed132bc0bec2d8d959ff4e',
++    2: '5fe32303dadc74217f587b0eaa4534af022fd0adbd8bda8b26dc3cffeaa52e33'}
+ 
+-def contract(seed):
++
++def contract(seed, arm=None):
+     if seed not in SEED_ARMS:
+         raise ValueError('unknown segmented seed')
++    if arm in E0032_ARMS:
++        return 'E-0032@1'
+     return 'E-0025@1' if seed == 0 else 'E-0027@1' if seed in (1, 2) else 'E-0030@1'
+ 
+ 
+ def config_for(arm):
+     return replace(adapter_config('RB1-01' if arm in T0 else 'RB1-02'),
+-                   rank=128 if arm in ('SEG-05', 'SEG-06', 'SEG-07') else 32)
++                   rank=128 if arm in R128 else 32,
++                   tap='direct_hidden' if arm in X_TAP else 'qknorm_pre_rope')
+ 
+ 
+ def make_model(arm, checkpoint=None, seed=0):
+@@ -95,19 +114,27 @@ def zero_exits(model, enabled):
+             handle.remove()
+ 
+ 
+-def first_forward(model, first_ids, first_mask):
+-    out = model(input_ids=first_ids, attention_mask=first_mask, use_cache=False)
++def first_forward(model, first_ids, first_mask, first_write=None):
++    kwargs = {} if first_write is None else {'write_mask': first_write}
++    out = model(input_ids=first_ids, attention_mask=first_mask, use_cache=False, **kwargs)
+     if out.cache.backbone is not None:
+         raise ValueError('segment 1 exported backbone KV')
+     return out
+ 
+ 
+ def forward(model, arm, first_ids, first_mask, second_ids, second_mask,
+-            kind='normal', donor_memory=None, force_first=False, timing_events=None):
++            kind='normal', donor_memory=None, force_first=False, timing_events=None,
++            first_write=None):
+     if kind not in ('normal', 'iv_off', 'iv_reset', 'iv_swap'):
+         raise ValueError('unknown segmented intervention')
+-    if kind != 'normal' and arm not in KEEP:
+-        raise ValueError('only R_keep has segmented interventions')
++    if kind not in ('normal', 'iv_off') and arm not in KEEP:
++        raise ValueError('only R_keep has segmented boundary interventions')
++    if kind == 'iv_off' and arm not in KEEP and arm not in E0032_ARMS:
++        raise ValueError('iv_off is registered for R_keep and the E-0032 arms')
++    if arm in WRITE_RULE and first_write is None:
++        raise ValueError('this arm writes segment 1 only through its registered mask')
++    if first_write is not None and (arm not in KEEP or first_write.shape != first_ids.shape):
++        raise ValueError('a segment-1 write mask needs an R_keep arm and the segment-1 shape')
+     if kind != 'normal' and (model.training or torch.is_grad_enabled()):
+         raise ValueError('segmented interventions require frozen no-grad evaluation')
+     if (kind == 'iv_swap') != (donor_memory is not None):
+@@ -124,7 +151,8 @@ def forward(model, arm, first_ids, first_mask, second_ids, second_mask,
+         return result
+     with zero_exits(model, kind == 'iv_off'):
+         if arm in KEEP or force_first:
+-            first = call('segment1', first_ids, first_mask)
++            first = call('segment1', first_ids, first_mask,
++                         **({} if first_write is None else {'write_mask': first_write}))
+             if isinstance(model, BranchModel):
+                 if first.cache.backbone is not None:
+                     raise ValueError('segment 1 exported backbone KV')
+diff --git a/src/seg_train.py b/src/seg_train.py
+index ac89ba6..638d733 100644
+--- a/src/seg_train.py
++++ b/src/seg_train.py
+@@ -16,9 +16,9 @@ from rb_data import plan_batches
+ from rb_train import load_data
+ from rb1_artifacts import verify_lr_lock
+ from seg_data import segment_plan, ORDER_SHA256_BY_SEED, STEPS, EXAMPLES, SEEDS
+-from seg_eval import evaluate, token_losses
++from seg_eval import evaluate, token_losses, arm_write
+ from seg_model import (make_model, KEEP, FAMILIES, PARAMETERS, state_description, parameter_digest,
+-                       SEED_ARMS, contract)
++                       SEED_ARMS, contract, E0032_ARMS, WRITE_RULE, SEG05_INITIAL_SHA256)
+ from bypass_model import BranchModel
+ from v1_run import lr_factor, preserved_evaluation_state, example_mean_objective, TrainingDiverged
+ from v5_train import file_sha256, write_json, plan_metadata
+@@ -94,6 +94,7 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
+     totals = {'train.steps': 0, 'train.examples': 0, 'train.input_tokens': 0,
+               'train.segment1_tokens': 0, 'train.segment2_tokens': 0, 'train.loss_tokens': 0}
+     accounting, grad_seen, durations = Accounting(), set(), []
++    segment1_writes = []
+     state_shapes, evaluation_seconds = {}, 0.
+     forward_seconds = {'segment1': 0., 'segment2': 0.}
+     torch.cuda.reset_peak_memory_stats()
+@@ -104,7 +105,11 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
+             optimizer.zero_grad(set_to_none=True)
+             ce, events = 0., []
+             for e in examples:
+-                losses, parts, result = token_losses(model, arm, e, tok.pad_token_id, timing_events=events)
++                first_write = arm_write(tok, arm, e['segment1_ids']) if arm in KEEP else None
++                if arm in KEEP:
++                    segment1_writes.append(len(e['segment1_ids']) if first_write is None else sum(first_write))
++                losses, parts, result = token_losses(model, arm, e, tok.pad_token_id, timing_events=events,
++                                                     first_write=first_write)
+                 if isinstance(model, BranchModel) and arm in KEEP:
+                     state_shapes = state_description(result.cache.memory)
+                 accounting.add(parts)
+@@ -150,7 +155,10 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
+                 assert c['valid_tokens'] == valid
+                 assert c['attention'] == c['ffn'] == totals['train.examples']
+                 expected = 0 if model.config.branch == 'kernel_tokenwise' else valid
+-                assert c['writes'] == c['reads'] == expected
++                # E-0032: only segment-1 writes follow the registered mask; reads and
++                # segment-2 writes stay on every valid token.
++                writes = sum(segment1_writes) if phase == 'segment1' and expected else expected
++                assert c['reads'] == expected and c['writes'] == writes
+     seconds = time.monotonic()-started-evaluation_seconds
+     totals.update({'train.seconds': seconds, 'intermediate.seconds': evaluation_seconds,
+         'train.steady_step_seconds': sum(durations[10:])/len(durations[10:]) if len(durations)>10 else None,
+@@ -160,9 +168,16 @@ def train(model, arm, batches, tok, lr, output, monitor=None):
+         'state.M_c_bytes': sum(x['M_c_bytes'] for x in state_shapes.values()),
+         'state.counts_bytes': sum(x['counts_bytes'] for x in state_shapes.values()),
+         'train.forward_seconds': forward_seconds})
++    if segment1_writes:
++        totals['train.segment1_writes'] = write_summary(segment1_writes)
+     return totals
+ 
+ 
++def write_summary(counts):
++    return {'examples': len(counts), 'total': sum(counts), 'mean': sum(counts)/len(counts),
++            'min': min(counts), 'max': max(counts)}
++
++
+ @contextmanager
+ def original_backbone(model):
+     layers = model.adapters()
+@@ -179,6 +194,7 @@ def run(args):
+     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
+     values, passed, start = {}, False, time.monotonic()
+     try:
++        e0032 = args.arm in E0032_ARMS
+         if args.arm not in SEED_ARMS.get(args.seed, ()) or args.stage not in ('train', 'base'):
+             raise ValueError('unknown segmented seed/arm/stage')
+         if (args.stage == 'base') != (args.arm == 'SEG-00'):
+@@ -203,18 +219,26 @@ def run(args):
+         values['load.seconds'] = time.monotonic()-tick
+         if args.arm != 'SEG-00':
+             values['initial.adapter_sha256'] = parameter_digest(model)
++        if args.arm in WRITE_RULE:
++            values['initial.equals_SEG-05'] = values['initial.adapter_sha256'] == SEG05_INITIAL_SHA256[args.seed]
++            if not values['initial.equals_SEG-05']:
++                raise ValueError('write-mask arm does not start from the registered SEG-05 parameters')
+         values['params.stored'] = PARAMETERS[args.arm]
+         values['params.trainable'] = sum(p.numel() for p in model.parameters() if p.requires_grad)
+-        if args.arm in KEEP:
++        if args.arm in KEEP or e0032:
+             # Same allocation and shape, before training. No cross-job bitwise gate.
++            # E-0032 rule 1: every new arm (Keep, Reset, T0) starts at Base_seg.
+             with original_backbone(model) as base:
+                 _, base_preds, _ = evaluate(base, 'SEG-00', splits, tok)
+-            _, initial, _ = evaluate(model, args.arm, splits, tok)
++            _, initial, initial_audit = evaluate(model, args.arm, splits, tok)
+             values['initial.identical_to_Base_seg'] = initial == base_preds
+             if not values['initial.identical_to_Base_seg']:
+                 raise ValueError('zero initialized R_keep does not match Base_seg')
+             write_json(out/'initial-base-predictions.json', base_preds)
+             write_json(out/'initial-predictions.json', initial)
++            if args.arm in WRITE_RULE:
++                values['dev.segment1_writes'] = write_summary(initial_audit['segment1_writes'])
++                write_json(out/'segment1-writes-dev.json', initial_audit['segment1_writes'])
+         elif args.seed in (3, 4, 5):
+             im, initial, _ = evaluate(model, args.arm, splits, tok)
+             write_json(out/'initial-predictions.json', initial)
+@@ -223,7 +247,8 @@ def run(args):
+             def monitor(step, current):
+                 m, p, _ = evaluate(current, args.arm, splits, tok)
+                 write_json(out/f'dev-step-{step}.json', {'step': step, 'metrics': m, 'predictions': p})
+-            values.update(train(model, args.arm, batches, tok, lr, out, monitor))
++            # E-0032 records only the final checkpoint's dev predictions (no curve evals).
++            values.update(train(model, args.arm, batches, tok, lr, out, None if e0032 else monitor))
+             if values['params.with_grad'] != PARAMETERS[args.arm]:
+                 raise ValueError('some segmented adapter parameters never received gradients')
+             tick = time.monotonic(); model.export_adapter(out/'adapter')
+@@ -239,12 +264,20 @@ def run(args):
+             values['reload.identical'] = p == p2 and all(values[k] == v for k, v in m2.items())
+             if not values['reload.identical']:
+                 raise ValueError('segmented same-job reload differs')
+-            if args.seed in (3, 4, 5) and args.arm == 'SEG-05':
++            if (args.seed in (3, 4, 5) and args.arm == 'SEG-05') or e0032:
+                 om, off, oa = evaluate(model, args.arm, splits, tok, kind='iv_off')
+                 values['off.identical_to_Base_seg'] = off == base_preds
+                 if not values['off.identical_to_Base_seg']:
+-                    raise ValueError('E-0030 dev iv_off differs from same-allocation Base_seg')
++                    raise ValueError('dev iv_off differs from same-allocation Base_seg')
+                 write_json(out/'iv-off-dev.json', {'metrics': om, 'predictions': off, 'audit': oa})
++            if e0032 and args.arm in KEEP:
++                # E-0025/E-0027 iv_swap on the reloaded final checkpoint: segment-1-only
++                # within-task donor state (donor written under the same mask rule).
++                tick = time.monotonic()
++                sm, swap, sa = evaluate(model, args.arm, splits, tok, kind='iv_swap')
++                values['swap.seconds'] = time.monotonic()-tick
++                values.update({'swap.'+k: v for k, v in sm.items()})
++                write_json(out/'iv-swap-dev.json', {'metrics': sm, 'predictions': swap, 'audit': sa})
+             write_json(out/'checkpoint.json', {name: {'path': str(out/'adapter'/name),
+                 'sha256': file_sha256(out/'adapter'/name), 'bytes': (out/'adapter'/name).stat().st_size}
+                 for name in ('config.json', 'adapter.pt')})
+@@ -253,7 +286,8 @@ def run(args):
+         values['elapsed_s'] = time.monotonic()-start
+         artifacts = [{'path': str(p), 'role': p.name, 'sha256': file_sha256(p), 'bytes': p.stat().st_size}
+                      for p in out.iterdir() if p.is_file() and p.name != 'manifest.json']
+-        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': contract(args.seed),
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial',
++            'contract': contract(args.seed, args.arm),
+             'arm': args.arm, 'seed': args.seed, 'phase': 'SEG', 'stage': args.stage,
+             'spec_digest': os.environ['SR_SPEC_DIGEST'], 'metrics': values, 'artifacts': artifacts,
+             'validator': {'name': 'segmented_training', 'passed': passed}})
+diff --git a/src/seg_w_checks.py b/src/seg_w_checks.py
+new file mode 100644
+index 0000000..516e62d
+--- /dev/null
++++ b/src/seg_w_checks.py
+@@ -0,0 +1,239 @@
++"""E-0032 rule-1 PBS checks, score-discarding cost smoke and the E-0030 checkpoint replay.
++
++mode=smoke: deterministic tests; the seed-0 plan (must reproduce E-0025's order
++hash); segment-1 write-mask audit over the seed-0 training plan and all dev rows;
++initial parameters at seeds 0-2 (W1/W2 equal RES-0281's SEG-05 digests, the X
++triplet elementwise identical); a 1% uniform-step timing rehearsal of the five
++arms at seed 0 with 32 dev rows per task (no dev quality retained); a cost
++projection against the seed-0 (2.2) and total (5.0) node-h limits. With
++--replay it also replays the retained E-0030 SEG-05 checkpoint (below).
++mode=checks: deterministic tests only, at the exact formal source.
++mode=replay: only the replay. The PBS wrapper runs it only after the allocated
++MIG slice is verified to be the checkpoint's training slice (2g.24gb).
++
++Replay: the seed-3 SEG-05 checkpoint of ATT-0379-2 (trained on 2g.24gb) is
++evaluated on dev with this source; every prediction row (scores included) must
++equal its recorded predictions.json.
++"""
++import argparse
++import gc
++import math
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++import xml.etree.ElementTree as ET
++
++import numpy as np
++import torch
++
++from rb1_artifacts import read, reference
++from seg_data import ORDER_SHA256, segment1_write
++from seg_eval import evaluate
++from seg_model import (make_model, KEEP, PARAMETERS, FAMILIES, parameter_digest, E0032_ARMS, WRITE_RULE,
++                       X_TAP, SEG05_INITIAL_SHA256)
++from seg_train import tokenizer, prepare_plan, train, write_summary
++from v1_run import prepare
++from v5_train import write_json
++
++FILES = ['src/test_seg_w.py', 'src/test_seg_w_rules.py', 'src/test_seg_model.py', 'src/test_seg_data.py',
++         'src/test_seg_seeds.py', 'src/test_core.py', 'src/test_rb_core.py']
++SEED0_CAP_NODE_H, TOTAL_CAP_NODE_H = 2.2, 5.0
++REPLAY_RUN = Path('/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2')
++REPLAY = {'arm': 'SEG-05', 'seed': 3, 'hardware': 'NVIDIA GH200 120GB MIG 2g.24gb'}
++
++
++def checks(out):
++    with (out/'checks.log').open('w') as log:
++        result = subprocess.run([sys.executable, '-m', 'pytest', *FILES, '-q', '-p', 'no:cacheprovider',
++            '-o', 'junit_family=legacy', '--junitxml='+str(out/'checks.xml')], stdout=log, stderr=subprocess.STDOUT)
++    cases = list(ET.parse(out/'checks.xml').getroot().iter('testcase'))
++    failed = sum(c.find('failure') is not None or c.find('error') is not None for c in cases)
++    skipped = sum(c.find('skipped') is not None for c in cases)
++    if result.returncode != 0 or failed or skipped or not cases:
++        raise RuntimeError('E-0032 PBS deterministic checks failed; see checks.log/checks.xml')
++    return {'checks.cases': len(cases), 'checks.failed': failed, 'checks.skipped': skipped}
++
++
++def mask_audit(tok, batches, splits):
++    """Rule 1: W1 writes exactly the last token; W2 = sentence ends plus the last token."""
++    from seg_data import encode_segments
++    sources = {'train_seed0': [e['segment1_ids'] for b in batches for e in b],
++               'dev': [encode_segments(tok, r)[0]['segment1_ids'] for task in ('piqa', 'boolq')
++                       for r in splits['splits'][task]['dev']]}
++    dev_tasks = [task for task in ('piqa', 'boolq') for _ in splits['splits'][task]['dev']]
++    result = {}
++    for name, rows in sources.items():
++        counts = {arm: [] for arm in WRITE_RULE}
++        for ids in rows:
++            w1 = segment1_write(tok, ids, 'last'); w2 = segment1_write(tok, ids, 'sentence_last')
++            if sum(w1) != 1 or not w1[-1] or not w2[-1] or any(a and not b for a, b in zip(w1, w2)):
++                raise ValueError('segment-1 write mask violates the registered rule')
++            counts['SEG-W1'].append(sum(w1)); counts['SEG-W2'].append(sum(w2))
++        result[name] = {arm: write_summary(c) for arm, c in counts.items()}
++        result[name]['segment1_tokens'] = write_summary([len(ids) for ids in rows])
++        if name == 'dev':
++            for task in ('piqa', 'boolq'):
++                selected = [c for c, t in zip(counts['SEG-W2'], dev_tasks) if t == task]
++                result[name]['SEG-W2.'+task] = write_summary(selected)
++    if result['train_seed0']['SEG-W1']['max'] != 1 or result['dev']['SEG-W1']['min'] != 1:
++        raise ValueError('W1 does not write exactly once per example')
++    return result
++
++
++def digests():
++    result = {}
++    for seed in (0, 1, 2):
++        result[seed], anchor = {}, None
++        for arm in E0032_ARMS:
++            model = make_model(arm, seed=seed)
++            result[seed][arm] = parameter_digest(model)
++            if arm in X_TAP:
++                state = [p.detach().cpu().clone() for p in model.adapter_parameters()]
++                anchor = anchor or state
++                if len(state) != len(anchor) or not all(torch.equal(a, b) for a, b in zip(state, anchor)):
++                    raise ValueError(f'seed {seed} X-tap initial parameters differ elementwise')
++            if sum(p.numel() for p in model.adapter_parameters()) != PARAMETERS[arm]:
++                raise ValueError('parameter count differs from the E-0032 table')
++            del model; gc.collect(); torch.cuda.empty_cache()
++        if not result[seed]['SEG-W1'] == result[seed]['SEG-W2'] == SEG05_INITIAL_SHA256[seed]:
++            raise ValueError(f'seed {seed} W initial digest differs from RES-0281 SEG-05')
++    return result
++
++
++def timing(tok, out, batches_full, splits, lock):
++    size = math.ceil(len(batches_full)*.01)
++    indices = np.linspace(0, len(batches_full)-1, size, dtype=int).tolist()
++    batches = [batches_full[i] for i in indices]
++    arms = {}
++    for arm in E0032_ARMS:
++        root = out/arm; root.mkdir(parents=True, exist_ok=True)
++        tick = time.monotonic(); model = make_model(arm, seed=0); load = time.monotonic()-tick
++        m = train(model, arm, batches, tok, lock['locked_lrs'][FAMILIES[arm]], root)
++        if m['params.with_grad'] != PARAMETERS[arm]:
++            raise ValueError('smoke parameter-gradient coverage differs')
++        tick = time.monotonic(); _, before, audit = evaluate(model, arm, splits, tok, limit=32)
++        eval_s = time.monotonic()-tick
++        interventions = {}
++        for kind in ('iv_off', 'iv_swap') if arm in KEEP else ('iv_off',):
++            tick = time.monotonic(); evaluate(model, arm, splits, tok, limit=32, kind=kind)
++            interventions[kind] = time.monotonic()-tick
++        tick = time.monotonic(); model.export_adapter(root/'adapter'); save_s = time.monotonic()-tick
++        del model; gc.collect(); torch.cuda.empty_cache()
++        tick = time.monotonic(); reloaded = make_model(arm, root/'adapter', seed=0)
++        _, after, _ = evaluate(reloaded, arm, splits, tok, limit=32); reload_s = time.monotonic()-tick
++        if before != after:
++            raise ValueError('smoke same-job reload identity failed')
++        arms[arm] = {**m, 'load.seconds': load, 'eval32.seconds': eval_s, 'eval32.forward_seconds': audit['forward_seconds'],
++                     'save.seconds': save_s, 'reload32.seconds': reload_s, 'reload.identical': True,
++                     'interventions32.seconds': interventions}
++        del reloaded, before, after; gc.collect(); torch.cuda.empty_cache()
++    base = make_model('SEG-00')
++    tick = time.monotonic(); evaluate(base, 'SEG-00', splits, tok, limit=32); base_eval = (time.monotonic()-tick)*1000/32
++    del base; gc.collect(); torch.cuda.empty_cache()
++    full = lambda seconds: seconds*1000/32
++    projected = {}
++    for arm, m in arms.items():
++        eval_full = full(m['eval32.seconds'])
++        # Startup, load, same-allocation Base_seg + initial, steady steps, final,
++        # reload (load + eval), interventions, save. No curve evaluations.
++        cost = (60+2*m['load.seconds']+base_eval+3*eval_full+m['train.steady_step_seconds']*len(batches_full)+
++                sum(full(v) for v in m['interventions32.seconds'].values())+m['save.seconds'])
++        projected[arm] = {'expected_seconds': cost, 'training_step_seconds': m['train.steady_step_seconds'],
++                          'full_dev_seconds': eval_full}
++    node_h = lambda seconds: seconds/14400  # one MIG instance at 1/4 node (constraints)
++    seed0 = sum(node_h(p['expected_seconds']) for p in projected.values())
++    replication = {'W': 2*node_h(projected['SEG-W1']['expected_seconds']),
++                   'X': 2*sum(node_h(projected[a]['expected_seconds']) for a in X_TAP)}
++    # Reserve: checks reruns, the replay, the rule-7 mechanism job and analyses.
++    reserve = .12
++    return {'smoke.steps': size, 'smoke.seed': 0, 'uniform_sample_indices': indices, 'arms': arms,
++            'base_full_dev_seconds': base_eval,
++            'projection': {'arms': projected, 'seed0_training_node_h': seed0, 'reserve_node_h': reserve,
++                'seed0_total_before_smoke_usage_node_h': seed0+reserve, 'seed0_cap_node_h': SEED0_CAP_NODE_H,
++                'replication_node_h': replication,
++                'total_worst_case_before_smoke_usage_node_h': seed0+reserve+max(replication.values()),
++                'total_cap_node_h': TOTAL_CAP_NODE_H,
++                'seed0_gate': seed0+reserve <= SEED0_CAP_NODE_H,
++                'total_gate': seed0+reserve+max(replication.values()) <= TOTAL_CAP_NODE_H,
++                'walltime_rule': '1.5x measured part model, round up to 10 min'}}
++
++
++def replay(data_dir, out):
++    hardware = torch.cuda.get_device_name()
++    if hardware != REPLAY['hardware']:
++        raise ValueError('replay must run on the checkpoint training slice (2g.24gb)')
++    manifest = read(REPLAY_RUN/'manifest.json')
++    if (manifest.get('status') != 'complete' or manifest.get('arm') != REPLAY['arm'] or
++            manifest.get('seed') != REPLAY['seed'] or manifest['metrics'].get('hardware') != REPLAY['hardware']):
++        raise ValueError('ATT-0379-2 is not the complete 2g seed-3 SEG-05 run')
++    checkpoint = read(REPLAY_RUN/'checkpoint.json')
++    for name, ref in checkpoint.items():
++        if reference(ref['path'])['sha256'] != ref['sha256']:
++            raise ValueError('retained E-0030 checkpoint changed')
++    tok = tokenizer(); splits = prepare(data_dir)
++    model = make_model(REPLAY['arm'], REPLAY_RUN/'adapter', seed=REPLAY['seed'])
++    tick = time.monotonic(); metrics, rows, _ = evaluate(model, REPLAY['arm'], splits, tok)
++    recorded = read(REPLAY_RUN/'predictions.json')
++    if [(r['task'], r['id'], r['gold']) for r in rows] != [(r['task'], r['id'], r['gold']) for r in recorded]:
++        raise ValueError('replay rows are not paired with the recorded predictions')
++    result = {'run': str(REPLAY_RUN), 'hardware': hardware, 'predictions_ref': reference(REPLAY_RUN/'predictions.json'),
++              'checkpoint': checkpoint, 'rows': len(rows), 'rows_identical': rows == recorded,
++              'prediction_flips': sum(a['prediction'] != b['prediction'] for a, b in zip(rows, recorded)),
++              'score_rows_differing': sum(a['scores'] != b['scores'] for a, b in zip(rows, recorded)),
++              'metrics': metrics, 'seconds': time.monotonic()-tick}
++    write_json(out/'replay.json', result)
++    write_json(out/'replay-predictions.json', rows)
++    if not result['rows_identical']:
++        raise ValueError('same-slice replay of the retained E-0030 checkpoint differs')
++    return {'replay.rows_identical': True, 'replay.hardware': hardware, 'replay.seconds': result['seconds']}
++
++
++def main():
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--mode', choices=('smoke', 'checks', 'replay'), required=True)
++    p.add_argument('--replay', action='store_true', help='smoke only: also run the same-slice replay')
++    p.add_argument('--data-dir')
++    p.add_argument('--split-manifest', type=Path)
++    p.add_argument('--lr-lock', type=Path)
++    p.add_argument('--output', type=Path, required=True)
++    args = p.parse_args(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
++    passed, values, start = False, {}, time.monotonic()
++    outputs = ('checks.xml', 'checks.log', 'write-masks.json', 'initial-digests.json', 'cost-smoke.json',
++               'replay.json', 'replay-predictions.json')
++    try:
++        values['hardware'] = torch.cuda.get_device_name()
++        if args.mode != 'replay':
++            values.update(checks(out))
++        if args.mode == 'smoke':
++            tok = tokenizer()
++            args.seed = 0
++            splits, batches, metadata, _, lock = prepare_plan(args, tok)
++            if metadata['plan.order_sha256'] != ORDER_SHA256:
++                raise ValueError('seed-0 plan differs from E-0025')
++            values['plan'] = metadata
++            masks = mask_audit(tok, batches, splits)
++            write_json(out/'write-masks.json', masks); values['write_masks'] = masks
++            values['initial_digests'] = {str(s): d for s, d in digests().items()}
++            write_json(out/'initial-digests.json', values['initial_digests'])
++            smoke = timing(tok, out, batches, splits, lock)
++            write_json(out/'cost-smoke.json', smoke)
++            values.update({'smoke.all_arms': len(smoke['arms']), 'smoke.reload_identical': True,
++                'smoke.no_dev_scores_retained': True, 'projection': smoke['projection']})
++        if args.mode == 'replay' or args.replay:
++            values.update(replay(args.data_dir, out))
++        values['confirmation_evaluated'] = False
++        passed = True
++    finally:
++        values['elapsed_s'] = time.monotonic()-start
++        write_json(out/'manifest.json', {'status': 'complete' if passed else 'partial', 'contract': 'E-0032@1',
++            'spec_digest': os.environ['SR_SPEC_DIGEST'], 'source_commit': os.environ['SR_CODE_COMMIT'],
++            'stage': {'smoke': 'rule1_smoke', 'checks': 'deterministic_checks', 'replay': 'checkpoint_replay'}[args.mode],
++            'metrics': values,
++            'artifacts': [{'path': str(out/f), 'role': f} for f in outputs if (out/f).exists()],
++            'validator': {'name': 'e0032_rule1_checks', 'passed': passed}})
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/src/seg_w_rules.py b/src/seg_w_rules.py
+new file mode 100644
+index 0000000..f12c718
+--- /dev/null
++++ b/src/seg_w_rules.py
+@@ -0,0 +1,162 @@
++"""E-0032@1 preregistered rules 2-6 on exact BoolQ dev fractions (PIQA only for rule 5).
++
++Returns rule outcomes only; never changes a hypothesis status or starts work.
++counts[seed][label][task] = (correct, total). Reference labels per seed:
++SEG-00, SEG-04, SEG-05, SEG-06, SEG-07, SEG-05/iv_swap. Variant labels:
++SEG-W1, SEG-W2, SEG-X5 (each with '/iv_swap') and SEG-X6, SEG-X7.
++"""
++from fractions import Fraction
++
++SEEDS = (0, 1, 2)
++NEW_SEEDS = (1, 2)
++PP = Fraction(1, 100)
++REFERENCE = ('SEG-00', 'SEG-04', 'SEG-05', 'SEG-06', 'SEG-07', 'SEG-05/iv_swap')
++VARIANTS = ('SEG-W1', 'SEG-W2', 'SEG-X5')       # rule-4 tie order: W1, W2, X
++CONTROLS = {'SEG-W1': ('SEG-06', 'SEG-07'), 'SEG-W2': ('SEG-06', 'SEG-07'), 'SEG-X5': ('SEG-X6', 'SEG-X7')}
++HYPOTHESIS = {'SEG-W1': 'H-0032', 'SEG-W2': 'H-0032', 'SEG-X5': 'H-0033'}
++G_SEG05 = Fraction(88, 3000)                     # D-0062: three-seed SEG-05 gain mean
++SCREEN_DELTA = Fraction(3, 200)                  # +1.5 pp
++SCREEN_GAIN_X = G_SEG05+SCREEN_DELTA             # 133/3000
++REPLICATION_DG = PP                              # mean new-seed delta-gain >= +1 pp
++G_MIN, L_MIN, PIQA_DROP = 3*PP, PP, PP
++
++
++def number(x):
++    return {'numerator': x.numerator, 'denominator': x.denominator, 'pp': float(100*x)}
++
++
++def fraction(counts):
++    correct, total = counts
++    if type(correct) is not int or type(total) is not int or total <= 0 or not 0 <= correct <= total:
++        raise ValueError('invalid exact correctness counts')
++    return Fraction(correct, total)
++
++
++def scores(counts, task):
++    totals = {v[task][1] for v in counts.values()}
++    if len(totals) != 1:
++        raise ValueError(f'paired {task} row counts differ within a seed')
++    return {label: fraction(v[task]) for label, v in counts.items()}
++
++
++def reference_quantities(s):
++    return {'gain': s['SEG-05']-max(s['SEG-06'], s['SEG-07']),
++            'learned_threshold': s['SEG-00']+PP,
++            'controls_learned': max(s['SEG-06'], s['SEG-07']) >= s['SEG-00']+PP}
++
++
++def variant_quantities(V, s, ref):
++    controls = CONTROLS[V]
++    gain = s[V]-max(s[c] for c in controls)
++    return {'keep': s[V], 'delta': s[V]-s['SEG-05'], 'gain': gain, 'delta_gain': gain-ref['gain'],
++            'lora': s[V]-s['SEG-04'], 'swap': s[V]-s[V+'/iv_swap'],
++            'controls': {c: s[c] for c in controls},
++            'controls_learned': max(s[c] for c in controls) >= ref['learned_threshold']}
++
++
++def analyze(counts, checks):
++    """counts: {seed: {label: {'boolq': (c, t), 'piqa': (c, t)}}}; seed 0 holds every variant
++    label; seeds 1 and 2 hold the reference labels plus at most the one replicated variant.
++    checks: {rule-1 check name: bool}."""
++    if set(counts) - set(SEEDS) or 0 not in counts or any(s not in counts for s in SEEDS):
++        raise ValueError('rules need the reference records of seeds 0, 1 and 2')
++    for seed in SEEDS:
++        if not set(REFERENCE) <= set(counts[seed]):
++            raise ValueError(f'seed {seed} lacks reference labels')
++    seed0 = set(counts[0]) - set(REFERENCE)
++    expected0 = {*VARIANTS, *(v+'/iv_swap' for v in VARIANTS), 'SEG-X6', 'SEG-X7'}
++    if seed0 != expected0:
++        raise ValueError('seed 0 needs all five E-0032 arms and the three Keep swaps')
++    boolq = {s: scores(counts[s], 'boolq') for s in SEEDS}
++    piqa = {s: scores(counts[s], 'piqa') for s in SEEDS}
++    ref = {s: reference_quantities(boolq[s]) for s in SEEDS}
++    if sum(ref[s]['gain'] for s in SEEDS)/3 != G_SEG05:
++        raise ValueError('reference SEG-05 gains do not reproduce G_SEG05 = 88/3000')
++    implementation_ok = bool(checks) and all(v is True for v in checks.values())
++
++    q0 = {V: variant_quantities(V, boolq[0], ref[0]) for V in VARIANTS}
++    screen = {}
++    for V in VARIANTS:
++        delta_ok = q0[V]['delta'] >= SCREEN_DELTA
++        gain_ok = True if V != 'SEG-X5' else q0[V]['gain'] >= SCREEN_GAIN_X
++        screen[V] = {'delta>=1.5': delta_ok, 'passed': delta_ok and gain_ok,
++                     **({'gain_X>=133/3000': gain_ok} if V == 'SEG-X5' else {})}
++    passed = [V for V in VARIANTS if screen[V]['passed']]
++    best = max((q0[V]['delta'] for V in passed), default=None)
++    selected = next((V for V in passed if q0[V]['delta'] == best), None)
++
++    replicated = {s: set(counts[s]) - set(REFERENCE) for s in NEW_SEEDS}
++    if selected is None and any(replicated.values()):
++        raise ValueError('no variant passed screening, so no new-seed variant run is allowed')
++    expected_new = (set() if selected is None else
++                    {selected, selected+'/iv_swap', *(CONTROLS[selected] if selected == 'SEG-X5' else ())})
++    complete = selected is not None and all(replicated[s] == expected_new for s in NEW_SEEDS)
++    if any(replicated[s] and replicated[s] != expected_new for s in NEW_SEEDS):
++        raise ValueError('new-seed runs differ from the one selected variant')
++
++    rule5 = None
++    if complete:
++        V = selected
++        q = {0: q0[V], **{s: variant_quantities(V, boolq[s], ref[s]) for s in NEW_SEEDS}}
++        mean_dg = (q[1]['delta_gain']+q[2]['delta_gain'])/2
++        G = sum(q[s]['gain'] for s in SEEDS)/3
++        W = sum(q[s]['swap'] for s in SEEDS)/3
++        L = sum(q[s]['lora'] for s in SEEDS)/3
++        piqa_ok = {s: piqa[s][V] >= piqa[s]['SEG-05']-PIQA_DROP for s in SEEDS}
++        conditions = {'delta1>0': q[1]['delta'] > 0, 'delta2>0': q[2]['delta'] > 0,
++                      'dg1>0': q[1]['delta_gain'] > 0, 'dg2>0': q[2]['delta_gain'] > 0,
++                      'mean_dg_new>=1': mean_dg >= REPLICATION_DG, 'G>=3': G >= G_MIN, 'W>=G/2': W >= G/2,
++                      'L>=1': L >= L_MIN, **{f'piqa{s}_not_below_SEG05-1': piqa_ok[s] for s in SEEDS}}
++        if V == 'SEG-X5':
++            conditions.update({f'X_controls_learned{s}': q[s]['controls_learned'] for s in NEW_SEEDS})
++        rule5 = {'variant': V, 'supports': all(conditions.values()), 'conditions': conditions,
++                 'mean_dg_new': number(mean_dg), 'G': number(G), 'W': number(W), 'L': number(L),
++                 'mean_delta_3seed_descriptive': number(sum(q[s]['delta'] for s in SEEDS)/3),
++                 'mean_dg_3seed_descriptive': number(sum(q[s]['delta_gain'] for s in SEEDS)/3),
++                 'per_seed': {str(s): describe(q[s]) for s in SEEDS}}
++        # Contract rule 5: a new seed where X's own controls did not learn makes that
++        # seed's gain_X descriptive only, so H-0033 is then inconclusive (no challenge).
++        x_unlearned = V == 'SEG-X5' and not all(q[s]['controls_learned'] for s in NEW_SEEDS)
++        rule5['x_controls_unlearned'] = x_unlearned
++        rule5['challenges'] = mean_dg <= 0 and not x_unlearned
++
++    unsupported = {V: q0[V]['delta'] <= 0 for V in VARIANTS}
++    outcomes = {}
++    for H, members in (('H-0032', ('SEG-W1', 'SEG-W2')), ('H-0033', ('SEG-X5',))):
++        if rule5 and HYPOTHESIS[rule5['variant']] == H and rule5['supports']:
++            outcome = 'supports'
++        elif all(unsupported[V] for V in members) or (rule5 and HYPOTHESIS[rule5['variant']] == H and rule5['challenges']):
++            outcome = 'challenges'
++        elif selected in members and not complete:
++            outcome = 'pending_replication'
++        else:
++            outcome = 'inconclusive'
++        outcomes[H] = outcome if implementation_ok else 'invalid_implementation'
++    return {
++        'implementation_ok': implementation_ok,
++        'rules': {
++            '1': {'level': 'diagnostic', 'passed': implementation_ok, 'checks': dict(checks),
++                  'action': 'interpret' if implementation_ok else 'repair_no_conclusion'},
++            '2': {'level': 'screening', 'G_SEG05': number(G_SEG05),
++                  'reference': {str(s): {'gain_SEG05': number(ref[s]['gain']),
++                                         'controls_learned': ref[s]['controls_learned'],
++                                         'learned_threshold': number(ref[s]['learned_threshold'])} for s in SEEDS},
++                  'seed0': {V: describe(q0[V]) for V in VARIANTS}},
++            '3': {'level': 'screening', 'screen': screen, 'passed': passed,
++                  'X_delta_gain_seed0_descriptive_only': True},
++            '4': {'level': 'screening', 'selected': selected if implementation_ok else None,
++                  'rule': 'largest delta(0) among passed; ties W1, W2, X', 'replication_complete': complete},
++            '5': rule5,
++            '6': {'level': 'screening', 'unsupported_delta0<=0': unsupported,
++                  'replication_mean_dg<=0': None if rule5 is None else rule5['challenges']},
++        },
++        'outcomes': outcomes,
++        'reopen_request': bool(implementation_ok and 'supports' in outcomes.values()),
++    }
++
++
++def describe(q):
++    return {'keep': number(q['keep']), 'delta': number(q['delta']), 'gain': number(q['gain']),
++            'delta_gain': number(q['delta_gain']), 'lora': number(q['lora']), 'swap': number(q['swap']),
++            'controls': {c: number(v) for c, v in q['controls'].items()},
++            'controls_learned': q['controls_learned']}
+diff --git a/src/test_seg_model.py b/src/test_seg_model.py
+index 1b173a6..728c214 100644
+--- a/src/test_seg_model.py
++++ b/src/test_seg_model.py
+@@ -61,7 +61,7 @@ def test_no_channel_with_and_without_discarded_first_is_bitwise_identical(base,
+         assert torch.equal(direct.logits, discarded.logits)
+ 
+ 
+-@pytest.mark.parametrize('arm', KEEP)
++@pytest.mark.parametrize('arm', ('SEG-02', 'SEG-05'))  # E-0025 R_keep arms; E-0032 in test_seg_w.py
+ def test_zero_initialization_off_reset_self_donor_and_no_backbone_KV(base, arm, record_property):
+     a, b = ids()
+     with torch.no_grad(): expected = base(b, use_cache=False).logits
+diff --git a/src/test_seg_w.py b/src/test_seg_w.py
+new file mode 100644
+index 0000000..2960993
+--- /dev/null
++++ b/src/test_seg_w.py
+@@ -0,0 +1,285 @@
++"""E-0032 rule 1: segment-1 write masks, the sentence-end rule and the segmented X tap."""
++from contextlib import contextmanager
++from unittest.mock import patch
++
++import pytest
++import torch
++import torch.nn.functional as F
++
++from bypass_model import BranchModel
++from rb_tap_check import check_direct_hidden
++from seg_data import sentence_ends, segment1_write, _TOKEN_TEXT
++from seg_model import (make_model, forward, first_forward, parameter_digest, PARAMETERS, KEEP,
++                       SEG05_INITIAL_SHA256, WRITE_RULE, X_TAP, E0032_ARMS, contract, config_for)
++
++
++# ---- the frozen sentence-end rule on decoded token texts ----
++
++class FakeTokenizer:
++    """Each id decodes to a fixed text, so the rule is tested independently of BPE merges."""
++    name_or_path = 'fake-sentence-rule'
++
++    def __init__(self, texts):
++        self.texts = texts
++
++    def __len__(self):
++        return len(self.texts)
++
++    def decode(self, ids, skip_special_tokens=False, clean_up_tokenization_spaces=False):
++        assert not skip_special_tokens and not clean_up_tokenization_spaces
++        return ''.join(self.texts[i] for i in ids)
++
++
++def flags(texts):
++    _TOKEN_TEXT.clear()
++    return sentence_ends(FakeTokenizer(texts), list(range(len(texts))))
++
++
++@pytest.mark.parametrize('texts, expected', [
++    (['Passage', ':', ' It', ' ran', '.', ' Then', ' stop', '?', ' Yes', '!', '\n'],
++     [False, False, False, False, True, False, False, True, False, True, False]),
++    # The next token must start with whitespace (newline counts); end of segment counts.
++    # Whitespace inside the mark's own token does not count (literal frozen rule).
++    (['A', '.', 'B', ' c', '.\n', 'D', '3', '.', '5', ' kg', '.', '\n'],
++     [False, False, False, False, False, False, False, False, False, False, True, False]),
++    # Closing quotes / right parentheses may follow inside the same token text.
++    (['He', ' said', ' "', 'Stop', '."', ' Then', ' (', 'ok', '.)', ' x', '!\'', ' y', '?”', ' z'],
++     [False, False, False, False, True, False, False, False, True, False, True, False, True, False]),
++    # A quote token alone is not an end; trailing whitespace inside the token is ignored.
++    (['Stop', '.', '"', ' Then', '. ', 'x', ' e', '.g', '.', ' a', ',', ' b', ';', '. ', ' f', '.'],
++     [False, False, False, False, False, False, False, False, True, False, False, False, False, True, False, True]),
++    # Opening quotes or other symbols after the mark do not qualify.
++    (['a', '.“', ' b', '.]', ' c', '..', ' d'],
++     [False, False, False, False, False, True, False]),
++])
++def test_sentence_end_rule_fixed_examples(texts, expected):
++    assert flags(texts) == expected
++
++
++def test_write_masks_always_include_the_last_token():
++    tok = FakeTokenizer(['a', '.', ' b', ' c'])
++    _TOKEN_TEXT.clear()
++    assert segment1_write(tok, [0, 1, 2, 3], 'all') is None
++    assert segment1_write(tok, [0, 1, 2, 3], 'last') == [False, False, False, True]
++    assert segment1_write(tok, [0, 1, 2, 3], 'sentence_last') == [False, True, False, True]
++    assert segment1_write(tok, [0, 1], 'sentence_last') == [False, True]
++    with pytest.raises(ValueError):
++        segment1_write(tok, [], 'last')
++    with pytest.raises(ValueError):
++        segment1_write(tok, [0], 'first')
++
++
++def test_real_tokenizer_sentence_ends_follow_the_text():
++    from seg_train import tokenizer
++    tok = tokenizer()
++    ids = tok('Passage: The cat sat. It ran away! Did it? Pi is 3.14 today\n', add_special_tokens=False)['input_ids']
++    marks = sentence_ends(tok, ids)
++    prefixes = [tok.decode(ids[:t+1]) for t, m in enumerate(marks) if m]
++    assert prefixes == ['Passage: The cat sat.', 'Passage: The cat sat. It ran away!',
++                        'Passage: The cat sat. It ran away! Did it?']
++    assert segment1_write(tok, ids, 'last') == [False]*(len(ids)-1)+[True]
++
++
++# ---- registration ----
++
++def test_arm_registration_contract_and_configs():
++    assert all(contract(s, a) == 'E-0032@1' for s in (0, 1, 2) for a in E0032_ARMS)
++    assert contract(0) == 'E-0025@1' and contract(1, 'SEG-05') == 'E-0027@1'
++    assert WRITE_RULE == {'SEG-W1': 'last', 'SEG-W2': 'sentence_last'}
++    assert {a: PARAMETERS[a] for a in E0032_ARMS} == {'SEG-W1': 2752512, 'SEG-W2': 2752512,
++        'SEG-X5': 2228224, 'SEG-X6': 2228224, 'SEG-X7': 2228224}
++    assert config_for('SEG-W1') == config_for('SEG-W2') == config_for('SEG-05')
++    from dataclasses import replace
++    for arm, reference in zip(X_TAP, ('SEG-05', 'SEG-06', 'SEG-07')):
++        assert config_for(arm) == replace(config_for(reference), tap='direct_hidden')
++    assert config_for('SEG-05').tap == 'qknorm_pre_rope'
++
++
++# ---- GPU ----
++
++@pytest.fixture(scope='module')
++def base():
++    from calibrate import load_base
++    return load_base()
++
++
++@contextmanager
++def model_for(base, arm, seed=0):
++    with patch('seg_model.load_base', return_value=base):
++        model = make_model(arm, seed=seed)
++    try:
++        yield model
++    finally:
++        for i, layer in model.adapters().items():
++            for h in layer.handles: h.remove()
++            base.model.layers[i] = layer.original
++        base.zero_grad(set_to_none=True)
++
++
++def ids():
++    return (torch.tensor([[11, 29, 73, 181, 8, 64, 5]], device='cuda'),
++            torch.tensor([[71, 9, 18, 41]], device='cuda'))
++
++
++def perturb(model):
++    generator = torch.Generator().manual_seed(7)
++    with torch.no_grad():
++        for p in model.adapter_parameters():
++            p.add_(torch.randn(p.shape, generator=generator).to(p.device)*.03)
++
++
++@pytest.mark.parametrize('seed', [0, 1, 2])
++def test_initial_parameters_W_equal_SEG05_and_X_triplet_elementwise(base, seed):
++    for arm in ('SEG-05', 'SEG-W1', 'SEG-W2'):
++        with model_for(base, arm, seed) as model:
++            assert parameter_digest(model) == SEG05_INITIAL_SHA256[seed]
++    states = {}
++    for arm in X_TAP:
++        with model_for(base, arm, seed) as model:
++            states[arm] = [p.detach().cpu().clone() for p in model.adapter_parameters()]
++            assert sum(p.numel() for p in states[arm]) == PARAMETERS[arm]
++            assert model.config.tap == 'direct_hidden' and model.config.rank == 128
++            for layer in model.adapters().values():
++                assert torch.count_nonzero(layer.side.fusion.P) == 0
++    assert all(len(states[a]) == len(states['SEG-X5']) and
++               all(torch.equal(x, y) for x, y in zip(states[a], states['SEG-X5'])) for a in X_TAP)
++
++
++def test_X_tap_reads_the_input_layernorm_output(base):
++    with model_for(base, 'SEG-X5') as model, torch.no_grad():
++        assert check_direct_hidden(model, ids()[0])
++
++
++def losses_and_grads(model, arm, a, b, first_write):
++    model.zero_grad(set_to_none=True)
++    out, parts = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), first_write=first_write)
++    loss = F.cross_entropy(out.logits[0, :-1].float(), b[0, 1:])
++    loss.backward()
++    return out.logits.detach().clone(), [p.grad.detach().clone() for p in model.adapter_parameters()], parts
++
++
++def test_all_true_segment1_mask_is_bitwise_the_unmasked_path(base):
++    a, b = ids()
++    with model_for(base, 'SEG-05') as model:
++        model.train(); perturb(model)
++        logits, grads, parts = losses_and_grads(model, 'SEG-05', a, b, None)
++        masked, masked_grads, masked_parts = losses_and_grads(
++            model, 'SEG-05', a, b, torch.ones_like(a, dtype=torch.bool))
++        assert torch.equal(logits, masked)
++        assert all(torch.equal(x, y) for x, y in zip(grads, masked_grads))
++        for i in model.config.layers:
++            assert int(parts['segment1'][i]['side']['writes']) == int(masked_parts['segment1'][i]['side']['writes']) == a.shape[1]
++
++
++@pytest.mark.parametrize('arm, mask', [('SEG-W1', [0, 0, 0, 0, 0, 0, 1]), ('SEG-W2', [0, 0, 1, 0, 1, 0, 1])])
++def test_masked_segment1_writes_only_the_mask_and_segment2_is_unchanged(base, arm, mask):
++    a, b = ids()
++    write = torch.tensor([mask], dtype=torch.bool, device='cuda')
++    with model_for(base, arm) as model, torch.no_grad():
++        model.eval(); perturb(model)
++        with pytest.raises(ValueError):
++            forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b))
++        out, parts = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), first_write=write)
++        first = first_forward(model, a, torch.ones_like(a), write)
++        for i in model.config.layers:
++            side1, side2 = parts['segment1'][i]['side'], parts['segment2'][i]['side']
++            assert int(side1['writes']) == sum(mask) and int(side1['reads']) == a.shape[1]
++            assert int(side2['writes']) == int(side2['reads']) == b.shape[1]
++            assert int(first.cache.memory[i].counts[0]) == sum(mask)
++            assert int(out.cache.memory[i].counts[0]) == sum(mask)+b.shape[1]
++        # Segment 2 reads the carried masked state exactly as SEG-05 reads its state.
++        direct = model(b, attention_mask=torch.ones_like(b), initial_memory=first.cache.memory, use_cache=False)
++        assert torch.equal(direct.logits, out.logits)
++        # Segment-1 positions before the first write read an empty state: zero increment.
++        captured = {}
++        layer = model.adapters()[model.config.layers[0]]
++        def hook(module, args, output):  # observe only: a forward hook returning a value replaces the output
++            captured['z'] = output[0]
++        handle = layer.side.register_forward_hook(hook)
++        try:
++            first_forward(model, a, torch.ones_like(a), write)
++        finally:
++            handle.remove()
++        before = mask.index(1)
++        assert torch.count_nonzero(captured['z'][0, :before]) == 0
++        assert torch.isfinite(captured['z']).all()
++
++
++def test_W_swap_and_reset_interventions_with_masks(base):
++    a, b = ids()
++    write = torch.tensor([[0, 0, 0, 0, 0, 0, 1]], dtype=torch.bool, device='cuda')
++    with model_for(base, 'SEG-W1') as model, torch.no_grad():
++        model.eval(); perturb(model)
++        normal, _ = forward(model, 'SEG-W1', a, torch.ones_like(a), b, torch.ones_like(b), first_write=write)
++        donor = first_forward(model, a, torch.ones_like(a), write).cache.memory
++        swapped, _ = forward(model, 'SEG-W1', a, torch.ones_like(a), b, torch.ones_like(b), kind='iv_swap',
++                             donor_memory=donor, first_write=write)
++        assert torch.equal(swapped.logits, normal.logits)
++        reset, _ = forward(model, 'SEG-W1', a, torch.ones_like(a), b, torch.ones_like(b), kind='iv_reset',
++                           first_write=write)
++        assert torch.equal(reset.logits, model(b, use_cache=False).logits)
++
++
++def test_F_phase_write_mask_validation(base):
++    a, _ = ids()
++    with model_for(base, 'SEG-X7') as model, torch.no_grad():
++        with pytest.raises(ValueError):
++            model(a, write_mask=torch.ones_like(a, dtype=torch.bool))
++    with model_for(base, 'SEG-05') as model, torch.no_grad():
++        with pytest.raises(ValueError):
++            model(a, write_mask=torch.ones_like(a))
++        with pytest.raises(ValueError):
++            model(a, attention_mask=torch.tensor([[1, 1, 1, 1, 1, 1, 0]], device='cuda'),
++                  write_mask=torch.ones_like(a, dtype=torch.bool))
++        with pytest.raises(ValueError):
++            model(a, write_mask=torch.ones_like(a, dtype=torch.bool), capture_history=True)
++        b = ids()[1]
++        with pytest.raises(ValueError):
++            forward(model, 'SEG-06', a, torch.ones_like(a), b, torch.ones_like(b),
++                    first_write=torch.ones_like(a, dtype=torch.bool))
++
++
++@pytest.mark.parametrize('arm', E0032_ARMS)
++def test_new_arms_start_at_base_and_iv_off_is_base(base, arm):
++    a, b = ids()
++    write = None if arm not in WRITE_RULE else torch.tensor([[0, 0, 1, 0, 0, 0, 1]], dtype=torch.bool, device='cuda')
++    with torch.no_grad():
++        expected = base(b, use_cache=False).logits
++    with model_for(base, arm) as model, torch.no_grad():
++        model.eval()
++        initial, _ = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), first_write=write)
++        assert torch.equal(initial.logits, expected)
++        perturb(model)
++        off, _ = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), kind='iv_off', first_write=write)
++        assert torch.equal(off.logits, expected)
++
++
++@pytest.mark.parametrize('arm', ['SEG-X6', 'SEG-X7'])
++def test_X_reset_and_T0_carry_no_segment1_state(base, arm):
++    a, b = ids()
++    with model_for(base, arm) as model, torch.no_grad():
++        model.eval(); perturb(model)
++        observed = []
++        h = model.model.register_forward_pre_hook(lambda m, args: observed.append(1))
++        try:
++            direct, parts = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b))
++        finally:
++            h.remove()
++        assert len(observed) == 1 and set(parts) == {'segment2'}
++        discarded, _ = forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), force_first=True)
++        assert torch.equal(direct.logits, discarded.logits)
++        assert torch.equal(direct.logits, model(b, use_cache=False).logits)
++        if arm == 'SEG-X6':
++            # Reset clears the state at the boundary: segment 2 starts from empty counts.
++            assert all(int(s.counts[0]) == b.shape[1] for s in direct.cache.memory.values())
++        with pytest.raises(ValueError):
++            forward(model, arm, a, torch.ones_like(a), b, torch.ones_like(b), kind='iv_swap',
++                    donor_memory={})
++
++
++def test_X_keep_training_graph_reaches_segment1(base):
++    a, b = ids()
++    with model_for(base, 'SEG-X5') as model:
++        model.train(); perturb(model)
++        _, grads, _ = losses_and_grads(model, 'SEG-X5', a, b, None)
++        assert all(torch.isfinite(g).all() and g.norm() > 0 for g in grads)
+diff --git a/src/test_seg_w_rules.py b/src/test_seg_w_rules.py
+new file mode 100644
+index 0000000..69b9e77
+--- /dev/null
++++ b/src/test_seg_w_rules.py
+@@ -0,0 +1,160 @@
++"""E-0032@1 rules 2-6: exact boundaries on synthetic counts (no model or GPU)."""
++from fractions import Fraction
++
++import pytest
++
++from seg_w_rules import analyze, G_SEG05
++
++# BoolQ correct counts of the recorded E-0025/E-0027 references (1000 rows each).
++REFERENCE = {0: {'SEG-00': 609, 'SEG-04': 642, 'SEG-05': 659, 'SEG-06': 615, 'SEG-07': 612, 'SEG-05/iv_swap': 594},
++             1: {'SEG-00': 609, 'SEG-04': 634, 'SEG-05': 657, 'SEG-06': 609, 'SEG-07': 631, 'SEG-05/iv_swap': 595},
++             2: {'SEG-00': 609, 'SEG-04': 631, 'SEG-05': 653, 'SEG-06': 613, 'SEG-07': 635, 'SEG-05/iv_swap': 583}}
++REF_GAIN = {0: 44, 1: 26, 2: 18}
++CHECKS = {'initial_matches_base': True, 'off_matches_base': True, 'reload_identical': True}
++
++
++def entry(boolq, piqa=690):
++    return {'boolq': (boolq, 1000), 'piqa': (piqa, 1000)}
++
++
++def counts(seed0, new=None, piqa=None):
++    """seed0: {variant: (delta, swap_drop)} plus 'X': (reset, t0); new: {seed: {label: boolq}}."""
++    piqa = piqa or {}
++    result = {s: {k: entry(v) for k, v in REFERENCE[s].items()} for s in (0, 1, 2)}
++    for V in ('SEG-W1', 'SEG-W2', 'SEG-X5'):
++        delta, swap = seed0[V]
++        result[0][V] = entry(659+delta, piqa.get((0, V), 690))
++        result[0][V+'/iv_swap'] = entry(659+delta-swap)
++    reset, t0 = seed0['X']
++    result[0]['SEG-X6'], result[0]['SEG-X7'] = entry(reset), entry(t0)
++    for s, labels in (new or {}).items():
++        for label, value in labels.items():
++            result[s][label] = entry(value, piqa.get((s, label), 690))
++    return result
++
++
++BASE0 = {'SEG-W1': (0, 60), 'SEG-W2': (0, 60), 'SEG-X5': (0, 60), 'X': (612, 612)}
++
++
++def test_reference_reproduces_G_SEG05():
++    assert sum(REF_GAIN.values()) == 88 and G_SEG05 == Fraction(88, 3000)
++    result = analyze(counts(BASE0), CHECKS)
++    assert result['rules']['2']['reference']['0']['gain_SEG05']['numerator'] == 11  # 44/1000
++    assert result['rules']['2']['reference']['0']['controls_learned'] is False
++    assert result['rules']['2']['reference']['1']['controls_learned'] is True
++
++
++@pytest.mark.parametrize('delta, passed', [(15, True), (14, False)])
++def test_W_screen_threshold_is_inclusive(delta, passed):
++    result = analyze(counts({**BASE0, 'SEG-W2': (delta, 60)}), CHECKS)
++    assert result['rules']['3']['screen']['SEG-W2']['passed'] is passed
++    assert result['rules']['4']['selected'] == ('SEG-W2' if passed else None)
++    assert result['outcomes']['H-0032'] == ('pending_replication' if passed else 'inconclusive')
++
++
++@pytest.mark.parametrize('delta, control, passed', [
++    (15, 629, True),    # gain 45/1000 >= 133/3000
++    (15, 630, False),   # gain 44/1000 < 133/3000 although delta passes
++    (14, 600, False),   # gain passes, delta does not
++])
++def test_X_screen_needs_delta_and_absolute_gain(delta, control, passed):
++    result = analyze(counts({**BASE0, 'SEG-X5': (delta, 60), 'X': (control, 600)}), CHECKS)
++    assert result['rules']['3']['screen']['SEG-X5']['passed'] is passed
++
++
++def test_selection_by_largest_delta_with_W1_W2_X_tie_order():
++    result = analyze(counts({'SEG-W1': (20, 60), 'SEG-W2': (20, 60), 'SEG-X5': (19, 60), 'X': (600, 600)}), CHECKS)
++    assert result['rules']['3']['passed'] == ['SEG-W1', 'SEG-W2', 'SEG-X5']
++    assert result['rules']['4']['selected'] == 'SEG-W1'
++    result = analyze(counts({'SEG-W1': (16, 60), 'SEG-W2': (20, 60), 'SEG-X5': (20, 60), 'X': (600, 600)}), CHECKS)
++    assert result['rules']['4']['selected'] == 'SEG-W2'
++    assert result['outcomes'] == {'H-0032': 'pending_replication', 'H-0033': 'inconclusive'}
++    # X wins on delta even though its seed-0 delta-gain is larger for W (descriptive only).
++    result = analyze(counts({'SEG-W1': (16, 60), 'SEG-W2': (0, 60), 'SEG-X5': (17, 60), 'X': (629, 600)}), CHECKS)
++    assert result['rules']['4']['selected'] == 'SEG-X5'
++
++
++def w1_new(d1, d2, swap=60):
++    return {1: {'SEG-W1': 657+d1, 'SEG-W1/iv_swap': 657+d1-swap}, 2: {'SEG-W1': 653+d2, 'SEG-W1/iv_swap': 653+d2-swap}}
++
++
++@pytest.mark.parametrize('d1, d2, H32', [
++    (10, 10, 'supports'),       # mean new-seed delta-gain exactly +1 pp
++    (10, 9, 'inconclusive'),    # mean 0.95 pp
++    (20, 0, 'inconclusive'),    # delta2 = 0
++    (5, -5, 'challenges'),      # mean <= 0
++    (-1, -1, 'challenges'),
++])
++def test_W_replication_boundaries(d1, d2, H32):
++    seed0 = {**BASE0, 'SEG-W1': (20, 60)}
++    result = analyze(counts(seed0, w1_new(d1, d2)), CHECKS)
++    assert result['rules']['4']['replication_complete'] is True
++    assert result['outcomes']['H-0032'] == H32
++    assert result['reopen_request'] is (H32 == 'supports')
++
++
++def test_W_three_seed_G_W_L_and_piqa_conditions():
++    seed0 = {**BASE0, 'SEG-W1': (20, 60)}
++    # W = mean swap must be >= G/2: G = (64+36+28)/3000; swap 21 everywhere fails.
++    low_swap = analyze(counts({**seed0, 'SEG-W1': (20, 21)}, w1_new(10, 10, swap=21)), CHECKS)
++    assert low_swap['rules']['5']['conditions']['W>=G/2'] is False
++    assert low_swap['outcomes']['H-0032'] == 'inconclusive'
++    piqa = analyze(counts(seed0, w1_new(10, 10), piqa={(1, 'SEG-W1'): 679}), CHECKS)
++    assert piqa['rules']['5']['conditions']['piqa1_not_below_SEG05-1'] is False
++    assert piqa['outcomes']['H-0032'] == 'inconclusive'
++    edge = analyze(counts(seed0, w1_new(10, 10), piqa={(1, 'SEG-W1'): 680}), CHECKS)
++    assert edge['outcomes']['H-0032'] == 'supports'
++
++
++def x_new(d, controls):
++    return {s: {'SEG-X5': base+d, 'SEG-X5/iv_swap': base+d-60, 'SEG-X6': 600, 'SEG-X7': controls[s]}
++            for s, base in ((1, 657), (2, 653))}
++
++
++def test_X_replication_requires_its_own_learned_controls():
++    seed0 = {**BASE0, 'SEG-X5': (20, 60), 'X': (620, 600)}
++    good = analyze(counts(seed0, x_new(15, {1: 620, 2: 619})), CHECKS)
++    assert good['rules']['4']['selected'] == 'SEG-X5'
++    assert good['outcomes']['H-0033'] == 'supports'
++    unlearned = analyze(counts(seed0, x_new(15, {1: 620, 2: 618})), CHECKS)
++    assert unlearned['rules']['5']['conditions']['X_controls_learned2'] is False
++    assert unlearned['outcomes']['H-0033'] == 'inconclusive'
++
++
++def test_X_unlearned_new_seed_controls_block_a_replication_challenge():
++    # RV-0105 M1: mean new-seed delta-gain <= 0, but a new seed's X controls did not
++    # learn, so that seed's gain_X is descriptive only and H-0033 is inconclusive.
++    seed0 = {**BASE0, 'SEG-X5': (20, 60), 'X': (620, 600)}
++    unlearned = analyze(counts(seed0, x_new(-15, {1: 618, 2: 620})), CHECKS)
++    assert unlearned['rules']['5']['mean_dg_new']['pp'] <= 0
++    assert unlearned['rules']['5']['x_controls_unlearned'] is True
++    assert unlearned['rules']['5']['challenges'] is False
++    assert unlearned['outcomes']['H-0033'] == 'inconclusive'
++    learned = analyze(counts(seed0, x_new(-15, {1: 620, 2: 620})), CHECKS)
++    assert learned['rules']['5']['x_controls_unlearned'] is False
++    assert learned['outcomes']['H-0033'] == 'challenges'
++
++
++def test_seed0_challenges_and_invalid_implementation():
++    result = analyze(counts({'SEG-W1': (0, 60), 'SEG-W2': (-3, 60), 'SEG-X5': (0, 60), 'X': (600, 600)}), CHECKS)
++    assert result['outcomes'] == {'H-0032': 'challenges', 'H-0033': 'challenges'}
++    one = analyze(counts({'SEG-W1': (1, 60), 'SEG-W2': (-3, 60), 'SEG-X5': (1, 60), 'X': (600, 600)}), CHECKS)
++    assert one['outcomes'] == {'H-0032': 'inconclusive', 'H-0033': 'inconclusive'}
++    broken = analyze(counts(BASE0), {**CHECKS, 'reload_identical': False})
++    assert set(broken['outcomes'].values()) == {'invalid_implementation'} and not broken['reopen_request']
++
++
++def test_inputs_must_match_the_selection():
++    with pytest.raises(ValueError):
++        analyze(counts(BASE0, w1_new(10, 10)), CHECKS)                 # nothing passed screening
++    seed0 = {**BASE0, 'SEG-W1': (20, 60)}
++    with pytest.raises(ValueError):
++        analyze(counts(seed0, {1: {'SEG-W2': 670, 'SEG-W2/iv_swap': 600}}), CHECKS)
++    data = counts(BASE0)
++    del data[0]['SEG-X7']
++    with pytest.raises(ValueError):
++        analyze(data, CHECKS)
++    data = counts(BASE0)
++    data[1]['SEG-05'] = entry(658)
++    with pytest.raises(ValueError, match='G_SEG05'):
++        analyze(data, CHECKS)

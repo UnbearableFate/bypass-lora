@@ -1,0 +1,1431 @@
+{
+  "contract": "E-0032@1",
+  "stage": "screening",
+  "implementation_ok": true,
+  "rules": {
+    "1": {
+      "level": "diagnostic",
+      "passed": true,
+      "checks": {
+        "smoke_checks_passed": true,
+        "replay_rows_identical": true,
+        "seed0.SEG-W1.initial_matches_base": true,
+        "seed0.SEG-W1.off_matches_base": true,
+        "seed0.SEG-W1.reload_identical": true,
+        "seed0.SEG-W1.parameters": true,
+        "seed0.SEG-W1.executed_phases": true,
+        "seed0.SEG-W1.segment2_accounting": true,
+        "seed0.SEG-W1.initial_equals_SEG05": true,
+        "seed0.SEG-W1.segment1_writes_match_mask": true,
+        "seed0.SEG-W1.W1_one_write_per_example": true,
+        "seed0.SEG-W2.initial_matches_base": true,
+        "seed0.SEG-W2.off_matches_base": true,
+        "seed0.SEG-W2.reload_identical": true,
+        "seed0.SEG-W2.parameters": true,
+        "seed0.SEG-W2.executed_phases": true,
+        "seed0.SEG-W2.segment2_accounting": true,
+        "seed0.SEG-W2.initial_equals_SEG05": true,
+        "seed0.SEG-W2.segment1_writes_match_mask": true,
+        "seed0.SEG-X5.initial_matches_base": true,
+        "seed0.SEG-X5.off_matches_base": true,
+        "seed0.SEG-X5.reload_identical": true,
+        "seed0.SEG-X5.parameters": true,
+        "seed0.SEG-X5.executed_phases": true,
+        "seed0.SEG-X5.segment2_accounting": true,
+        "seed0.SEG-X6.initial_matches_base": true,
+        "seed0.SEG-X6.off_matches_base": true,
+        "seed0.SEG-X6.reload_identical": true,
+        "seed0.SEG-X6.parameters": true,
+        "seed0.SEG-X6.executed_phases": true,
+        "seed0.SEG-X6.segment2_accounting": true,
+        "seed0.SEG-X7.initial_matches_base": true,
+        "seed0.SEG-X7.off_matches_base": true,
+        "seed0.SEG-X7.reload_identical": true,
+        "seed0.SEG-X7.parameters": true,
+        "seed0.SEG-X7.executed_phases": true,
+        "seed0.SEG-X7.segment2_accounting": true,
+        "seed0.X_triplet_initial_identical": true
+      },
+      "action": "interpret"
+    },
+    "2": {
+      "level": "screening",
+      "G_SEG05": {
+        "numerator": 11,
+        "denominator": 375,
+        "pp": 2.933333333333333
+      },
+      "reference": {
+        "0": {
+          "gain_SEG05": {
+            "numerator": 11,
+            "denominator": 250,
+            "pp": 4.4
+          },
+          "controls_learned": false,
+          "learned_threshold": {
+            "numerator": 619,
+            "denominator": 1000,
+            "pp": 61.9
+          }
+        },
+        "1": {
+          "gain_SEG05": {
+            "numerator": 13,
+            "denominator": 500,
+            "pp": 2.6
+          },
+          "controls_learned": true,
+          "learned_threshold": {
+            "numerator": 619,
+            "denominator": 1000,
+            "pp": 61.9
+          }
+        },
+        "2": {
+          "gain_SEG05": {
+            "numerator": 9,
+            "denominator": 500,
+            "pp": 1.8
+          },
+          "controls_learned": true,
+          "learned_threshold": {
+            "numerator": 619,
+            "denominator": 1000,
+            "pp": 61.9
+          }
+        }
+      },
+      "seed0": {
+        "SEG-W1": {
+          "keep": {
+            "numerator": 629,
+            "denominator": 1000,
+            "pp": 62.9
+          },
+          "delta": {
+            "numerator": -3,
+            "denominator": 100,
+            "pp": -3.0
+          },
+          "gain": {
+            "numerator": 7,
+            "denominator": 500,
+            "pp": 1.4
+          },
+          "delta_gain": {
+            "numerator": -3,
+            "denominator": 100,
+            "pp": -3.0
+          },
+          "lora": {
+            "numerator": -13,
+            "denominator": 1000,
+            "pp": -1.3
+          },
+          "swap": {
+            "numerator": 3,
+            "denominator": 250,
+            "pp": 1.2
+          },
+          "controls": {
+            "SEG-06": {
+              "numerator": 123,
+              "denominator": 200,
+              "pp": 61.5
+            },
+            "SEG-07": {
+              "numerator": 153,
+              "denominator": 250,
+              "pp": 61.2
+            }
+          },
+          "controls_learned": false
+        },
+        "SEG-W2": {
+          "keep": {
+            "numerator": 637,
+            "denominator": 1000,
+            "pp": 63.7
+          },
+          "delta": {
+            "numerator": -11,
+            "denominator": 500,
+            "pp": -2.2
+          },
+          "gain": {
+            "numerator": 11,
+            "denominator": 500,
+            "pp": 2.2
+          },
+          "delta_gain": {
+            "numerator": -11,
+            "denominator": 500,
+            "pp": -2.2
+          },
+          "lora": {
+            "numerator": -1,
+            "denominator": 200,
+            "pp": -0.5
+          },
+          "swap": {
+            "numerator": -1,
+            "denominator": 1000,
+            "pp": -0.1
+          },
+          "controls": {
+            "SEG-06": {
+              "numerator": 123,
+              "denominator": 200,
+              "pp": 61.5
+            },
+            "SEG-07": {
+              "numerator": 153,
+              "denominator": 250,
+              "pp": 61.2
+            }
+          },
+          "controls_learned": false
+        },
+        "SEG-X5": {
+          "keep": {
+            "numerator": 651,
+            "denominator": 1000,
+            "pp": 65.1
+          },
+          "delta": {
+            "numerator": -1,
+            "denominator": 125,
+            "pp": -0.8
+          },
+          "gain": {
+            "numerator": 7,
+            "denominator": 200,
+            "pp": 3.5
+          },
+          "delta_gain": {
+            "numerator": -9,
+            "denominator": 1000,
+            "pp": -0.9
+          },
+          "lora": {
+            "numerator": 9,
+            "denominator": 1000,
+            "pp": 0.9
+          },
+          "swap": {
+            "numerator": 8,
+            "denominator": 125,
+            "pp": 6.4
+          },
+          "controls": {
+            "SEG-X6": {
+              "numerator": 77,
+              "denominator": 125,
+              "pp": 61.6
+            },
+            "SEG-X7": {
+              "numerator": 153,
+              "denominator": 250,
+              "pp": 61.2
+            }
+          },
+          "controls_learned": false
+        }
+      }
+    },
+    "3": {
+      "level": "screening",
+      "screen": {
+        "SEG-W1": {
+          "delta>=1.5": false,
+          "passed": false
+        },
+        "SEG-W2": {
+          "delta>=1.5": false,
+          "passed": false
+        },
+        "SEG-X5": {
+          "delta>=1.5": false,
+          "passed": false,
+          "gain_X>=133/3000": false
+        }
+      },
+      "passed": [],
+      "X_delta_gain_seed0_descriptive_only": true
+    },
+    "4": {
+      "level": "screening",
+      "selected": null,
+      "rule": "largest delta(0) among passed; ties W1, W2, X",
+      "replication_complete": false
+    },
+    "5": null,
+    "6": {
+      "level": "screening",
+      "unsupported_delta0<=0": {
+        "SEG-W1": true,
+        "SEG-W2": true,
+        "SEG-X5": true
+      },
+      "replication_mean_dg<=0": null,
+      "replication_challenge": null
+    }
+  },
+  "outcomes": {
+    "H-0032": "challenges",
+    "H-0033": "challenges"
+  },
+  "reopen_request": false,
+  "accuracy": {
+    "0": {
+      "SEG-00": {
+        "piqa": {
+          "numerator": 661,
+          "denominator": 1000,
+          "pp": 66.1
+        },
+        "boolq": {
+          "numerator": 609,
+          "denominator": 1000,
+          "pp": 60.9
+        }
+      },
+      "SEG-04": {
+        "piqa": {
+          "numerator": 337,
+          "denominator": 500,
+          "pp": 67.4
+        },
+        "boolq": {
+          "numerator": 321,
+          "denominator": 500,
+          "pp": 64.2
+        }
+      },
+      "SEG-05": {
+        "piqa": {
+          "numerator": 693,
+          "denominator": 1000,
+          "pp": 69.3
+        },
+        "boolq": {
+          "numerator": 659,
+          "denominator": 1000,
+          "pp": 65.9
+        }
+      },
+      "SEG-06": {
+        "piqa": {
+          "numerator": 669,
+          "denominator": 1000,
+          "pp": 66.9
+        },
+        "boolq": {
+          "numerator": 123,
+          "denominator": 200,
+          "pp": 61.5
+        }
+      },
+      "SEG-07": {
+        "piqa": {
+          "numerator": 679,
+          "denominator": 1000,
+          "pp": 67.9
+        },
+        "boolq": {
+          "numerator": 153,
+          "denominator": 250,
+          "pp": 61.2
+        }
+      },
+      "SEG-05/iv_swap": {
+        "piqa": {
+          "numerator": 16,
+          "denominator": 25,
+          "pp": 64.0
+        },
+        "boolq": {
+          "numerator": 297,
+          "denominator": 500,
+          "pp": 59.4
+        }
+      },
+      "SEG-W1": {
+        "piqa": {
+          "numerator": 667,
+          "denominator": 1000,
+          "pp": 66.7
+        },
+        "boolq": {
+          "numerator": 629,
+          "denominator": 1000,
+          "pp": 62.9
+        }
+      },
+      "SEG-W1/iv_swap": {
+        "piqa": {
+          "numerator": 331,
+          "denominator": 500,
+          "pp": 66.2
+        },
+        "boolq": {
+          "numerator": 617,
+          "denominator": 1000,
+          "pp": 61.7
+        }
+      },
+      "SEG-W2": {
+        "piqa": {
+          "numerator": 673,
+          "denominator": 1000,
+          "pp": 67.3
+        },
+        "boolq": {
+          "numerator": 637,
+          "denominator": 1000,
+          "pp": 63.7
+        }
+      },
+      "SEG-W2/iv_swap": {
+        "piqa": {
+          "numerator": 657,
+          "denominator": 1000,
+          "pp": 65.7
+        },
+        "boolq": {
+          "numerator": 319,
+          "denominator": 500,
+          "pp": 63.8
+        }
+      },
+      "SEG-X5": {
+        "piqa": {
+          "numerator": 341,
+          "denominator": 500,
+          "pp": 68.2
+        },
+        "boolq": {
+          "numerator": 651,
+          "denominator": 1000,
+          "pp": 65.1
+        }
+      },
+      "SEG-X5/iv_swap": {
+        "piqa": {
+          "numerator": 651,
+          "denominator": 1000,
+          "pp": 65.1
+        },
+        "boolq": {
+          "numerator": 587,
+          "denominator": 1000,
+          "pp": 58.7
+        }
+      },
+      "SEG-X6": {
+        "piqa": {
+          "numerator": 331,
+          "denominator": 500,
+          "pp": 66.2
+        },
+        "boolq": {
+          "numerator": 77,
+          "denominator": 125,
+          "pp": 61.6
+        }
+      },
+      "SEG-X7": {
+        "piqa": {
+          "numerator": 529,
+          "denominator": 1000,
+          "pp": 52.9
+        },
+        "boolq": {
+          "numerator": 153,
+          "denominator": 250,
+          "pp": 61.2
+        }
+      }
+    },
+    "1": {
+      "SEG-04": {
+        "piqa": {
+          "numerator": 337,
+          "denominator": 500,
+          "pp": 67.4
+        },
+        "boolq": {
+          "numerator": 317,
+          "denominator": 500,
+          "pp": 63.4
+        }
+      },
+      "SEG-05": {
+        "piqa": {
+          "numerator": 69,
+          "denominator": 100,
+          "pp": 69.0
+        },
+        "boolq": {
+          "numerator": 657,
+          "denominator": 1000,
+          "pp": 65.7
+        }
+      },
+      "SEG-06": {
+        "piqa": {
+          "numerator": 671,
+          "denominator": 1000,
+          "pp": 67.1
+        },
+        "boolq": {
+          "numerator": 609,
+          "denominator": 1000,
+          "pp": 60.9
+        }
+      },
+      "SEG-07": {
+        "piqa": {
+          "numerator": 673,
+          "denominator": 1000,
+          "pp": 67.3
+        },
+        "boolq": {
+          "numerator": 631,
+          "denominator": 1000,
+          "pp": 63.1
+        }
+      },
+      "SEG-05/iv_swap": {
+        "piqa": {
+          "numerator": 163,
+          "denominator": 250,
+          "pp": 65.2
+        },
+        "boolq": {
+          "numerator": 119,
+          "denominator": 200,
+          "pp": 59.5
+        }
+      },
+      "SEG-00": {
+        "piqa": {
+          "numerator": 661,
+          "denominator": 1000,
+          "pp": 66.1
+        },
+        "boolq": {
+          "numerator": 609,
+          "denominator": 1000,
+          "pp": 60.9
+        }
+      }
+    },
+    "2": {
+      "SEG-04": {
+        "piqa": {
+          "numerator": 673,
+          "denominator": 1000,
+          "pp": 67.3
+        },
+        "boolq": {
+          "numerator": 631,
+          "denominator": 1000,
+          "pp": 63.1
+        }
+      },
+      "SEG-05": {
+        "piqa": {
+          "numerator": 137,
+          "denominator": 200,
+          "pp": 68.5
+        },
+        "boolq": {
+          "numerator": 653,
+          "denominator": 1000,
+          "pp": 65.3
+        }
+      },
+      "SEG-06": {
+        "piqa": {
+          "numerator": 84,
+          "denominator": 125,
+          "pp": 67.2
+        },
+        "boolq": {
+          "numerator": 613,
+          "denominator": 1000,
+          "pp": 61.3
+        }
+      },
+      "SEG-07": {
+        "piqa": {
+          "numerator": 84,
+          "denominator": 125,
+          "pp": 67.2
+        },
+        "boolq": {
+          "numerator": 127,
+          "denominator": 200,
+          "pp": 63.5
+        }
+      },
+      "SEG-05/iv_swap": {
+        "piqa": {
+          "numerator": 321,
+          "denominator": 500,
+          "pp": 64.2
+        },
+        "boolq": {
+          "numerator": 583,
+          "denominator": 1000,
+          "pp": 58.3
+        }
+      },
+      "SEG-00": {
+        "piqa": {
+          "numerator": 661,
+          "denominator": 1000,
+          "pp": 66.1
+        },
+        "boolq": {
+          "numerator": 609,
+          "denominator": 1000,
+          "pp": 60.9
+        }
+      }
+    }
+  },
+  "bootstrap": {
+    "draws": 10000,
+    "seed": 20261101,
+    "pp": {
+      "0": {
+        "SEG-W1": {
+          "delta": {
+            "piqa": [
+              -4.199999999999992,
+              -1.0000000000000009
+            ],
+            "boolq": [
+              -5.700000000000005,
+              -0.40000000000000036
+            ]
+          },
+          "gain": {
+            "piqa": [
+              -2.6999999999999913,
+              0.20000000000000018
+            ],
+            "boolq": [
+              -0.40000000000000036,
+              2.7000000000000024
+            ]
+          },
+          "delta_gain": {
+            "piqa": [
+              -4.199999999999992,
+              -1.0000000000000009
+            ],
+            "boolq": [
+              -5.700000000000005,
+              -0.40000000000000036
+            ]
+          },
+          "lora": {
+            "piqa": [
+              -2.499999999999991,
+              1.0999999999999899
+            ],
+            "boolq": [
+              -3.802500000000001,
+              1.100000000000001
+            ]
+          },
+          "swap": {
+            "piqa": [
+              -1.3000000000000012,
+              2.399999999999991
+            ],
+            "boolq": [
+              0.30000000000000027,
+              2.100000000000002
+            ]
+          }
+        },
+        "SEG-W2": {
+          "delta": {
+            "piqa": [
+              -3.599999999999992,
+              -0.40000000000000036
+            ],
+            "boolq": [
+              -4.800000000000004,
+              0.40000000000000036
+            ]
+          },
+          "gain": {
+            "piqa": [
+              -2.100000000000002,
+              0.9000000000000008
+            ],
+            "boolq": [
+              -0.10000000000000009,
+              4.0000000000000036
+            ]
+          },
+          "delta_gain": {
+            "piqa": [
+              -3.599999999999992,
+              -0.40000000000000036
+            ],
+            "boolq": [
+              -4.800000000000004,
+              0.40000000000000036
+            ]
+          },
+          "lora": {
+            "piqa": [
+              -1.8999999999999906,
+              1.6999999999999904
+            ],
+            "boolq": [
+              -2.7000000000000024,
+              1.7000000000000015
+            ]
+          },
+          "swap": {
+            "piqa": [
+              -0.20000000000000018,
+              3.400000000000003
+            ],
+            "boolq": [
+              -1.3000000000000012,
+              1.200000000000001
+            ]
+          }
+        },
+        "SEG-X5": {
+          "delta": {
+            "piqa": [
+              -2.499999999999991,
+              0.30000000000000027
+            ],
+            "boolq": [
+              -2.8000000000000025,
+              1.200000000000001
+            ]
+          },
+          "gain": {
+            "piqa": [
+              0.20000000000000018,
+              3.8999999999999924
+            ],
+            "boolq": [
+              0.6000000000000005,
+              5.900000000000006
+            ]
+          },
+          "delta_gain": {
+            "piqa": [
+              -1.200000000000001,
+              2.500000000000002
+            ],
+            "boolq": [
+              -3.300000000000003,
+              1.5000000000000013
+            ]
+          },
+          "lora": {
+            "piqa": [
+              -1.0999999999999899,
+              2.6999999999999917
+            ],
+            "boolq": [
+              -2.300000000000002,
+              4.100000000000003
+            ]
+          },
+          "swap": {
+            "piqa": [
+              0.8000000000000007,
+              5.400000000000005
+            ],
+            "boolq": [
+              3.1000000000000028,
+              9.699999999999998
+            ]
+          }
+        }
+      }
+    },
+    "scope": "descriptive; paired rows within seed; task-stratified; max control per draw"
+  },
+  "runs": {
+    "0": {
+      "SEG-W1": {
+        "hardware": "NVIDIA GH200 120GB MIG 1g.24gb",
+        "exec.pbs_job_id": "3787033.opbs",
+        "initial.adapter_sha256": "f3fc8b76c81055f77e559a4df808218899b72a3716f47ea2f8e203062eb47cf5",
+        "train.seconds": 5470.64808705193,
+        "train.steady_step_seconds": 0.41515470204648525,
+        "train.peak_cuda_bytes": 3641856000,
+        "elapsed_s": 7575.187606470077,
+        "train.segment1_writes": {
+          "examples": 26230,
+          "total": 26230,
+          "mean": 1.0,
+          "min": 1,
+          "max": 1
+        },
+        "dev.segment1_writes": {
+          "examples": 2000,
+          "total": 2000,
+          "mean": 1.0,
+          "min": 1,
+          "max": 1
+        },
+        "dev.boolq.accuracy": 0.629,
+        "dev.piqa.accuracy": 0.667,
+        "dev.boolq.nll": 0.6454484267979861,
+        "dev.piqa.nll": 2.955602935353649
+      },
+      "SEG-W2": {
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "exec.pbs_job_id": "3787041.opbs",
+        "initial.adapter_sha256": "f3fc8b76c81055f77e559a4df808218899b72a3716f47ea2f8e203062eb47cf5",
+        "train.seconds": 5281.425450397073,
+        "train.steady_step_seconds": 0.400668935150989,
+        "train.peak_cuda_bytes": 3641856000,
+        "elapsed_s": 7297.439573707059,
+        "train.segment1_writes": {
+          "examples": 26230,
+          "total": 58315,
+          "mean": 2.223217689668319,
+          "min": 1,
+          "max": 39
+        },
+        "dev.segment1_writes": {
+          "examples": 2000,
+          "total": 5393,
+          "mean": 2.6965,
+          "min": 1,
+          "max": 22
+        },
+        "dev.boolq.accuracy": 0.637,
+        "dev.piqa.accuracy": 0.673,
+        "dev.boolq.nll": 0.6441272921785712,
+        "dev.piqa.nll": 2.958606268761768
+      },
+      "SEG-X5": {
+        "hardware": "NVIDIA GH200 120GB MIG 1g.24gb",
+        "exec.pbs_job_id": "3787042.opbs",
+        "initial.adapter_sha256": "7a21d194b174a2bb06f19addbe7acf2bd60a8faef460fc4525d1ad4ae6656501",
+        "train.seconds": 5515.3406327640405,
+        "train.steady_step_seconds": 0.41857507434324137,
+        "train.peak_cuda_bytes": 3629330944,
+        "elapsed_s": 7603.010695734993,
+        "train.segment1_writes": {
+          "examples": 26230,
+          "total": 1433313,
+          "mean": 54.64403354937095,
+          "min": 2,
+          "max": 498
+        },
+        "dev.segment1_writes": null,
+        "dev.boolq.accuracy": 0.651,
+        "dev.piqa.accuracy": 0.682,
+        "dev.boolq.nll": 0.672509859494865,
+        "dev.piqa.nll": 2.8482251674925414
+      },
+      "SEG-X6": {
+        "hardware": "NVIDIA GH200 120GB MIG 1g.24gb",
+        "exec.pbs_job_id": "3787043.opbs",
+        "initial.adapter_sha256": "7a21d194b174a2bb06f19addbe7acf2bd60a8faef460fc4525d1ad4ae6656501",
+        "train.seconds": 2800.212796426029,
+        "train.steady_step_seconds": 0.21216339968905834,
+        "train.peak_cuda_bytes": 3624765440,
+        "elapsed_s": 3747.6643080969807,
+        "train.segment1_writes": null,
+        "dev.segment1_writes": null,
+        "dev.boolq.accuracy": 0.616,
+        "dev.piqa.accuracy": 0.662,
+        "dev.boolq.nll": 0.6583428784906864,
+        "dev.piqa.nll": 3.0549308760565297
+      },
+      "SEG-X7": {
+        "hardware": "NVIDIA GH200 120GB MIG 2g.24gb",
+        "exec.pbs_job_id": "3787044.opbs",
+        "initial.adapter_sha256": "7a21d194b174a2bb06f19addbe7acf2bd60a8faef460fc4525d1ad4ae6656501",
+        "train.seconds": 2344.727397196926,
+        "train.steady_step_seconds": 0.1774281877139299,
+        "train.peak_cuda_bytes": 3490745344,
+        "elapsed_s": 3116.96151225199,
+        "train.segment1_writes": null,
+        "dev.segment1_writes": null,
+        "dev.boolq.accuracy": 0.612,
+        "dev.piqa.accuracy": 0.529,
+        "dev.boolq.nll": 0.6684314246177674,
+        "dev.piqa.nll": 5.184863312612692
+      }
+    }
+  },
+  "provenance": {
+    "0": {
+      "reference": {
+        "SEG-00": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0277-1/predictions.json",
+          "sha256": "57b91f8a3a7e7f9f4f742d96f36b32f6526cd9a203338ca58e663e34ca50e91a",
+          "bytes": 483883
+        },
+        "SEG-04": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0281-1/predictions.json",
+          "sha256": "3dc26446d8c4d5b928e360424bd40fa0e439a0d18fd63a7eff238e5969eac797",
+          "bytes": 486755
+        },
+        "SEG-05": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0290-1/predictions.json",
+          "sha256": "32338ce996fffa83950065afec3903fc3a259232ef513780dc885e2c786b99fb",
+          "bytes": 486602
+        },
+        "SEG-06": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0291-1/predictions.json",
+          "sha256": "500077057e5b56059790d545c20f35ac35d8d708a76beecb32d4e1afd3ea430e",
+          "bytes": 486154
+        },
+        "SEG-07": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0292-1/predictions.json",
+          "sha256": "0b0271443d1a704e8810ecbb4513aca0d631519a7930cb68641e343d62287e33",
+          "bytes": 486411
+        },
+        "SEG-05/iv_swap": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0302-1/conditions.json",
+          "sha256": "dd6b923dacef6cb0238359c773026baace62e6636311915928c6a7d3602b8819",
+          "bytes": 7980508
+        }
+      },
+      "runs": {
+        "SEG-W1": {
+          "root": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1",
+          "refs": {
+            "manifest.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/manifest.json",
+              "sha256": "6715a146e14a7d03025245981bb0299eb7bf24c842eae6dbe5af064386ede368",
+              "bytes": 10693
+            },
+            "predictions.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/predictions.json",
+              "sha256": "32344b983dc790b2a2a3dfc8fa0e3e37ba238245277682543aedd73fcffc7aa4",
+              "bytes": 486191
+            },
+            "checkpoint.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/checkpoint.json",
+              "sha256": "b3f5c2252eada43be5bc59009838322f16d2b83754ea487b356630518b613a3d",
+              "bytes": 450
+            },
+            "iv-swap-dev.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/iv-swap-dev.json",
+              "sha256": "0f7dbec25623cff593f6de226a0b5fc89b091b1d33e36fbd2d555132b9258a1f",
+              "bytes": 1631982
+            }
+          }
+        },
+        "SEG-W2": {
+          "root": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1",
+          "refs": {
+            "manifest.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/manifest.json",
+              "sha256": "c81133a3f23992312bb7e36e33eba9f1ce4c55ea700d35c785e39fc080f03b0e",
+              "bytes": 10713
+            },
+            "predictions.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/predictions.json",
+              "sha256": "c4dcbb26749d46fa2bc5ccdd42e15dbaec55da700458037814af90c6382c37ae",
+              "bytes": 486208
+            },
+            "checkpoint.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/checkpoint.json",
+              "sha256": "43b9a578e0fd908d38db8d9842f31006b9abc8029663bb03f71de0523b9e1b1c",
+              "bytes": 450
+            },
+            "iv-swap-dev.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/iv-swap-dev.json",
+              "sha256": "305c6ef4c55c1f9598dec0bbb667a45951640cd81630a68b5b2fb596f3f974e7",
+              "bytes": 1632123
+            }
+          }
+        },
+        "SEG-X5": {
+          "root": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0417-1",
+          "refs": {
+            "manifest.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0417-1/manifest.json",
+              "sha256": "05ed546bec02a3a23b71ec3ead288adbf7981105982edeaf38591731671b3727",
+              "bytes": 10289
+            },
+            "predictions.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0417-1/predictions.json",
+              "sha256": "d0dcecaeb053de7ca1922411acf13c5d410c67c103e631ec68cfa85b4ef2b4e9",
+              "bytes": 486824
+            },
+            "checkpoint.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0417-1/checkpoint.json",
+              "sha256": "f3afb1f94d5d074c6d97ea375ab4f4aa213af6d6c73f58b629b9ef9bed3d69ee",
+              "bytes": 449
+            },
+            "iv-swap-dev.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0417-1/iv-swap-dev.json",
+              "sha256": "2dbb4c8830ade898f9d2617fde1a9243761ce0aa87f874808d88a9b93762f5f3",
+              "bytes": 1614291
+            }
+          }
+        },
+        "SEG-X6": {
+          "root": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0418-1",
+          "refs": {
+            "manifest.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0418-1/manifest.json",
+              "sha256": "77d5ef0dba17a74fb02a6f5ae7cbf7efd1dcc3df236f90cdaaa06b94134e0dfb",
+              "bytes": 7263
+            },
+            "predictions.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0418-1/predictions.json",
+              "sha256": "2196a2c80a502e71f50c765a47cd3c6ef228554ad658281ed21d47ab2a188f04",
+              "bytes": 486207
+            },
+            "checkpoint.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0418-1/checkpoint.json",
+              "sha256": "532280fd297197a97a943c96eb6d3e96585f6c88aac7c367b12f9ccd92680e85",
+              "bytes": 449
+            }
+          }
+        },
+        "SEG-X7": {
+          "root": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0419-1",
+          "refs": {
+            "manifest.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0419-1/manifest.json",
+              "sha256": "d8d498f3b8cf2e1a46bb69123b337a55f9a754138d6fc99128ccb07882449af7",
+              "bytes": 7217
+            },
+            "predictions.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0419-1/predictions.json",
+              "sha256": "777f39b13a74f55e94061fe5fdd8c016a7f225340e335c466e6ab7df148de8f5",
+              "bytes": 485734
+            },
+            "checkpoint.json": {
+              "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0419-1/checkpoint.json",
+              "sha256": "13a3f7f4230faaa98a667c09bef51d22e6f759ba09ea2d2796dce0be6d89dbd7",
+              "bytes": 449
+            }
+          }
+        }
+      }
+    },
+    "1": {
+      "reference": {
+        "SEG-04": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0306-1/predictions.json",
+          "sha256": "620bcc391ac3e1a3b319d4c230f8ff694724f4d188d7b0a3f2443cea8305d985",
+          "bytes": 486766
+        },
+        "SEG-05": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0307-1/predictions.json",
+          "sha256": "bc0266047657dfbbf6dd0aa630aae953f472937d4635c9c128c983419616c7c0",
+          "bytes": 486556
+        },
+        "SEG-06": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0308-1/predictions.json",
+          "sha256": "ad9084c3595f23dfda8a40ee43120492939a4d38b015d7a6afabaade83aac306",
+          "bytes": 486074
+        },
+        "SEG-07": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0309-1/predictions.json",
+          "sha256": "2d12c7179c5511b29a92c5a86afe071c0776137cd40beceb29b990b2c8dc2116",
+          "bytes": 486057
+        },
+        "SEG-05/iv_swap": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0319-1/conditions.json",
+          "sha256": "d8e2e0e0af18b7bd2251b3417be46c4ecc14578c1ce050e34e2e348518223d16",
+          "bytes": 7980293
+        },
+        "SEG-00": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0277-1/predictions.json",
+          "sha256": "57b91f8a3a7e7f9f4f742d96f36b32f6526cd9a203338ca58e663e34ca50e91a",
+          "bytes": 483883
+        }
+      },
+      "runs": {}
+    },
+    "2": {
+      "reference": {
+        "SEG-04": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0310-1/predictions.json",
+          "sha256": "a2cdd2a6fc615928e8855bb966da933ba20503b7111c020d9beb08fcd08b1731",
+          "bytes": 486792
+        },
+        "SEG-05": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0311-1/predictions.json",
+          "sha256": "04ae1ac17076800d5b41aafeb9467165b7b08555674f05db4c4f2f7442a15921",
+          "bytes": 486449
+        },
+        "SEG-06": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0312-1/predictions.json",
+          "sha256": "d2eab4f0eb174c4d65b096809daa8182ed22fe735a52d61c2079a23ebc00433f",
+          "bytes": 486112
+        },
+        "SEG-07": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0313-1/predictions.json",
+          "sha256": "62d2f579f75cc5b468a73e5c41270f7f9b7a2f6ed65c2ed58d70636d9f07c2a7",
+          "bytes": 486115
+        },
+        "SEG-05/iv_swap": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0320-1/conditions.json",
+          "sha256": "fa5d96f14a35d893e09d160c2ce8ccb18f70ee42e2f55fc4b449665a7a1290ac",
+          "bytes": 7980216
+        },
+        "SEG-00": {
+          "path": "/work/xg24i002/x10041/bypass-lora/runs/ATT-0277-1/predictions.json",
+          "sha256": "57b91f8a3a7e7f9f4f742d96f36b32f6526cd9a203338ca58e663e34ca50e91a",
+          "bytes": 483883
+        }
+      },
+      "runs": {}
+    }
+  },
+  "mechanism": {
+    "ref": {
+      "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0422-1/mechanism.json",
+      "sha256": "993aadfdc9510b86bca19e88da2051d62c0a86299535d7abf8a730688ca4cf52",
+      "bytes": 7768
+    },
+    "models": {
+      "SEG-W1": {
+        "arm": "SEG-W1",
+        "seed": 0,
+        "run": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1",
+        "checkpoint": {
+          "config.json": {
+            "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/adapter/config.json",
+            "sha256": "67db205fe32df9db2f76446fccd460efdc2b6ce0581d565f96f9f38b19e920d6",
+            "bytes": 527
+          },
+          "adapter.pt": {
+            "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/adapter/adapter.pt",
+            "sha256": "87252a85c13dfacb357a5b5a3aa35450878b4608e1c66524d683a608d8161b5e",
+            "bytes": 11017883
+          }
+        },
+        "write_rule": "last",
+        "shares": {
+          "piqa": {
+            "6": {
+              "row_mean": 0.04001449816464447,
+              "position_pooled": 0.021320550152910223,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "13": {
+              "row_mean": 0.007327072498388589,
+              "position_pooled": 0.00668930530728712,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "20": {
+              "row_mean": 0.006365047892555594,
+              "position_pooled": 0.005118851108064429,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "27": {
+              "row_mean": 0.00042150651996780654,
+              "position_pooled": 0.0004341154206017377,
+              "rows": 1000,
+              "positions": 23183
+            }
+          },
+          "boolq": {
+            "6": {
+              "row_mean": 0.004184946945169941,
+              "position_pooled": 0.004184946945169941,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "13": {
+              "row_mean": 0.006926896315766498,
+              "position_pooled": 0.006926896315766498,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "20": {
+              "row_mean": 0.009878282066434622,
+              "position_pooled": 0.009878282066434622,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "27": {
+              "row_mean": 0.0005788351313967724,
+              "position_pooled": 0.0005788351313967724,
+              "rows": 1000,
+              "positions": 1000
+            }
+          }
+        },
+        "seconds": 163.34773364302237
+      },
+      "SEG-W2": {
+        "arm": "SEG-W2",
+        "seed": 0,
+        "run": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1",
+        "checkpoint": {
+          "config.json": {
+            "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/adapter/config.json",
+            "sha256": "67db205fe32df9db2f76446fccd460efdc2b6ce0581d565f96f9f38b19e920d6",
+            "bytes": 527
+          },
+          "adapter.pt": {
+            "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/adapter/adapter.pt",
+            "sha256": "ca0af72d1498cb2d81bb2b3e83597c087f5d0c17a64453e0511d057d858e51d7",
+            "bytes": 11017883
+          }
+        },
+        "write_rule": "sentence_last",
+        "shares": {
+          "piqa": {
+            "6": {
+              "row_mean": 0.04806092046620324,
+              "position_pooled": 0.026978984979704305,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "13": {
+              "row_mean": 0.005416945120086894,
+              "position_pooled": 0.004493560994760064,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "20": {
+              "row_mean": 0.005138982072239741,
+              "position_pooled": 0.004449563271989178,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "27": {
+              "row_mean": 0.00028438518050097626,
+              "position_pooled": 0.00028163392443909856,
+              "rows": 1000,
+              "positions": 23183
+            }
+          },
+          "boolq": {
+            "6": {
+              "row_mean": 0.19185478519648314,
+              "position_pooled": 0.19185478519648314,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "13": {
+              "row_mean": 0.005096645006095059,
+              "position_pooled": 0.005096645006095059,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "20": {
+              "row_mean": 0.015405110642546788,
+              "position_pooled": 0.015405110642546788,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "27": {
+              "row_mean": 0.0004450097014341736,
+              "position_pooled": 0.0004450097014341736,
+              "rows": 1000,
+              "positions": 1000
+            }
+          }
+        },
+        "seconds": 161.22227625909727
+      },
+      "SEG-05/seed3 (E-0030 ATT-0379-2)": {
+        "arm": "SEG-05",
+        "seed": 3,
+        "run": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2",
+        "checkpoint": {
+          "config.json": {
+            "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2/adapter/config.json",
+            "sha256": "67db205fe32df9db2f76446fccd460efdc2b6ce0581d565f96f9f38b19e920d6",
+            "bytes": 527
+          },
+          "adapter.pt": {
+            "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2/adapter/adapter.pt",
+            "sha256": "6abc1209dea2b65f296d97794df2fd6d47e594480b326c6a3cf9311bc100d5ea",
+            "bytes": 11017883
+          }
+        },
+        "write_rule": "all",
+        "shares": {
+          "piqa": {
+            "6": {
+              "row_mean": 0.5277136231958867,
+              "position_pooled": 0.5132753678260421,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "13": {
+              "row_mean": 0.5465027460455895,
+              "position_pooled": 0.5320813393966151,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "20": {
+              "row_mean": 0.5151308411359787,
+              "position_pooled": 0.5100211381901947,
+              "rows": 1000,
+              "positions": 23183
+            },
+            "27": {
+              "row_mean": 0.4982797870934009,
+              "position_pooled": 0.4974656492190165,
+              "rows": 1000,
+              "positions": 23183
+            }
+          },
+          "boolq": {
+            "6": {
+              "row_mean": 0.5477870967090129,
+              "position_pooled": 0.5477870967090129,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "13": {
+              "row_mean": 0.6282147938609123,
+              "position_pooled": 0.6282147938609123,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "20": {
+              "row_mean": 0.5578151590526104,
+              "position_pooled": 0.5578151590526104,
+              "rows": 1000,
+              "positions": 1000
+            },
+            "27": {
+              "row_mean": 0.9960580843687058,
+              "position_pooled": 0.9960580843687058,
+              "rows": 1000,
+              "positions": 1000
+            }
+          }
+        },
+        "seconds": 160.461996984086
+      }
+    }
+  },
+  "cost": {
+    "sources": [
+      {
+        "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/T-0035/observations.json",
+        "sha256": "585767e1de18ce77898c80ffb3edf05f55a99a8f576944fe67f9c08f60f8a472",
+        "bytes": 9572
+      }
+    ],
+    "rows": [
+      {
+        "attempt": "ATT-0402-1",
+        "accounting_ref": "miyabi-pbs:3786364.opbs",
+        "quantity": 0.018333,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:01:06 x nvnodes-mig=1",
+        "node_h": 0.00458325
+      },
+      {
+        "attempt": "ATT-0405-2",
+        "accounting_ref": "miyabi-pbs:3786487.opbs",
+        "quantity": 0.017778,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:01:04 x nvnodes-mig=1",
+        "node_h": 0.0044445
+      },
+      {
+        "attempt": "ATT-0403-1",
+        "accounting_ref": "miyabi-pbs:3786425.opbs",
+        "quantity": 0.515278,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:30:55 x nvnodes-mig=1",
+        "node_h": 0.1288195
+      },
+      {
+        "attempt": "ATT-0408-1",
+        "accounting_ref": "miyabi-pbs:3786879.opbs",
+        "quantity": 0.019167,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:01:09 x nvnodes-mig=1",
+        "node_h": 0.00479175
+      },
+      {
+        "attempt": "ATT-0407-1",
+        "accounting_ref": "miyabi-pbs:3786805.opbs",
+        "quantity": 0.216667,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:13:00 x nvnodes-mig=1",
+        "node_h": 0.05416675
+      },
+      {
+        "attempt": "ATT-0419-1",
+        "accounting_ref": "miyabi-pbs:3787044.opbs",
+        "quantity": 0.868333,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:52:06 x nvnodes-mig=1",
+        "node_h": 0.21708325
+      },
+      {
+        "attempt": "ATT-0418-1",
+        "accounting_ref": "miyabi-pbs:3787043.opbs",
+        "quantity": 1.045,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=01:02:42 x nvnodes-mig=1",
+        "node_h": 0.26125
+      },
+      {
+        "attempt": "ATT-0416-1",
+        "accounting_ref": "miyabi-pbs:3787041.opbs",
+        "quantity": 2.031389,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=02:01:53 x nvnodes-mig=1",
+        "node_h": 0.50784725
+      },
+      {
+        "attempt": "ATT-0415-1",
+        "accounting_ref": "miyabi-pbs:3787033.opbs",
+        "quantity": 2.106667,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=02:06:24 x nvnodes-mig=1",
+        "node_h": 0.52666675
+      },
+      {
+        "attempt": "ATT-0417-1",
+        "accounting_ref": "miyabi-pbs:3787042.opbs",
+        "quantity": 2.115833,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=02:06:57 x nvnodes-mig=1",
+        "node_h": 0.52895825
+      },
+      {
+        "attempt": "ATT-0422-1",
+        "accounting_ref": "miyabi-pbs:3788512.opbs",
+        "quantity": 0.139167,
+        "unit": "mig_instance_hours",
+        "source_ref": "resources_used.walltime=00:08:21 x nvnodes-mig=1",
+        "node_h": 0.03479175
+      }
+    ],
+    "node_h": 2.273403,
+    "conversion": "node_h = measured MIG instance hours * 0.25; includes supplied attempts only"
+  },
+  "limitations": [
+    "dev both screens and judges",
+    "exact point-estimate gates",
+    "intervals exclude seed and selection uncertainty"
+  ]
+}

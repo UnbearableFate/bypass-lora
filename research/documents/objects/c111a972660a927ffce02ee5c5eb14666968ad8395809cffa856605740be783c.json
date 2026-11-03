@@ -1,0 +1,224 @@
+{
+  "definition": "E-0032 rule 7 (descriptive): segment-1 share of the KernelMatrix read mass.\n\nFor each trained Keep checkpoint and each dev row (gold candidate only), segment\n1 is written under the arm's registered mask; segment 2 then reads with the\ncarried state. At every segment-2 answer position t (the positions whose\nlogits score the candidate tokens) and every adapter layer, the KernelMatrix\nread normalizes by rho_t . c_t, where rho_t = ELU1(RMSNorm(qbar_t) Rq) is the\nfirst (only, S1) reader query and c_t = c1 + sum_{u<=t} ELU1(RMSNorm(kbar_u))\n(inclusive write before read). The reported share is (rho_t . c1)/(rho_t . c_t)\n(eps excluded). It is averaged over a row's answer positions, then over rows,\nper task and layer. Descriptive only; no rule depends on it.\n",
+  "models": {
+    "SEG-W1": {
+      "arm": "SEG-W1",
+      "seed": 0,
+      "run": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1",
+      "checkpoint": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/adapter/config.json",
+          "sha256": "67db205fe32df9db2f76446fccd460efdc2b6ce0581d565f96f9f38b19e920d6",
+          "bytes": 527
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0415-1/adapter/adapter.pt",
+          "sha256": "87252a85c13dfacb357a5b5a3aa35450878b4608e1c66524d683a608d8161b5e",
+          "bytes": 11017883
+        }
+      },
+      "write_rule": "last",
+      "shares": {
+        "piqa": {
+          "6": {
+            "row_mean": 0.04001449816464447,
+            "position_pooled": 0.021320550152910223,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "13": {
+            "row_mean": 0.007327072498388589,
+            "position_pooled": 0.00668930530728712,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "20": {
+            "row_mean": 0.006365047892555594,
+            "position_pooled": 0.005118851108064429,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "27": {
+            "row_mean": 0.00042150651996780654,
+            "position_pooled": 0.0004341154206017377,
+            "rows": 1000,
+            "positions": 23183
+          }
+        },
+        "boolq": {
+          "6": {
+            "row_mean": 0.004184946945169941,
+            "position_pooled": 0.004184946945169941,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "13": {
+            "row_mean": 0.006926896315766498,
+            "position_pooled": 0.006926896315766498,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "20": {
+            "row_mean": 0.009878282066434622,
+            "position_pooled": 0.009878282066434622,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "27": {
+            "row_mean": 0.0005788351313967724,
+            "position_pooled": 0.0005788351313967724,
+            "rows": 1000,
+            "positions": 1000
+          }
+        }
+      },
+      "seconds": 163.34773364302237
+    },
+    "SEG-W2": {
+      "arm": "SEG-W2",
+      "seed": 0,
+      "run": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1",
+      "checkpoint": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/adapter/config.json",
+          "sha256": "67db205fe32df9db2f76446fccd460efdc2b6ce0581d565f96f9f38b19e920d6",
+          "bytes": 527
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0416-1/adapter/adapter.pt",
+          "sha256": "ca0af72d1498cb2d81bb2b3e83597c087f5d0c17a64453e0511d057d858e51d7",
+          "bytes": 11017883
+        }
+      },
+      "write_rule": "sentence_last",
+      "shares": {
+        "piqa": {
+          "6": {
+            "row_mean": 0.04806092046620324,
+            "position_pooled": 0.026978984979704305,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "13": {
+            "row_mean": 0.005416945120086894,
+            "position_pooled": 0.004493560994760064,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "20": {
+            "row_mean": 0.005138982072239741,
+            "position_pooled": 0.004449563271989178,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "27": {
+            "row_mean": 0.00028438518050097626,
+            "position_pooled": 0.00028163392443909856,
+            "rows": 1000,
+            "positions": 23183
+          }
+        },
+        "boolq": {
+          "6": {
+            "row_mean": 0.19185478519648314,
+            "position_pooled": 0.19185478519648314,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "13": {
+            "row_mean": 0.005096645006095059,
+            "position_pooled": 0.005096645006095059,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "20": {
+            "row_mean": 0.015405110642546788,
+            "position_pooled": 0.015405110642546788,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "27": {
+            "row_mean": 0.0004450097014341736,
+            "position_pooled": 0.0004450097014341736,
+            "rows": 1000,
+            "positions": 1000
+          }
+        }
+      },
+      "seconds": 161.22227625909727
+    },
+    "SEG-05/seed3 (E-0030 ATT-0379-2)": {
+      "arm": "SEG-05",
+      "seed": 3,
+      "run": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2",
+      "checkpoint": {
+        "config.json": {
+          "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2/adapter/config.json",
+          "sha256": "67db205fe32df9db2f76446fccd460efdc2b6ce0581d565f96f9f38b19e920d6",
+          "bytes": 527
+        },
+        "adapter.pt": {
+          "path": "/work/xg24i002/x10041/bypass-lora/research/artifacts/ATT-0379-2/adapter/adapter.pt",
+          "sha256": "6abc1209dea2b65f296d97794df2fd6d47e594480b326c6a3cf9311bc100d5ea",
+          "bytes": 11017883
+        }
+      },
+      "write_rule": "all",
+      "shares": {
+        "piqa": {
+          "6": {
+            "row_mean": 0.5277136231958867,
+            "position_pooled": 0.5132753678260421,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "13": {
+            "row_mean": 0.5465027460455895,
+            "position_pooled": 0.5320813393966151,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "20": {
+            "row_mean": 0.5151308411359787,
+            "position_pooled": 0.5100211381901947,
+            "rows": 1000,
+            "positions": 23183
+          },
+          "27": {
+            "row_mean": 0.4982797870934009,
+            "position_pooled": 0.4974656492190165,
+            "rows": 1000,
+            "positions": 23183
+          }
+        },
+        "boolq": {
+          "6": {
+            "row_mean": 0.5477870967090129,
+            "position_pooled": 0.5477870967090129,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "13": {
+            "row_mean": 0.6282147938609123,
+            "position_pooled": 0.6282147938609123,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "20": {
+            "row_mean": 0.5578151590526104,
+            "position_pooled": 0.5578151590526104,
+            "rows": 1000,
+            "positions": 1000
+          },
+          "27": {
+            "row_mean": 0.9960580843687058,
+            "position_pooled": 0.9960580843687058,
+            "rows": 1000,
+            "positions": 1000
+          }
+        }
+      },
+      "seconds": 160.461996984086
+    }
+  }
+}

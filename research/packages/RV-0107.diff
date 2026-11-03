@@ -1,0 +1,327 @@
+diff --git a/src/mig_profile_guard.py b/src/mig_profile_guard.py
+index 23f3ecd..c972ddd 100644
+--- a/src/mig_profile_guard.py
++++ b/src/mig_profile_guard.py
+@@ -1,4 +1,4 @@
+-"""Require the allocated MIG UUID to be 2g.24gb before comparable GPU work.
++"""Require the allocated MIG UUID to match its comparison's requested profile.
+ 
+ Run after the site's allocation check and before model imports. This guard
+ preserves CUDA_VISIBLE_DEVICES and saves nvidia-smi evidence even on rejection.
+@@ -27,10 +27,11 @@ def allocated_profile(listing, visible):
+ def main(argv=None):
+     parser = argparse.ArgumentParser()
+     parser.add_argument('--output',type=Path,required=True)
++    parser.add_argument('--expected-profile',choices=('1g.24gb','2g.24gb'),default='2g.24gb')
+     args = parser.parse_args(argv)
+     out = args.output.resolve()
+     out.mkdir(parents=True,exist_ok=True)
+-    record = {'expected_profile':'2g.24gb','passed':False,
++    record = {'expected_profile':args.expected_profile,'passed':False,
+               'cuda_visible_devices':os.environ.get('CUDA_VISIBLE_DEVICES'),
+               'pbs_job_id':os.environ.get('PBS_JOBID'),'host':socket.gethostname()}
+     try:
+@@ -41,7 +42,7 @@ def main(argv=None):
+             raise ValueError('nvidia-smi -L failed: '+result.stderr.strip())
+         record.update(allocated_profile(result.stdout,record['cuda_visible_devices']))
+         if record['profile'] != record['expected_profile']:
+-            raise ValueError('allocated MIG '+record['profile']+';required MIG 2g.24gb')
++            raise ValueError('allocated MIG '+record['profile']+';required MIG '+record['expected_profile'])
+         record['passed'] = True
+     except (OSError,ValueError,subprocess.TimeoutExpired) as exc:
+         record['error'] = str(exc)
+diff --git a/src/rb_qvu_analysis.py b/src/rb_qvu_analysis.py
+index 2a29af0..fb1650c 100644
+--- a/src/rb_qvu_analysis.py
++++ b/src/rb_qvu_analysis.py
+@@ -106,8 +106,28 @@ def interval(comparisons, left, right):
+     return {'estimate_pp':-value['estimate_pp'], 'ci95_pp':[-value['ci95_pp'][1],-value['ci95_pp'][0]]}
+ 
+ 
++def legacy_inputs(entries):
++    """Rule8 diagnostic failures do not remove the mandatory rule3 LoRA arm."""
++    available, unavailable = {}, {}
++    for arm in LEGACY:
++        value = entries[arm]
++        if isinstance(value, dict):
++            if arm == 'RB1-07':
++                raise ValueError('RB1-07 reevaluation is mandatory for rule3')
++            if set(value) != {'unavailable'} or not isinstance(value['unavailable'], str) or not value['unavailable'].strip():
++                raise ValueError('unavailable diagnostic checkpoint requires an explicit reason')
++            unavailable[arm] = value['unavailable']
++        elif isinstance(value, str) and value:
++            available[arm] = Path(value)
++        else:
++            raise ValueError('reevaluation requires a path or unavailable reason')
++    return available, unavailable
++
++
+ def analyze(spec):
+     sources, dev, cal, runtime, curves = {}, {}, {}, {}, {}
++    legacy_available, legacy_unavailable = legacy_inputs(spec['reevaluations'])
++    compatibility = {}
+     base = Path(spec['base_run'])
+     if reference(base/'manifest.json')['sha256'] != ACCEPTED_BASE_MANIFEST_SHA256:
+         raise ValueError('Base reference changed')
+@@ -127,13 +147,16 @@ def analyze(spec):
+             cal[arm] = read(root/'calibration-predictions.json')
+             validate_calibration(cal[arm],manifest['metrics'])
+     for arm,attempt in LEGACY.items():
++        if arm in legacy_unavailable:
++            sources[arm] = {'unavailable':legacy_unavailable[arm]}
++            continue
+         root = Path(spec['references'][arm])
+         if root.name != attempt:
+             raise ValueError('legacy training reference differs from contract')
+         manifest, refs, _ = validate_formal_run(root,arm)
+         dev[arm] = validate_rows(read(root/'predictions.json'),arm,dev['Base'])
+         check_metrics(dev[arm],manifest['metrics'],arm)
+-        rerun = Path(spec['reevaluations'][arm])
++        rerun = legacy_available[arm]
+         m = complete(rerun/'manifest.json')
+         if (m.get('arm') != arm or m.get('stage') != 'checkpoint_evaluation' or
+                 m['metrics'].get('source.commit') != spec['source_commit'] or
+@@ -146,6 +169,7 @@ def analyze(spec):
+         flips = sum(a['prediction'] != b['prediction'] for a,b in zip(reevaluated,dev[arm]))
+         if flips != m['metrics']['compatibility']['flips'] or (m['metrics']['compatibility']['same_profile'] and flips):
+             raise ValueError('legacy compatibility check failed')
++        compatibility[arm] = m['metrics']['compatibility']
+         cal[arm] = read(rerun/'calibration-predictions.json')
+         validate_calibration(cal[arm],m['metrics'])
+         sources[arm] = {'training':refs, 'reevaluation':{name:reference(rerun/name) for name in
+@@ -230,13 +254,16 @@ def analyze(spec):
+     if not result['6_conditional_controls']['triggered'] and any(a in merged for a in ('U-25','T0-U-25')):
+         raise ValueError('untriggered conditional controls were trained')
+     result['1_implementation'] = {'passed':True,'arms':initial_checks,
+-        'checkpoint_compatibility':{a:complete(Path(spec['reevaluations'][a])/'manifest.json')['metrics']['compatibility'] for a in LEGACY}}
++        'checkpoint_compatibility':compatibility,
++        'diagnostic_checkpoints_unavailable':legacy_unavailable}
+     intervals = paired_intervals(merged)
+     result['3_H0030']['interval_d_X'] = interval(intervals,'H-QVU','X-01')
+     result['3_H0030']['interval_d_L'] = interval(intervals,'H-QVU','RB1-07')
+     result['4_H0031']['interval_d_h'] = interval(intervals,'H-QVU','T0-QVU')
+-    result['8_resolution'] = {f'{a}_minus_{b}':interval(intervals,a,b) for a,b in
+-        (('RB1-02','RB1-01'),('RB1-07','RB1-09'),('RB1-07','X-01'))}
++    result['8_resolution'] = {'unavailable':legacy_unavailable, 'comparisons':{
++        f'{a}_minus_{b}':(interval(intervals,a,b) if a in scores and b in scores else
++            {'available':False,'reasons':{arm:legacy_unavailable[arm] for arm in (a,b) if arm in legacy_unavailable}})
++        for a,b in (('RB1-02','RB1-01'),('RB1-07','RB1-09'),('RB1-07','X-01'))}}
+     return {'contract':'E-0031@1', 'source_commit':spec['source_commit'], 'rules':result,
+         'merged_performance':{a:summarize_rows(r) for a,r in merged.items()},
+         'dev_performance':{a:summarize_rows(r) for a,r in dev.items()}, 'curves':curves, 'runtime':runtime,
+diff --git a/src/rb_qvu_smoke.py b/src/rb_qvu_smoke.py
+index 264719d..9ded696 100644
+--- a/src/rb_qvu_smoke.py
++++ b/src/rb_qvu_smoke.py
+@@ -1,6 +1,7 @@
+ """E-0031 PBS-only real counts, paired initialization, timing and budget forecast."""
+ import argparse
+ import gc
++import math
+ import os
+ from pathlib import Path
+ import subprocess
+@@ -32,9 +33,11 @@ def run(args):
+             raise ValueError('smoke child incomplete')
+         return manifest['metrics']
+     try:
++        if not math.isfinite(args.prior_node_hours) or args.prior_node_hours < 0:
++            raise ValueError('prior measured node-hours must be finite and nonnegative')
+         with (out/'pytest.txt').open('w') as log:
+             subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
+-                'src/test_rb_qvu.py', 'src/test_rb_qvu_analysis.py', 'src/test_rb_tap.py',
++                'src/test_rb_qvu.py', 'src/test_rb_qvu_analysis.py', 'src/test_mig_profile_guard.py', 'src/test_rb_tap.py',
+                 'src/test_rb_train.py', 'src/test_rb1_artifacts.py', 'src/test_rb1_intervene.py'],
+                 check=True, stdout=log, stderr=subprocess.STDOUT)
+         metrics['pytest_exit'] = 0
+@@ -75,7 +78,10 @@ def run(args):
+                     *(() if arm == 'RB1-07' else ('--eval-limit', '16')))
+                 for arm,attempt in LEGACY.items()}
+         calibration_s = refs['RB1-07']['calibration.seconds']
+-        dev_s = refs['RB1-07']['dev_eval.seconds']
++        # LoRA dev timing is historically about5% below side-branch timing;
++        # reserve10% explicitly rather than treating it as a matched measurement.
++        measured_dev_s = refs['RB1-07']['dev_eval.seconds']
++        dev_s = measured_dev_s * 1.1
+         training = {arm: value['train.steady_step_seconds']*13115 + 8*dev_s + 2*calibration_s +
+             value['load.seconds'] + 30 for arm,value in arms.items()}
+         # All four complete legacy reevaluations are reserved even though one was
+@@ -84,15 +90,18 @@ def run(args):
+         intervention_s = 3*dev_s + 30  # normal + swap (recipient and donor)
+         smoke_s = time.monotonic()-tick
+         initial = (sum(training[a] for a in ('H-QVU','T0-QVU')) + reevaluation_s +
+-            intervention_s + smoke_s + 120)/14400
++            intervention_s + smoke_s + 120)/14400 + args.prior_node_hours
+         conditional = initial + sum(training[a] for a in ('U-25','T0-U-25'))/14400
+-        cost = {'contract':'E-0031@1', 'training_seconds':training, 'calibration_seconds':calibration_s,
++        cost = {'contract':'E-0031@1', 'source_commit':os.environ['SR_CODE_COMMIT'],
++            'prior_measured_node_hours':args.prior_node_hours,
++            'measured_LoRA_dev_seconds':measured_dev_s, 'dev_timing_reserve_factor':1.1,
++            'training_seconds':training, 'calibration_seconds':calibration_s,
+             'dev_seconds':dev_s, 'reevaluation_seconds':reevaluation_s,
+             'intervention_seconds':intervention_s, 'smoke_seconds':smoke_s,
+             'analysis_and_retry_reserve_seconds':120, 'initial_node_hours':initial,
+             'with_conditionals_node_hours':conditional, 'initial_cap':1.3, 'total_cap':2.0,
+             'within_caps':initial <= 1.3 and conditional <= 2.0,
+-            'method':'80 steady steps;13115 total;8 dev and2 calibration passes per arm;MIG-hours/4;full4 legacy reevaluations;3 intervention dev passes;smoke plus120seconds'}
++            'method':'80 steady steps;13115 total;8 dev and2 calibration passes per arm;LoRA dev timing x1.1 reserve;MIG-hours/4;full4 legacy reevaluations;3 intervention dev passes;this smoke plus120seconds;all prior measured node-hours added once'}
+         write_json(out/'cost-estimate.json', cost)
+         metrics.update({'arms':arms, 'references':refs, 'source_commit':os.environ['SR_CODE_COMMIT'],
+             'hardware':torch.cuda.get_device_name(), 'initial_projected_node_hours':initial,
+@@ -114,4 +123,5 @@ if __name__ == '__main__':
+     p.add_argument('--lr-lock', type=Path, required=True)
+     p.add_argument('--data-dir', type=Path, required=True)
+     p.add_argument('--output', type=Path, required=True)
++    p.add_argument('--prior-node-hours', type=float, required=True)
+     run(p.parse_args())
+diff --git a/src/test_mig_profile_guard.py b/src/test_mig_profile_guard.py
+index d930e39..23bf158 100644
+--- a/src/test_mig_profile_guard.py
++++ b/src/test_mig_profile_guard.py
+@@ -42,3 +42,14 @@ def test_cli_gates_allocated_slice_and_preserves_failure_evidence(
+     assert record['uuid'] == 'MIG-assigned'
+     assert (tmp_path/'nvidia-smi-L.txt').read_text() == listing
+     assert guard.os.environ['CUDA_VISIBLE_DEVICES'] == 'MIG-assigned'
++
++
++@pytest.mark.parametrize('listing,code',[(BAD,0),(GOOD,3)])
++def test_historical_1g_comparison_requires_the_actual_1g_uuid(monkeypatch,tmp_path,listing,code):
++    monkeypatch.setenv('CUDA_VISIBLE_DEVICES','MIG-assigned')
++    monkeypatch.setattr(guard.subprocess,'run',lambda *a,**k:
++        SimpleNamespace(stdout=listing,stderr='',returncode=0))
++    assert guard.main(['--output',str(tmp_path),'--expected-profile','1g.24gb']) == code
++    record = json.loads((tmp_path/'mig-profile.json').read_text())
++    assert record['expected_profile'] == '1g.24gb'
++    assert record['passed'] is (code == 0)
+diff --git a/src/test_rb_qvu_analysis.py b/src/test_rb_qvu_analysis.py
+index 9e1a1a1..e48e7fe 100644
+--- a/src/test_rb_qvu_analysis.py
++++ b/src/test_rb_qvu_analysis.py
+@@ -72,3 +72,127 @@ def test_pairing_rejects_consequential_membership_or_label_changes(mutation):
+         right[0][mutation] = 'calibration' if mutation == 'split' else 2
+     with pytest.raises(ValueError,match='paired rows'):
+         paired_intervals({'left':left,'right':right},repeats=2)
++
++
++@pytest.fixture
++def analysis_fixture(tmp_path,monkeypatch):
++    """Real paired prediction files; only unrelated checkpoint I/O is stubbed."""
++    import json
++    from pathlib import Path
++    import rb_qvu_analysis as entry
++    source = 'a'*40
++    def write(path,value):
++        path.parent.mkdir(parents=True,exist_ok=True)
++        path.write_text(json.dumps(value))
++    def predictions(split,correct):
++        size = 1000 if split == 'dev' else 2048
++        return [dict(task=task,split=split,id=i+(1000 if split == 'calibration' else 0),
++            gold=0,prediction=int(i >= int(size*correct)),scores=[-1.,-2. if i < int(size*correct) else 0.],
++            gold_nll_sum=1.,gold_loss_tokens=1) for task in ('piqa','boolq') for i in range(size)]
++    def metric(rows):
++        value = {}
++        for split in {r['split'] for r in rows}:
++            value[f'{split}.nll'] = 1.
++            for task in ('piqa','boolq'):
++                subset = [r for r in rows if r['split'] == split and r['task'] == task]
++                value.update({f'{split}.{task}.nll':1.,f'{split}.{task}.accuracy':sum(r['prediction']==0 for r in subset)/len(subset),
++                    f'{split}.{task}.examples':len(subset),f'{split}.{task}.loss_tokens':len(subset)})
++        return value
++    roots,refs,manifests = {},{},{}
++    def producer(arm,name,correct,new=False):
++        root = tmp_path/name;roots[arm] = root
++        dev = predictions('dev',correct);cal = predictions('calibration',correct)
++        metrics = metric(dev+cal)
++        metrics.update({'source.commit':source,'split_manifest.sha256':entry.SPLIT_SHA256,
++            'plan.order_sha256':entry.ORDER_SHA256,'train.steps':13115,'train.examples':26230,
++            'train.input_tokens':2000069,'train.loss_tokens':387653,'learning_rate':.001,
++            'hardware':'NVIDIA GH200 120GB MIG 2g.24gb','exec.pbs_job_id':f'{name}.opbs',
++            'init.parameters.sha256':'paired-init','reload.identical':True})
++        manifest = dict(status='complete',validator={'passed':True},metrics=metrics)
++        manifests[arm] = manifest
++        write(root/'manifest.json',manifest)
++        write(root/'predictions.json',dev);write(root/'calibration-predictions.json',cal)
++        refs[arm] = {'manifest':entry.reference(root/'manifest.json')}
++        if new:
++            base_rows = predictions('dev',.7)
++            write(root/'dev-step-0.json',{'predictions':base_rows})
++            write(root/'dev-base-same-allocation.json',{'predictions':base_rows,'job_id':metrics['exec.pbs_job_id'],
++                'hardware':metrics['hardware'],'source_commit':source})
++            write(root/'iv-off.json',{'predictions':base_rows})
++            for step in (3279,6558,9837):
++                write(root/f'dev-step-{step}.json',{'step':step,'predictions':dev,'metrics':metric(dev)})
++        return root
++    producer('Base','Base',.7)
++    for arm,score in [('X-01',.8),('X-02',.8)]:
++        producer(arm,arm,score)
++    # RB1-02 is deliberately not created: no attempted read should occur.
++    for arm,attempt in entry.LEGACY.items():
++        if arm != 'RB1-02':
++            producer(arm,attempt,.82 if arm == 'RB1-07' else .78)
++    producer('H-QVU','H-QVU',.84,new=True)
++    producer('T0-QVU','T0-QVU',.80,new=True)
++    def formal(root,arm,source_commit=None):
++        assert arm != 'RB1-02', 'unavailable checkpoint was accessed'
++        return manifests[arm],dict(refs[arm]),Path(root)/'adapter'
++    monkeypatch.setattr(entry,'validate_formal_run',formal)
++    monkeypatch.setattr(entry,'ACCEPTED_BASE_MANIFEST_SHA256',entry.reference(roots['Base']/'manifest.json')['sha256'])
++    monkeypatch.setattr(entry,'X_FILES',{arm:{name:entry.reference(roots[arm]/name)['sha256'] for name in names}
++        for arm,names in entry.X_FILES.items()})
++    # Numerical bootstrap is tested separately; retain common-index resampling
++    # here while bounding the end-to-end control-flow regression to13replicates.
++    bootstrap = entry.paired_intervals
++    monkeypatch.setattr(entry,'paired_intervals',lambda rows:bootstrap(rows,repeats=13))
++    reevaluations = {'RB1-02':{'unavailable':'RuntimeError loading historical adapter under current code'}}
++    for arm in ('RB1-01','RB1-07','RB1-09'):
++        root = tmp_path/('re-'+arm)
++        dev = json.loads((roots[arm]/'predictions.json').read_text())
++        cal = json.loads((roots[arm]/'calibration-predictions.json').read_text())
++        write(root/'manifest.json',{'status':'complete','validator':{'passed':True},'arm':arm,
++            'stage':'checkpoint_evaluation','metrics':{**metric(dev+cal),'source.commit':source,
++                'split_manifest.sha256':entry.SPLIT_SHA256,'compatibility':{'flips':0,'same_profile':True}}})
++        write(root/'predictions.json',dev);write(root/'calibration-predictions.json',cal)
++        write(root/'provenance.json',{'training_run':refs[arm]})
++        reevaluations[arm] = str(root)
++    smoke = tmp_path/'smoke'
++    write(smoke/'manifest.json',{'status':'complete','validator':{'passed':True},
++        'metrics':{'pytest_exit':0,'source_commit':source}})
++    write(smoke/'registration.json',{arm:{'initial_sha256':'paired-init'} for arm in ('H-QVU','T0-QVU')})
++    write(smoke/'cost-estimate.json',{'fixture':'cost already checked independently'})
++    intervention = tmp_path/'intervention'
++    write(intervention/'manifest.json',{'status':'complete','validator':{'passed':True},
++        'arm':'H-QVU','stage':'intervention','metrics':{'source.commit':source}})
++    write(intervention/'provenance.json',{'training_run':refs['H-QVU']})
++    write(intervention/'conditions.json',{kind:{'predictions':p,'metrics':metric(p)} for kind,p in
++        [('normal',predictions('dev',.84)),('iv_swap',predictions('dev',.81))]})
++    return {'source_commit':source,'base_run':str(roots['Base']),
++        'references':{a:str(p) for a,p in roots.items() if a not in ('Base','H-QVU','T0-QVU')},
++        'reevaluations':reevaluations,'training_runs':{a:str(roots[a]) for a in ('H-QVU','T0-QVU')},
++        'smoke_run':str(smoke),'intervention_run':str(intervention)}
++
++
++def test_unavailable_rule8_checkpoint_does_not_block_primary_analysis(analysis_fixture):
++    from rb_qvu_analysis import analyze
++    result = analyze(analysis_fixture)
++    assert result['rules']['3_H0030']['outcome'] == 'supports'
++    assert result['rules']['4_H0031']['outcome'] == 'supports'
++    assert 'RB1-02' not in result['merged_performance']
++    resolution = result['rules']['8_resolution']
++    assert resolution['unavailable']['RB1-02'].startswith('RuntimeError loading')
++    assert not resolution['comparisons']['RB1-02_minus_RB1-01']['available']
++    assert 'ci95_pp' in resolution['comparisons']['RB1-07_minus_X-01']
++
++
++def test_primary_lora_checkpoint_cannot_use_diagnostic_unavailable_escape(analysis_fixture):
++    from rb_qvu_analysis import analyze
++    analysis_fixture['reevaluations']['RB1-07'] = {'unavailable':'checkpoint missing'}
++    with pytest.raises(ValueError,match='mandatory for rule3'):
++        analyze(analysis_fixture)
++
++
++@pytest.mark.parametrize('entry',[{}, {'unavailable':''}, {'unavailable':'reason','other':1}])
++def test_unavailable_diagnostic_requires_a_reason_and_no_extra_override_fields(entry):
++    from rb_qvu_analysis import LEGACY, legacy_inputs
++    spec = {a:'/unused/'+a for a in LEGACY}
++    spec['RB1-02'] = entry
++    with pytest.raises(ValueError,match='explicit reason'):
++        legacy_inputs(spec)
