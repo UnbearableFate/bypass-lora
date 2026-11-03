@@ -57,3 +57,23 @@ The 2g guard may reject another scheduler-selected1g slice before workload.
 Formal training, four full checkpoint reevaluations, H-QVU swap, locked analysis,
 any rule6 conditional controls, per-rule evidence and task delivery remain.
 Coordinator owns hypothesis-state/route decisions and conclusion review.
+
+## Resume after coordinator MSG-1030
+
+ATT-0401-2 also exited at the profile guard on the mislabeled mg1103_mig3
+1g slice, before tests or model imports. Native1s =0.000278 MIG-instance-hours
+=0.0000695 node-hours was imported through
+T-0034-smoke-v1b-rejected-observations.json; partial RES-0379 contains the
+actual profile evidence. Both rejections total3s,0.000834 native MIG-hours,
+0.0002085 node-hours. The coordinator already acknowledged both notifications.
+
+MSG-1030 permits correctness/timing smoke on actual1g, while checkpoint
+reproduction and formal arms retain the contract's profile requirements.
+A separate T-0034-smoke.pbs accepts/records actual1g or2g for this bounded
+pre-review workload. It calls the unchanged rb_qvu_smoke.py; none of the
+RV-0104 reviewed paths changed. Reviewer-2 was notified via MSG-1032.
+This smoke's cross-profile legacy comparisons are compatibility/timing
+diagnostics, not substitutes for full evaluation at the respective historical
+profiles (RB1-01/07/09:2g;RB1-02:1g). Do not claim a guaranteed relative1g/2g
+speed from these records; the cost forecast uses the measured actual profile
+and must be checked against the task cap including all previous failures.
