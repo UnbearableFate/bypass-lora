@@ -25,11 +25,11 @@
 version: 1
 models:
   researcher:
-  - codex:gpt-6-astra@medium
+  - codex:gpt-6.1-sol@xhigh
   - claude:claude-opus-5-5@high
   reviewer:
   - claude:claude-opus-5-5@xhigh
-  - codex:gpt-6-astra@high
+  - codex:gpt-6-astra@xhigh
   advisor:
   - codex:gpt-6-astra@max
   - claude:claude-fable-5-1@max
